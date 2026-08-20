@@ -3,7 +3,7 @@
 - **Distribution**: CtrlX
 - **Fork point**: `919c7772928531d4d0bb266bdf275691d361901e`
 - **Fork date**: 2026-08-14
-- **Maintainer**: JarvisZeng `<jicezeng@gmail.com>`
+- **Maintainer**: ZengJice `<jicezeng@gmail.com>`
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 

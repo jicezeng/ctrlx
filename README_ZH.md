@@ -159,7 +159,7 @@ License: GNU AGPL-3.0
 
 CtrlX 是基于 [Gallager](https://github.com/gpambrozio/Gallager) 的独立发行版，基线为
 2026-08-14 的 commit `919c7772928531d4d0bb266bdf275691d361901e`。CtrlX 由
-JarvisZeng 维护，与 Gallager 项目不存在隶属或官方背书关系。
+ZengJice 维护，与 Gallager 项目不存在隶属或官方背书关系。
 
 仓库保留完整 Git 历史和原始版权声明，并以 [GNU AGPL-3.0](LICENSE) 发布。如果通过网络
 提供修改后的 Relay，必须向用户提供该运行版本的完整对应源码。另见 [NOTICE.md](NOTICE.md)、

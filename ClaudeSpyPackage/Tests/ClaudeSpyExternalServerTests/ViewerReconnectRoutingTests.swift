@@ -1,3 +1,4 @@
+import ClaudeSpyNetworking
 import Foundation
 import Testing
 import VaporTesting
@@ -104,6 +105,67 @@ extension EnvSerializedSuites {
             }
         }
 
+        @Test("A stale host frame cannot reclaim routing from the replacement socket")
+        func staleHostFrameCannotReclaimRouting() async throws {
+            try await withRunningRelay { app, port in
+                try await verifyStaleHostFrameIsRejected(app: app, port: port)
+            }
+        }
+
+        private func verifyStaleHostFrameIsRejected(app: Application, port: Int) async throws {
+            let pairId = try await makePair(app)
+
+            let viewer = TextCollector()
+            let viewerWS = try await connectClient(
+                port: port,
+                query: "pairId=\(pairId)&deviceType=viewer&deviceId=viewer-1",
+                collector: viewer
+            )
+
+            let hostA = TextCollector()
+            let hostAWS = try await connectClient(
+                port: port,
+                query: "pairId=\(pairId)&deviceType=host&deviceId=host-A",
+                collector: hostA
+            )
+            #expect(await waitUntil { count(of: "hostConnected", in: viewer.all()) == 1 })
+
+            let hostB = TextCollector()
+            let hostBWS = try await connectClient(
+                port: port,
+                query: "pairId=\(pairId)&deviceType=host&deviceId=host-B",
+                collector: hostB
+            )
+            #expect(await waitUntil { count(of: "hostConnected", in: viewer.all()) == 2 })
+
+            // Model a frame that was already in flight when B replaced A. The old
+            // message path used to register A again before handling this ping.
+            try await send(.ping, through: hostAWS)
+
+            let staleFrameWasHandled = await waitUntil(timeout: .milliseconds(500)) {
+                count(of: "pong", in: hostA.all()) > 0
+            }
+            #expect(!staleFrameWasHandled, "Relay accepted a frame from the replaced Host socket")
+
+            try await hostAWS.close()
+
+            let sawRegression = await waitUntil(timeout: .seconds(2)) {
+                let hostEvicted = !(await app.connectionHub.isHostConnected(pairId: pairId))
+                let viewerToldDisconnected = count(of: "hostDisconnected", in: viewer.all()) > 0
+                return hostEvicted || viewerToldDisconnected
+            }
+            #expect(
+                !sawRegression,
+                "Stale Host traffic reclaimed routing and its close reported the live Host offline"
+            )
+
+            await app.connectionHub.send(.ping, to: pairId, deviceType: .host)
+            #expect(await waitUntil { count(of: "ping", in: hostB.all()) > 0 })
+
+            try await viewerWS.close()
+            try await hostBWS.close()
+        }
+
         // MARK: - Relay lifecycle
 
         /// Boots the real relay on an ephemeral port, runs the body, and tears down
@@ -197,6 +259,13 @@ extension EnvSerializedSuites {
                     if gate.claim() { continuation.resume(throwing: error) }
                 }
             }
+        }
+
+        private func send(_ message: WebSocketMessage, through webSocket: WebSocket) async throws {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(message)
+            try await webSocket.send(raw: data, opcode: .text)
         }
 
         // MARK: - Polling

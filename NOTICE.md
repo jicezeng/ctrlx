@@ -5,7 +5,7 @@ CtrlX is an independent distribution based on
 
 This distribution was created from commit
 `919c7772928531d4d0bb266bdf275691d361901e` on 2026-08-14 and is maintained
-by JarvisZeng. It is not affiliated with, sponsored by, or endorsed by the
+by ZengJice. It is not affiliated with, sponsored by, or endorsed by the
 Gallager project or its maintainers.
 
 CtrlX preserves the original Git history and copyright notices. The combined

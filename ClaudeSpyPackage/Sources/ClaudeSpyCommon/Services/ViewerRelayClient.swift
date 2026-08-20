@@ -365,7 +365,18 @@ final public class ViewerRelayClient {
             return
         }
 
-        guard !state.isConnected, state != .connecting else {
+        if state.isConnected {
+            guard !isHostConnected else {
+                logger.debug("Relay and Host are already connected")
+                return
+            }
+
+            logger.info("Relay is connected but Host presence is stale; refreshing registration")
+            await sendViewerRegistration()
+            return
+        }
+
+        guard state != .connecting else {
             logger.debug("Already connected or connecting, ignoring reconnectImmediately()")
             return
         }
@@ -759,6 +770,31 @@ final public class ViewerRelayClient {
         pingTask = Task { [weak self] in
             await self?.pingLoop(using: task, generation: generation)
         }
+    }
+
+    private func sendViewerRegistration() async {
+        guard
+            let pairId,
+            let deviceId,
+            let deviceName,
+            let publicKey,
+            let publicKeyId
+        else {
+            logger.error("Missing connection parameters for Viewer registration refresh")
+            return
+        }
+
+        await send(
+            .registerViewer(
+                RegisterViewerMessage(
+                    pairId: pairId,
+                    deviceId: deviceId,
+                    deviceName: deviceName,
+                    publicKey: publicKey,
+                    publicKeyId: publicKeyId
+                )
+            )
+        )
     }
 
     private func receiveMessages(

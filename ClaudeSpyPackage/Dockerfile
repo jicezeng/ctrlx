@@ -59,16 +59,18 @@ RUN --mount=type=cache,id=ctrlx-relay-swiftpm,target=/build/.build \
 # Runtime stage - use slim image
 FROM swift:6.3-jammy-slim
 
-ARG CTRLX_VERSION=3.0.0
-ARG CTRLX_SOURCE_REVISION=development
-ARG CTRLX_SOURCE_REPOSITORY=https://github.com/jicezeng/CtrlX
-
 WORKDIR /app
 
 # Install curl so the docker-compose healthcheck can call /health. The slim
 # image otherwise lacks any HTTP client, so the healthcheck would always fail.
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
+
+# Source metadata changes on every release. Declare it after OS dependencies so
+# a new commit does not invalidate the expensive apt layer.
+ARG CTRLX_VERSION=3.0.0
+ARG CTRLX_SOURCE_REVISION=development
+ARG CTRLX_SOURCE_REPOSITORY=https://github.com/jicezeng/CtrlX
 
 # Copy the built binary (from /tmp/ where we placed it after build due to cache mount)
 COPY --from=builder /tmp/ClaudeSpyExternalServer ./

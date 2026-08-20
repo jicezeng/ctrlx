@@ -179,7 +179,7 @@ A link to a moving development branch alone is not sufficient corresponding sour
 CtrlX is an independent distribution based on
 [Gallager](https://github.com/gpambrozio/Gallager), with baseline commit
 `919c7772928531d4d0bb266bdf275691d361901e` dated 2026-08-14. CtrlX is maintained
-by JarvisZeng and is not affiliated with or endorsed by the Gallager project.
+by ZengJice and is not affiliated with or endorsed by the Gallager project.
 
 The repository retains the complete Git history and original copyright notices.
 CtrlX is distributed under [GNU AGPL-3.0](LICENSE). If you provide a modified Relay
