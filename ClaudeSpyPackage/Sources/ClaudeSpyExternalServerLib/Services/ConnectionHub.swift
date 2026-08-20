@@ -30,16 +30,6 @@ actor ConnectionHub {
         connections[connection.pairId]?[connection.deviceType] = connection
     }
 
-    /// Unregister a connection
-    func unregister(pairId: String, deviceType: DeviceType) {
-        connections[pairId]?[deviceType] = nil
-
-        // Clean up empty pair entries
-        if connections[pairId]?.isEmpty == true {
-            connections.removeValue(forKey: pairId)
-        }
-    }
-
     /// Unregister a connection only if the currently-registered connection for
     /// this `(pairId, deviceType)` is the given WebSocket instance.
     ///
@@ -68,6 +58,11 @@ actor ConnectionHub {
             connections.removeValue(forKey: pairId)
         }
         return true
+    }
+
+    /// Whether this socket still owns routing for its device in the pair.
+    func isCurrent(pairId: String, deviceType: DeviceType, webSocket: WebSocket) -> Bool {
+        connections[pairId]?[deviceType]?.webSocket === webSocket
     }
 
     /// Close and remove a single device's connection for a pair (used by the

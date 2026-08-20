@@ -122,6 +122,43 @@ struct ViewerRelayClientLivenessTests {
         #expect(hostDisconnects == 0)
     }
 
+    @Test("Foreground recovery refreshes Host presence without replacing a live Relay socket")
+    func foregroundRecoveryRefreshesMissingHostPresence() async throws {
+        let upgrades = UpgradeCounter()
+        let server = try await MuteRelay.start(countingUpgradesInto: upgrades)
+        defer { server.stop() }
+
+        let e2eeService = try await withDependencies {
+            $0[SecretsService.self] = .inMemory()
+        } operation: {
+            try await E2EEService()
+        }
+
+        let client = ViewerRelayClient(pingIntervalSeconds: 60, pongTimeoutSeconds: 10)
+        await client.connect(
+            serverURL: URL(string: "ws://127.0.0.1:\(server.port)")!,
+            pairId: "presence-pair",
+            deviceId: "viewer-device",
+            deviceName: "Test Viewer",
+            publicKey: "dGVzdC1wdWJsaWMta2V5LTAxMjM0NTY3ODkwMTIzNDU2Nw==",
+            publicKeyId: "viewer-key-id",
+            e2eeService: e2eeService,
+            partnerPublicKey: nil,
+            partnerPublicKeyId: nil
+        )
+        defer { Task { await client.disconnect() } }
+
+        #expect(await waitUntil { client.state.isConnected })
+        #expect(await waitUntil(timeout: .seconds(2)) { upgrades.inboundFrames >= 2 })
+        #expect(!client.isHostConnected)
+
+        let framesBeforeRecovery = upgrades.inboundFrames
+        await client.reconnectImmediately()
+
+        #expect(await waitUntil { upgrades.inboundFrames == framesBeforeRecovery + 1 })
+        #expect(upgrades.value == 1, "Presence refresh replaced a healthy Relay socket")
+    }
+
     // MARK: - Polling
 
     private func waitUntil(
@@ -152,8 +189,8 @@ private struct MuteRelay {
             counter.increment()
             // Deliberately never send a pong or any frame: model a half-open socket.
             // Swallow inbound frames so nothing echoes back to clear `awaitingPong`.
-            ws.onText { _, _ in }
-            ws.onBinary { _, _ in }
+            ws.onText { _, _ in counter.incrementInboundFrames() }
+            ws.onBinary { _, _ in counter.incrementInboundFrames() }
         }
         do {
             try await app.asyncBoot()
@@ -188,6 +225,7 @@ private enum MuteRelayError: Error {
 final private class UpgradeCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var frameCount = 0
 
     func increment() {
         lock.lock()
@@ -195,9 +233,21 @@ final private class UpgradeCounter: @unchecked Sendable {
         lock.unlock()
     }
 
+    func incrementInboundFrames() {
+        lock.lock()
+        frameCount += 1
+        lock.unlock()
+    }
+
     var value: Int {
         lock.lock()
         defer { lock.unlock() }
         return count
+    }
+
+    var inboundFrames: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return frameCount
     }
 }
