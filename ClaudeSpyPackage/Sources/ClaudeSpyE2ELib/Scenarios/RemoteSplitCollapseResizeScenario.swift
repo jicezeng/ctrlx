@@ -1,166 +1,83 @@
 import Foundation
 
-/// E2E scenario: When the right-pane terminal of a remote split is killed
-/// on the host, the surviving left-pane terminal must resize back to the
-/// full detail-pane width. Local sessions already do this — the same flow
-/// has to work for remote sessions too (issue #523 follow-up).
+/// E2E scenario for the Host-owned shared terminal layout.
 ///
-/// Reproduces the user-reported bug:
-/// > Create a new remote session, create a new terminal. Split the view.
-/// > Both terminals resize as expected. Close the second terminal. First
-/// > terminal takes the whole view again but doesn't resize.
+/// The app-level left/right arrangement must converge on every Mac without a
+/// Viewer resizing the Host's tmux windows. Native tmux pane layout is outside
+/// this protocol and remains synchronized by the existing `PaneState` path.
 public enum RemoteSplitCollapseResizeScenario {
     public static let scenario = ClaudeSpyE2ELib.scenario(
-        "Remote Split Collapse Resize",
-        tags: ["remote", "split-view", "resize", "macos-only"]
+        "Remote Shared Terminal Layout",
+        tags: ["remote", "split-view", "layout-sync", "macos-only"]
     ) {
-        // ── Setup: pair two Mac apps ────────────────────────────────────
         Shortcut.twoMacPairing
 
-        // ── Setup: one tmux session with two windows on the host ────────
-        TestStep.log("Setup: Create rscoll session with two windows")
-        TestStep.tmuxCreateSession(name: "rscoll", width: 100, height: 30)
-        TestStep.tmuxCommand(arguments: ["rename-window", "-t", "rscoll:0", "winLeft"])
-        TestStep.tmuxCommand(arguments: ["new-window", "-t", "rscoll", "-n", "winRight"])
-        // Unique echo per window so the screenshots distinguish panes.
-        TestStep.tmuxCommand(arguments: ["send-keys", "-t", "rscoll:winLeft", "echo winLeft", "Enter"])
-        TestStep.tmuxCommand(arguments: ["send-keys", "-t", "rscoll:winRight", "echo winRight", "Enter"])
-        TestStep.tmuxCommand(arguments: ["select-window", "-t", "rscoll:winLeft"])
-        TestStep.wait(seconds: 1)
+        TestStep.log("Setup: Create rslayout session with two windows")
+        TestStep.tmuxCreateSession(name: "rslayout", width: 100, height: 30)
+        TestStep.tmuxCommand(arguments: ["rename-window", "-t", "rslayout:0", "winLeft"])
+        TestStep.tmuxCommand(arguments: ["new-window", "-t", "rslayout", "-n", "winRight"])
+        TestStep.tmuxCommand(arguments: ["select-window", "-t", "rslayout:winLeft"])
 
-        // ── Open the host's Panes window so state propagates ────────────
         Shortcut.openPanesWindow()
         TestStep.macResizeWindow(width: 1_300, height: 700)
-        TestStep.macWaitForElement(titled: "rscoll", timeout: 15)
+        TestStep.macWaitForElement(titled: "rslayout", timeout: 15)
+        TestStep.macClickButton(titled: "rslayout")
+        TestStep.macWaitForElement(titled: "winLeft", timeout: 10)
+        TestStep.macWaitForElement(titled: "winRight", timeout: 10)
 
-        // ── Select the remote session on the viewer side ────────────────
         Shortcut.openPanesWindow(instance: 1)
         TestStep.macResizeWindow(width: 1_300, height: 700, instance: 1)
-        TestStep.macWaitForElement(titled: "rscoll", timeout: 15, instance: 1)
-        TestStep.macClickButton(titled: "rscoll", instance: 1)
+        TestStep.macWaitForElement(titled: "rslayout", timeout: 15, instance: 1)
+        TestStep.macClickButton(titled: "rslayout", instance: 1)
         TestStep.macWaitForElement(titled: "winLeft", timeout: 10, instance: 1)
         TestStep.macWaitForElement(titled: "winRight", timeout: 10, instance: 1)
 
-        // ── Enable global auto-resize on the viewer ─────────────────────
-        // Settings is still open on the viewer from `Shortcut.twoMacPairing`
-        // (on the "Remote Hosts" tab) — switch to "General" before clicking
-        // the auto-resize toggle.
-        TestStep.macOpenSettings(instance: 1)
-        TestStep.macSelectSettingsTab("General", instance: 1)
-        TestStep.macWaitForWindow(titled: "General", timeout: 5, instance: 1)
-        TestStep.macClickButton(
-            titled: "Automatically resize all terminals to fit the mirror view when the window size changes",
+        // Host opens the right terminal. The Viewer must render the same
+        // logical arrangement after the canonical SessionState push.
+        TestStep.log("Phase 1: Host opens winRight in the right pane")
+        TestStep.macClickButton(titled: "Open terminal in split: winRight")
+        TestStep.macWaitForElement(titled: "Move terminal to left: winRight", timeout: 10)
+        TestStep.macWaitForElement(
+            titled: "Move terminal to left: winRight",
+            timeout: 10,
             instance: 1
         )
-        TestStep.wait(seconds: 1)
-        TestStep.macCloseWindow(titled: "General", instance: 1)
-        TestStep.wait(seconds: 2)
-        TestStep.macClickButton(titled: "rscoll", instance: 1)
-        TestStep.wait(seconds: 2)
+        TestStep.macScreenshot(label: "shared-layout-host-split")
+        TestStep.macScreenshot(label: "shared-layout-viewer-converged", instance: 1)
 
-        // ── Phase 1: Capture pre-split (full) winLeft dimensions ────────
-        TestStep.log("Phase 1: Capture pre-split full-width dimensions on winLeft")
-        TestStep.macClickButton(titled: "rscoll:0 winLeft", instance: 1)
-        TestStep.wait(seconds: 2)
-        TestStep.tmuxStorePaneDimensions(
-            target: "rscoll:winLeft",
-            widthKey: "preSplitWidth",
-            heightKey: "preSplitHeight"
-        )
-        TestStep.log("Pre-split winLeft: ${preSplitWidth}x${preSplitHeight}")
-        Shortcut.tmuxRunCommand(
-            target: "rscoll:winLeft",
-            command: #"echo "[PRE-SPLIT] tput cols=$(tput cols)""#
-        )
-        TestStep.wait(seconds: 1)
-        TestStep.tmuxCapturePaneContent(target: "rscoll:winLeft", storeAs: "preSplitContent")
-        TestStep.assertStoredContains(
-            key: "preSplitContent",
-            substring: "[PRE-SPLIT] tput cols=${preSplitWidth}"
-        )
-        TestStep.macScreenshot(label: "viewer-rscoll-pre-split", instance: 1)
-
-        // ── Phase 2: Open split — winRight goes to the right pane ───────
-        TestStep.log("Phase 2: Click winRight's split toggle — winRight moves to the right pane")
-        TestStep.macClickButton(titled: "Open terminal in split: winRight", instance: 1)
-        TestStep.macWaitForElement(titled: "Move terminal to left: winRight", timeout: 5, instance: 1)
-        TestStep.wait(seconds: 2)
-        TestStep.tmuxStorePaneDimensions(
-            target: "rscoll:winLeft",
-            widthKey: "splitLeftWidth",
-            heightKey: "splitLeftHeight"
-        )
-        TestStep.log("Split winLeft: ${splitLeftWidth}x${splitLeftHeight}")
-        TestStep.assertStoredNotEqual(key: "splitLeftWidth", otherKey: "preSplitWidth")
-        Shortcut.tmuxRunCommand(
-            target: "rscoll:winLeft",
-            command: #"echo "[SPLIT] tput cols=$(tput cols)""#
-        )
-        TestStep.wait(seconds: 1)
-        TestStep.tmuxCapturePaneContent(target: "rscoll:winLeft", storeAs: "splitContent")
-        TestStep.assertStoredContains(
-            key: "splitContent",
-            substring: "[SPLIT] tput cols=${splitLeftWidth}"
-        )
-        TestStep.macScreenshot(label: "viewer-rscoll-split-open", instance: 1)
-
-        // ── Phase 3: Kill winRight on the host → split must collapse ────
-        //
-        // This is the user-reported bug: the host kills the right-pane
-        // window, the viewer's `RemoteSplitCleanupModifier` prunes the
-        // stale `rightSide` entry so the layout flips back to single-pane,
-        // but the left-pane terminal stays at the split width — it should
-        // resize back to the full detail-pane width.
-        TestStep.log("Phase 3: tmux kill-window on winRight; assert winLeft resizes back to full")
-        TestStep.tmuxCommand(arguments: ["kill-window", "-t", "rscoll:winRight"])
-        // The split should be gone — the "Move terminal to left: winRight"
-        // affordance disappears with it.
+        // A Viewer may request a change, but only the Host commits it. Moving
+        // the terminal left on the Viewer must therefore collapse both UIs.
+        TestStep.log("Phase 2: Viewer requests collapse; Host republishes it")
+        TestStep.macClickButton(titled: "Move terminal to left: winRight", instance: 1)
         TestStep.macWaitForElementToDisappear(
             titled: "Move terminal to left: winRight",
             timeout: 10,
             instance: 1
         )
-        // Poll the host's tmux pane width until the viewer-initiated resize
-        // lands. `macWaitForElementToDisappear` returns as soon as the prune
-        // updates the UI (~hundreds of ms), but `handleAutoResize`'s 200ms
-        // debounce + `ResizeTmuxPane` relay round trip + the host's
-        // `resize-window` execution can take meaningfully longer on a loaded
-        // CI machine. Wait for the pane width to differ from `splitLeftWidth`
-        // before sampling — otherwise we race the resize chain.
-        TestStep.waitForTmuxDisplayMessageNotEqual(
-            target: "rscoll:winLeft",
-            format: "#{pane_width}",
-            notEqualTo: "${splitLeftWidth}",
-            timeout: 20
+        TestStep.macWaitForElementToDisappear(
+            titled: "Move terminal to left: winRight",
+            timeout: 10
         )
-        TestStep.tmuxStorePaneDimensions(
-            target: "rscoll:winLeft",
-            widthKey: "postCloseWidth",
-            heightKey: "postCloseHeight"
-        )
-        TestStep.log("Post-close winLeft: ${postCloseWidth}x${postCloseHeight}")
-        // After the collapse, winLeft owns the entire detail pane again —
-        // its tmux width must NOT still be the split width. (Comparing
-        // against `preSplitWidth` would be ideal but Settings-window
-        // dismissal timing makes the pre-split capture occasionally land a
-        // few cols off from the steady-state full-width; the split width is
-        // a stable bound and is what the user-reported bug would leave the
-        // pane stuck at.)
-        TestStep.assertStoredNotEqual(key: "postCloseWidth", otherKey: "splitLeftWidth")
-        Shortcut.tmuxRunCommand(
-            target: "rscoll:winLeft",
-            command: #"echo "[POST-CLOSE] tput cols=$(tput cols)""#
-        )
-        TestStep.wait(seconds: 1)
-        TestStep.tmuxCapturePaneContent(target: "rscoll:winLeft", storeAs: "postCloseContent")
-        TestStep.assertStoredContains(
-            key: "postCloseContent",
-            substring: "[POST-CLOSE] tput cols=${postCloseWidth}"
-        )
-        TestStep.macScreenshot(label: "viewer-rscoll-collapsed-back-to-full", instance: 1)
+        TestStep.macScreenshot(label: "shared-layout-viewer-collapse")
+        TestStep.macScreenshot(label: "shared-layout-host-converged")
 
-        // ── Tear down ────────────────────────────────────────────────
-        TestStep.tmuxCommand(arguments: ["kill-session", "-t", "rscoll"])
+        // Re-open from the Viewer, then remove the underlying tmux window.
+        // The stale canonical right side must be pruned on both clients.
+        TestStep.log("Phase 3: Viewer opens split, then Host tmux removes winRight")
+        TestStep.macClickButton(titled: "Open terminal in split: winRight", instance: 1)
+        TestStep.macWaitForElement(titled: "Move terminal to left: winRight", timeout: 10)
+        TestStep.tmuxCommand(arguments: ["kill-window", "-t", "rslayout:winRight"])
+        TestStep.macWaitForElementToDisappear(
+            titled: "Move terminal to left: winRight",
+            timeout: 10,
+            instance: 1
+        )
+        TestStep.macWaitForElementToDisappear(
+            titled: "Move terminal to left: winRight",
+            timeout: 10
+        )
+
+        TestStep.tmuxCommand(arguments: ["kill-session", "-t", "rslayout"])
         TestStep.wait(seconds: 2)
     }
 }

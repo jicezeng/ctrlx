@@ -46,13 +46,19 @@ public struct SessionStateMessage: Codable, Sendable {
     /// `usageOverview`).
     public let sidebarSortMode: String?
 
+    /// Host-owned terminal-window layouts keyed by tmux session name. This is
+    /// deliberately narrower than the app's workbench state: file/browser
+    /// tabs, focus and scroll position remain private to each client.
+    public let sharedTerminalLayouts: [String: SharedTerminalLayout]?
+
     public init(
         pairId: String,
         paneStates: [String: PaneState],
         agentProjects: [AgentProject]? = nil,
         homeDirectory: String = "",
         usageOverview: UsageOverview? = nil,
-        sidebarSortMode: String? = nil
+        sidebarSortMode: String? = nil,
+        sharedTerminalLayouts: [String: SharedTerminalLayout]? = nil
     ) {
         self.pairId = pairId
         self.paneStates = paneStates
@@ -60,6 +66,7 @@ public struct SessionStateMessage: Codable, Sendable {
         self.homeDirectory = homeDirectory
         self.usageOverview = usageOverview
         self.sidebarSortMode = sidebarSortMode
+        self.sharedTerminalLayouts = sharedTerminalLayouts
     }
 
     /// Returns a copy with the `pairId` replaced. Centralises the per-connection
@@ -73,8 +80,35 @@ public struct SessionStateMessage: Codable, Sendable {
             agentProjects: agentProjects,
             homeDirectory: homeDirectory,
             usageOverview: usageOverview,
-            sidebarSortMode: sidebarSortMode
+            sidebarSortMode: sidebarSortMode,
+            sharedTerminalLayouts: sharedTerminalLayouts
         )
+    }
+}
+
+/// Canonical terminal-window arrangement for one tmux session.
+///
+/// The Host assigns `revision`. Clients use tmux's process-stable window IDs
+/// (`@1`, `@2`, ...) so window reordering does not invalidate the layout.
+public struct SharedTerminalLayout: Codable, Sendable, Equatable {
+    public let leftWindowId: String
+    public let rightWindowIds: [String]
+    public let selectedRightWindowId: String?
+    public let splitRatio: Double
+    public let revision: UInt64
+
+    public init(
+        leftWindowId: String,
+        rightWindowIds: [String] = [],
+        selectedRightWindowId: String? = nil,
+        splitRatio: Double = 0.5,
+        revision: UInt64
+    ) {
+        self.leftWindowId = leftWindowId
+        self.rightWindowIds = rightWindowIds
+        self.selectedRightWindowId = selectedRightWindowId
+        self.splitRatio = splitRatio
+        self.revision = revision
     }
 }
 

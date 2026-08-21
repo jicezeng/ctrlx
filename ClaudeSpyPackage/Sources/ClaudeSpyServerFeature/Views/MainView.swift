@@ -52,7 +52,8 @@ public struct MainView: View {
     @State private var remoteHostDragSourceID: String?
     @State private var remoteHostDropTargetID: String?
 
-    /// Per-session auto-resize state (keyed by pane target for local, "remote-hostId-paneId" for remote)
+    /// Per-session auto-resize state keyed by local pane ID. The Host alone
+    /// owns tmux dimensions; remote Viewers never resize the shared terminal.
     @State private var autoResizeEnabled: Set<String> = []
     /// Per-session auto-resize opt-out when global setting is on
     @State private var autoResizeDisabled: Set<String> = []
@@ -64,6 +65,8 @@ public struct MainView: View {
     @State private var lastAutoResizeDimensions: [String: (columns: Int, rows: Int)] = [:]
     /// Debounce task for auto-resize (cancelled on each new geometry change)
     @State private var autoResizeTask: Task<Void, Never>?
+    /// Debounces shared terminal-layout publication while the divider moves.
+    @State private var sharedLayoutSyncTask: Task<Void, Never>?
 
     /// Window IDs that have the file browser tab active (persists across tab/session switches)
     @State private var fileBrowserActiveWindowIds: Set<String> = []
@@ -123,7 +126,7 @@ public struct MainView: View {
 
     /// Remote counterparts of the three bookkeeping dictionaries above, keyed by
     /// `(hostId, sessionName)` so a viewer persists each remote session's
-    /// browser-tab + split layout the same way local sessions persist theirs
+    /// private browser-tab layout the same way local sessions persist theirs
     /// (issue #608 — Scope A, viewer-local). Kept parallel to (not merged with)
     /// the local dictionaries so a remote session name can't collide with a
     /// local one, and so the host-keyed lifecycle (cleared on unpair) stays
@@ -368,8 +371,20 @@ public struct MainView: View {
                 selectedWindow = fallback
             }
         }
-        .onChange(of: selectedWindow) { handleSelectionChanged() }
-        .onChange(of: selectedRemoteSession) { handleSelectionChanged() }
+        .onChange(of: selectedWindow) { previous, current in
+            if previous?.sessionName != current?.sessionName {
+                applySelectedLocalSharedTerminalLayout()
+            }
+            handleSelectionChanged()
+        }
+        .onChange(of: selectedRemoteSession) {
+            if selectedRemoteSession == nil {
+                applySelectedLocalSharedTerminalLayout()
+            } else {
+                applySelectedRemoteSharedTerminalLayout()
+            }
+            handleSelectionChanged()
+        }
         .onChange(of: selectedRemoteWindowId) { handleSelectionChanged() }
         .onChange(of: selectedRemoteWindow?.id) {
             // Keep selectedRemoteWindowId in sync when the computed property
@@ -441,6 +456,7 @@ public struct MainView: View {
                 // because the overall pane size is unchanged — re-run the
                 // auto-resize so tmux knows about the new pane width.
                 handleAutoResize()
+                scheduleSharedTerminalLayoutSync()
             },
             onFontChanged: {
                 // A font change (⌘+ / ⌘- or the Settings pane) alters the cell
@@ -448,6 +464,16 @@ public struct MainView: View {
                 // detail-pane pixels. Re-run auto-resize so tmux is re-fit and
                 // the agent in the pane re-renders at the new size.
                 handleAutoResize()
+            }
+        ))
+        .modifier(SharedTerminalLayoutObserversModifier(
+            local: selectedLocalSharedTerminalLayout,
+            remote: selectedRemoteSharedTerminalLayout,
+            onLocalChanged: applySelectedLocalSharedTerminalLayout,
+            onRemoteChanged: applySelectedRemoteSharedTerminalLayout,
+            onDisappear: {
+                autoResizeTask?.cancel()
+                sharedLayoutSyncTask?.cancel()
             }
         ))
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -471,9 +497,6 @@ public struct MainView: View {
         }
         .onChange(of: coordinator.pendingMenuBarSelection) {
             applyPendingMenuBarSelection()
-        }
-        .onDisappear {
-            autoResizeTask?.cancel()
         }
     }
 
@@ -1959,11 +1982,6 @@ public struct MainView: View {
                     )
                 }
 
-                if let activePane = remoteWindow.activePane {
-                    let resizeKey = remote.resizeKey(paneId: activePane.paneId)
-                    resizeToolbarGroup(resizeKey: resizeKey, remoteHostId: remote.hostId, remotePaneId: activePane.paneId)
-                }
-
                 Button {
                     requestCloseRemoteSession(remote.sessionName, hostId: remote.hostId)
                 } label: {
@@ -2123,8 +2141,6 @@ public struct MainView: View {
         resizeKey: String,
         localTarget: String? = nil,
         localWindow: LocalTmuxWindow? = nil,
-        remoteHostId: String? = nil,
-        remotePaneId: String? = nil,
         isSessionAttached: Bool = false
     ) -> some View {
         let attachedHelp = "Cannot resize: session is attached to a terminal"
@@ -2141,8 +2157,6 @@ public struct MainView: View {
                     await performResize(
                         localTarget: localTarget,
                         localPaneId: localTarget != nil ? resizeKey : nil,
-                        remoteHostId: remoteHostId,
-                        remotePaneId: remotePaneId,
                         widthOverride: widthOverride
                     )
                 }
@@ -2168,8 +2182,6 @@ public struct MainView: View {
                         await performResize(
                             localTarget: localTarget,
                             localPaneId: localTarget != nil ? resizeKey : nil,
-                            remoteHostId: remoteHostId,
-                            remotePaneId: remotePaneId,
                             widthOverride: widthOverride
                         )
                     }
@@ -2204,6 +2216,7 @@ public struct MainView: View {
         markSelectedSessionsHandledIfActive()
         seedLayoutIfNeeded()
         seedRemoteLayoutIfNeeded()
+        scheduleSharedTerminalLayoutSync()
     }
 
     private func handleAutoResize() {
@@ -2213,7 +2226,6 @@ public struct MainView: View {
         // Capture current selection before the debounce sleep to avoid racing with window switches
         let currentWindow = selectedWindow
         let currentRemote = selectedRemoteSession
-        let currentRemoteWindow = selectedRemoteWindow
         let rightWindow = rightPaneTerminalWindow()
 
         autoResizeTask = Task {
@@ -2256,44 +2268,6 @@ public struct MainView: View {
                         }
                     }
                 }
-            } else if
-                let remote = currentRemote,
-                let leftWindow = currentRemoteWindow,
-                let activePane = leftWindow.activePane {
-                let leftWidth = effectiveTerminalWidth(forRemote: leftWindow, in: remote)
-                let resizeKey = remote.resizeKey(paneId: activePane.paneId)
-                let dimensions = calculateOptimalTerminalDimensions(widthOverride: leftWidth)
-                let cached = lastAutoResizeDimensions[resizeKey]
-                if cached?.columns != dimensions.columns || cached?.rows != dimensions.rows {
-                    if isAutoResizeActive(for: resizeKey) {
-                        await performResize(
-                            remoteHostId: remote.hostId,
-                            remotePaneId: activePane.paneId,
-                            widthOverride: leftWidth
-                        )
-                    }
-                }
-
-                // Right-pane remote terminal (split mode): a different remote
-                // tmux window can live on the right side. Resize it to fit
-                // the right half so each terminal matches its rendered area.
-                if
-                    let rightWindow = rightPaneRemoteTerminalWindow(remote: remote),
-                    let rightPane = rightWindow.activePane {
-                    let rightWidth = effectiveTerminalWidth(forRemote: rightWindow, in: remote)
-                    let rightResizeKey = remote.resizeKey(paneId: rightPane.paneId)
-                    let rightDimensions = calculateOptimalTerminalDimensions(widthOverride: rightWidth)
-                    let rightCached = lastAutoResizeDimensions[rightResizeKey]
-                    if rightCached?.columns != rightDimensions.columns || rightCached?.rows != rightDimensions.rows {
-                        if isAutoResizeActive(for: rightResizeKey) {
-                            await performResize(
-                                remoteHostId: remote.hostId,
-                                remotePaneId: rightPane.paneId,
-                                widthOverride: rightWidth
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -2318,37 +2292,18 @@ public struct MainView: View {
     private func performResize(
         localTarget: String? = nil,
         localPaneId: String? = nil,
-        remoteHostId: String? = nil,
-        remotePaneId: String? = nil,
         widthOverride: CGFloat? = nil
     ) async {
         let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
 
-        if let localTarget {
-            do {
-                try await tmuxService.resizePane(localTarget, width: dimensions.columns, height: dimensions.rows)
-                if let localPaneId {
-                    lastAutoResizeDimensions[localPaneId] = dimensions
-                }
-            } catch {
-                attachError = "Failed to resize: \(error.localizedDescription)"
+        guard let localTarget else { return }
+        do {
+            try await tmuxService.resizePane(localTarget, width: dimensions.columns, height: dimensions.rows)
+            if let localPaneId {
+                lastAutoResizeDimensions[localPaneId] = dimensions
             }
-        } else if let remoteHostId, let remotePaneId {
-            guard let manager = coordinator.viewerConnectionManager else { return }
-            let result = await manager.sendCommand(
-                ResizeTmuxPane(width: dimensions.columns, height: dimensions.rows),
-                paneId: remotePaneId,
-                hostId: remoteHostId
-            )
-            switch result {
-            case .success:
-                // Cache under the same key handleAutoResize uses for the remote pane
-                if let remote = selectedRemoteSession {
-                    lastAutoResizeDimensions[remote.resizeKey(paneId: remotePaneId)] = dimensions
-                }
-            case let .failure(error):
-                attachError = "Failed to resize remote session: \(error.localizedDescription)"
-            }
+        } catch {
+            attachError = "Failed to resize: \(error.localizedDescription)"
         }
     }
 
@@ -4016,7 +3971,6 @@ public struct MainView: View {
         // GC bookkeeping + tab state for sessions killed on a still-connected
         // host before reconciling the survivors' right-side entries (issue #608).
         pruneStaleRemoteSessionBookkeeping()
-        var prunedSelectedSession = false
         for (key, tabs) in remoteSessionTabsStates {
             let liveWindows = remoteSessionWindows(hostId: key.hostId, sessionName: key.sessionName)
             let liveIds = Set(liveWindows.map(\.stableId))
@@ -4033,26 +3987,6 @@ public struct MainView: View {
                 sessionName: key.sessionName,
                 sessionWindows: liveWindows
             )
-            if
-                let remote = selectedRemoteSession,
-                remote.hostId == key.hostId,
-                remote.sessionName == key.sessionName {
-                prunedSelectedSession = true
-            }
-        }
-        // When the currently-viewed session just lost its right-pane window
-        // the layout flips back to single-pane and the surviving left
-        // terminal needs to grow to the full detail-pane width. The
-        // `SplitSignal`-driven `AutoResizeObserversModifier` onChange would
-        // in principle fire on this mutation, but the two `.onChange`
-        // handlers (paneCount here and splitSignal next) are chained
-        // through an `@Observable` mutation that SwiftUI can coalesce —
-        // kick `handleAutoResize` directly so the surviving left pane
-        // reliably resizes back. Local sessions are covered by
-        // `selectedWindow`'s value-type refresh when tmux switches the
-        // active window after a kill, which has no remote equivalent.
-        if prunedSelectedSession {
-            handleAutoResize()
         }
     }
 
@@ -4500,20 +4434,6 @@ public struct MainView: View {
         )
     }
 
-    /// Remote counterpart to `effectiveTerminalWidth(for:)`. Reads the split
-    /// state stored under the per-host/per-session key so remote terminals
-    /// participate in the same split-aware auto-resize as host terminals.
-    private func effectiveTerminalWidth(
-        forRemote window: TmuxWindow,
-        in remote: RemoteSessionSelection
-    ) -> CGFloat? {
-        let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
-        return effectiveTerminalWidth(
-            tabs: remoteSessionTabsStates[key],
-            windowId: window.stableId
-        )
-    }
-
     private func effectiveTerminalWidth(
         tabs: SessionFileTabsState?,
         windowId: String
@@ -4524,28 +4444,9 @@ public struct MainView: View {
         return max(0, detailPaneSize.width * ratio - SplitLayout.dividerWidth / 2)
     }
 
-    /// The remote `TmuxWindow` currently rendered in the split-view right
-    /// pane (if any). Mirrors `rightPaneTerminalWindow()` for remote sessions
-    /// so the right-side terminal participates in auto-resize too.
-    private func rightPaneRemoteTerminalWindow(remote: RemoteSessionSelection) -> TmuxWindow? {
-        guard
-            let sessionStore = coordinator.remoteSessionStore,
-            let tabs = remoteSessionTabsStates[remoteTabsKey(
-                hostId: remote.hostId,
-                sessionName: remote.sessionName
-            )],
-            tabs.isSplit,
-            case let .window(rightWindowId) = tabs.selectedRight
-        else {
-            return nil
-        }
-        return sessionStore.windows(for: remote.hostId)
-            .first { $0.sessionName == remote.sessionName && $0.stableId == rightWindowId }
-    }
-
     /// Equatable snapshot of the currently selected session's split layout,
-    /// used as the source for `.onChange(of:)` so the auto-resize logic fires
-    /// when the user splits/collapses the detail area or drags the divider.
+    /// used as the source for `.onChange(of:)` so local auto-resize and shared
+    /// layout publication fire for every split membership/selection change.
     /// Returns `nil` when nothing is selected so `.onChange` still fires on
     /// the first non-nil transition.
     private var currentSessionSplitSignal: SplitSignal? {
@@ -4570,7 +4471,8 @@ public struct MainView: View {
         return SplitSignal(
             isSplit: tabs.isSplit,
             splitRatio: tabs.splitRatio,
-            rightWindowId: rightWindowId
+            rightWindowIds: tabs.rightSideWindowIds.sorted(),
+            selectedRightWindowId: rightWindowId
         )
     }
 
@@ -4578,10 +4480,252 @@ public struct MainView: View {
     private struct SplitSignal: Equatable {
         let isSplit: Bool
         let splitRatio: CGFloat
-        /// Right-pane terminal window id, when one is parked there. Included
-        /// in the signal so swapping the right pane between two terminals
-        /// also re-triggers auto-resize.
-        let rightWindowId: String?
+        /// Stable ordering avoids Set iteration noise while still observing a
+        /// non-selected terminal moving across the divider.
+        let rightWindowIds: [String]
+        let selectedRightWindowId: String?
+    }
+
+    // MARK: - Shared Terminal Layout
+
+    private var selectedLocalSharedTerminalLayout: SharedTerminalLayout? {
+        guard
+            selectedRemoteSession == nil,
+            let sessionName = selectedWindow?.sessionName
+        else { return nil }
+        return windowManager.sharedTerminalLayouts[sessionName]
+    }
+
+    private var selectedRemoteSharedTerminalLayout: SharedTerminalLayout? {
+        guard let remote = selectedRemoteSession else { return nil }
+        return coordinator.remoteSessionStore?.sharedTerminalLayout(
+            for: remote.hostId,
+            sessionName: remote.sessionName
+        )
+    }
+
+    private enum SharedLayoutSyncTarget {
+        case local(SetSharedTerminalLayout)
+        case remote(hostId: String, request: SetSharedTerminalLayout)
+    }
+
+    /// Coalesces divider drag updates into one logical layout publication.
+    /// Host updates go straight into the canonical store; Viewer updates are
+    /// requests that the Host validates and republishes with a new revision.
+    private func scheduleSharedTerminalLayoutSync() {
+        sharedLayoutSyncTask?.cancel()
+
+        let target: SharedLayoutSyncTarget?
+        if selectedRemoteSession == nil, let request = currentLocalTerminalLayoutRequest() {
+            target = .local(request)
+        } else if
+            let remote = selectedRemoteSession,
+            coordinator.remoteSessionStore?.supportsSharedTerminalLayouts(for: remote.hostId) == true,
+            let request = currentRemoteTerminalLayoutRequest(remote: remote) {
+            target = .remote(hostId: remote.hostId, request: request)
+        } else {
+            target = nil
+        }
+        guard let target else { return }
+
+        sharedLayoutSyncTask = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(150))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+
+            switch target {
+            case let .local(request):
+                if windowManager.setSharedTerminalLayout(
+                    sessionName: request.sessionName,
+                    leftWindowId: request.leftWindowId,
+                    rightWindowIds: request.rightWindowIds,
+                    selectedRightWindowId: request.selectedRightWindowId,
+                    splitRatio: request.splitRatio
+                ) {
+                    await coordinator.connectedViewerManager?.pushSessionStateToAll()
+                }
+
+            case let .remote(hostId, request):
+                if let current = coordinator.remoteSessionStore?.sharedTerminalLayout(
+                    for: hostId,
+                    sessionName: request.sessionName
+                ), terminalLayout(current, matches: request) {
+                    return
+                }
+                guard let manager = coordinator.viewerConnectionManager else { return }
+                if case let .failure(error) = await manager.sendCommand(request, paneId: "", hostId: hostId) {
+                    attachError = "Failed to update shared layout: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func terminalLayout(_ layout: SharedTerminalLayout, matches request: SetSharedTerminalLayout) -> Bool {
+        layout.leftWindowId == request.leftWindowId
+            && layout.rightWindowIds == request.rightWindowIds
+            && layout.selectedRightWindowId == request.selectedRightWindowId
+            && layout.splitRatio == min(max(request.splitRatio, 0.15), 0.85)
+    }
+
+    private func currentLocalTerminalLayoutRequest() -> SetSharedTerminalLayout? {
+        guard let leftWindow = selectedWindow else { return nil }
+        let windows = tmuxService.windows.filter { $0.sessionName == leftWindow.sessionName }
+        let tabs = sessionFileTabsStates[leftWindow.sessionName]
+        let rightWindowIds = sharedRightWindowIds(
+            tabs: tabs,
+            orderedWindowIds: windows.map(\.stableId)
+        )
+        let selectedRightWindowId = sharedSelectedRightWindowId(
+            tabs: tabs,
+            rightWindowIds: rightWindowIds,
+            existing: windowManager.sharedTerminalLayouts[leftWindow.sessionName]?.selectedRightWindowId
+        )
+        return SetSharedTerminalLayout(
+            sessionName: leftWindow.sessionName,
+            leftWindowId: leftWindow.stableId,
+            rightWindowIds: rightWindowIds,
+            selectedRightWindowId: selectedRightWindowId,
+            splitRatio: Double(tabs?.splitRatio ?? 0.5)
+        )
+    }
+
+    private func currentRemoteTerminalLayoutRequest(
+        remote: RemoteSessionSelection
+    ) -> SetSharedTerminalLayout? {
+        guard let leftWindow = selectedRemoteWindow else { return nil }
+        let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
+        let tabs = remoteSessionTabsStates[key]
+        let windows = selectedRemoteSessionWindows
+        let rightWindowIds = sharedRightWindowIds(
+            tabs: tabs,
+            orderedWindowIds: windows.map(\.stableId)
+        )
+        let selectedRightWindowId = sharedSelectedRightWindowId(
+            tabs: tabs,
+            rightWindowIds: rightWindowIds,
+            existing: coordinator.remoteSessionStore?.sharedTerminalLayout(
+                for: remote.hostId,
+                sessionName: remote.sessionName
+            )?.selectedRightWindowId
+        )
+        return SetSharedTerminalLayout(
+            sessionName: remote.sessionName,
+            leftWindowId: leftWindow.stableId,
+            rightWindowIds: rightWindowIds,
+            selectedRightWindowId: selectedRightWindowId,
+            splitRatio: Double(tabs?.splitRatio ?? 0.5)
+        )
+    }
+
+    private func sharedRightWindowIds(
+        tabs: SessionFileTabsState?,
+        orderedWindowIds: [String]
+    ) -> [String] {
+        guard let tabs else { return [] }
+        return orderedWindowIds.filter { tabs.rightSide.contains(.window($0)) }
+    }
+
+    /// Browser/file focus is local. If it temporarily occupies the right pane,
+    /// retain the canonical selected terminal rather than changing every peer.
+    private func sharedSelectedRightWindowId(
+        tabs: SessionFileTabsState?,
+        rightWindowIds: [String],
+        existing: String?
+    ) -> String? {
+        guard !rightWindowIds.isEmpty else { return nil }
+        if case let .window(id) = tabs?.selectedRight, rightWindowIds.contains(id) {
+            return id
+        }
+        if let existing, rightWindowIds.contains(existing) {
+            return existing
+        }
+        return rightWindowIds.first
+    }
+
+    private func applySelectedLocalSharedTerminalLayout() {
+        guard
+            selectedRemoteSession == nil,
+            let currentWindow = selectedWindow,
+            let layout = windowManager.sharedTerminalLayouts[currentWindow.sessionName]
+        else { return }
+
+        let windows = tmuxService.windows.filter { $0.sessionName == currentWindow.sessionName }
+        let liveIds = Set(windows.map(\.stableId))
+        guard liveIds.contains(layout.leftWindowId) else { return }
+        let tabs = sessionFileTabsStates[currentWindow.sessionName] ?? {
+            let tabs = SessionFileTabsState()
+            sessionFileTabsStates[currentWindow.sessionName] = tabs
+            return tabs
+        }()
+        applySharedTerminalLayout(layout, to: tabs, liveWindowIds: liveIds)
+        if let left = windows.first(where: { $0.stableId == layout.leftWindowId }) {
+            selectedWindow = left
+        }
+        reconcileRightPaneSelection(sessionName: currentWindow.sessionName)
+    }
+
+    private func applySelectedRemoteSharedTerminalLayout() {
+        guard
+            let remote = selectedRemoteSession,
+            let layout = coordinator.remoteSessionStore?.sharedTerminalLayout(
+                for: remote.hostId,
+                sessionName: remote.sessionName
+            )
+        else { return }
+
+        let windows = selectedRemoteSessionWindows
+        let liveIds = Set(windows.map(\.stableId))
+        guard liveIds.contains(layout.leftWindowId) else { return }
+        let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
+        let tabs = remoteSessionTabsStates[key] ?? {
+            let tabs = SessionFileTabsState()
+            remoteSessionTabsStates[key] = tabs
+            return tabs
+        }()
+        applySharedTerminalLayout(layout, to: tabs, liveWindowIds: liveIds)
+        if let left = windows.first(where: { $0.stableId == layout.leftWindowId }) {
+            selectedRemoteWindowId = left.id
+        }
+        reconcileRemoteRightPaneSelection(
+            hostId: remote.hostId,
+            sessionName: remote.sessionName,
+            sessionWindows: windows
+        )
+    }
+
+    /// Replaces only terminal-window placement. Local browser/file tabs and
+    /// their current selection remain untouched.
+    private func applySharedTerminalLayout(
+        _ layout: SharedTerminalLayout,
+        to tabs: SessionFileTabsState,
+        liveWindowIds: Set<String>
+    ) {
+        tabs.rightSide = Set(tabs.rightSide.filter {
+            if case .window = $0 { return false }
+            return true
+        })
+
+        let rightWindowIds = layout.rightWindowIds.filter {
+            $0 != layout.leftWindowId && liveWindowIds.contains($0)
+        }
+        for rightWindowId in rightWindowIds {
+            tabs.rightSide.insert(.window(rightWindowId))
+        }
+
+        if !rightWindowIds.isEmpty {
+            let selectedRightWindowId = layout.selectedRightWindowId
+                .flatMap { rightWindowIds.contains($0) ? $0 : nil }
+                ?? rightWindowIds.first
+            if tabs.selectedRight == nil || tabs.selectedRight?.windowId != nil {
+                tabs.selectedRight = selectedRightWindowId.map(TabDragPayload.window)
+            }
+            tabs.splitRatio = CGFloat(min(max(layout.splitRatio, 0.15), 0.85))
+        } else if tabs.selectedRight?.windowId != nil {
+            tabs.selectedRight = nil
+        }
     }
 
     private func createNewSession(project: AgentProject?) {
@@ -4992,9 +5136,9 @@ private extension MainView {
     /// restores its own arrangement for that remote folder and never collides
     /// with local (`layoutHost`) records.
     ///
-    /// Remote file browsing doesn't exist yet, so only **browser tabs + split +
-    /// selection** are restored — the snapshot's `fileTabs` come out empty and
-    /// there is no file browser to seed (`fileBrowser: nil`).
+    /// Remote file browsing doesn't exist yet, so only private browser tabs are
+    /// restored. Terminal placement comes from the Host's shared layout, while
+    /// the snapshot's `fileTabs` remain empty (`fileBrowser: nil`).
     func seedRemoteLayoutIfNeeded() {
         guard let remote = selectedRemoteSession else { return }
         let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
@@ -5037,6 +5181,16 @@ private extension MainView {
                 windowIdForIndex: { index in sessionWindows.first { $0.windowIndex == index }?.stableId },
                 makeBrowserState: { BrowserTabState(initialURL: $0.url) }
             )
+            if let shared = coordinator.remoteSessionStore?.sharedTerminalLayout(
+                for: remote.hostId,
+                sessionName: remote.sessionName
+            ) {
+                applySharedTerminalLayout(
+                    shared,
+                    to: tabs,
+                    liveWindowIds: Set(sessionWindows.map(\.stableId))
+                )
+            }
             // Baseline the change-gate from the *applied* state (apply clamps the
             // split ratio and resolves window refs) so seeding doesn't trigger an
             // immediate redundant re-save.
@@ -5049,7 +5203,7 @@ private extension MainView {
     }
 
     /// Remote counterpart of `persistChangedLayouts`: persist every remote
-    /// session whose browser-tab + split layout changed since its last write,
+    /// session whose private browser-tab layout changed since its last write,
     /// keyed by `(pairId, folder)`. `fileTabs` come out empty (remote file
     /// browsing doesn't exist). Sessions whose folder no longer resolves (host
     /// disconnected, panes cleared) are skipped, so a vanished session never
@@ -5066,11 +5220,18 @@ private extension MainView {
             let sessionWindows = (windowsByHost[key.hostId] ?? [])
                 .filter { $0.sessionName == key.sessionName }
             guard let folder = resolveRemoteFolder(in: sessionWindows) else { continue }
-            let snapshot = LayoutSnapshotMapper.snapshot(
+            var snapshot = LayoutSnapshotMapper.snapshot(
                 from: tabs,
                 fileBrowser: nil,
                 windowIndexForId: { id in sessionWindows.first { $0.stableId == id }?.windowIndex }
             )
+            // Terminal placement is Host-owned shared state. Keep only the
+            // Viewer's private browser layout in its per-folder persistence.
+            snapshot.tabOrder.removeAll { $0.isWindow }
+            snapshot.rightSide.removeAll { $0.isWindow }
+            if snapshot.selectedRight?.isWindow == true {
+                snapshot.selectedRight = nil
+            }
             guard !snapshot.isEmpty else { continue }
             guard lastPersistedRemoteLayouts[key] != snapshot else { continue }
             lastPersistedRemoteLayouts[key] = snapshot

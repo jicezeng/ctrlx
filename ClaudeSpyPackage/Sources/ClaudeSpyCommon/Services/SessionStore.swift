@@ -56,6 +56,14 @@ final public class SessionStore {
     /// callers fall back to the default mode.
     public private(set) var sidebarSortModeByHost: [String: SidebarSortMode] = [:]
 
+    /// Host-owned terminal layouts, grouped by source Host and session name.
+    public private(set) var sharedTerminalLayoutsByHost: [String: [String: SharedTerminalLayout]] = [:]
+
+    /// Distinguishes a new Host publishing an empty layout dictionary from an
+    /// older Host whose optional wire field is absent. Never send the new
+    /// command to a peer that has not advertised support.
+    private var hostsSupportingSharedTerminalLayouts: Set<String> = []
+
     /// Hosts that have sent at least one full state update
     private var hostsWithReceivedState: Set<String> = []
 
@@ -170,6 +178,14 @@ final public class SessionStore {
         sidebarSortModeByHost[hostId]
     }
 
+    public func sharedTerminalLayout(for hostId: String, sessionName: String) -> SharedTerminalLayout? {
+        sharedTerminalLayoutsByHost[hostId]?[sessionName]
+    }
+
+    public func supportsSharedTerminalLayouts(for hostId: String) -> Bool {
+        hostsSupportingSharedTerminalLayouts.contains(hostId)
+    }
+
     /// Check if a host has any sessions or panes
     public func hasSessions(for hostId: String) -> Bool {
         paneStates.keys.contains { $0.pairId == hostId }
@@ -258,6 +274,19 @@ final public class SessionStore {
         } else {
             sidebarSortModeByHost.removeValue(forKey: hostId)
         }
+        if let layouts = state.sharedTerminalLayouts {
+            var accepted = layouts
+            for (sessionName, current) in sharedTerminalLayoutsByHost[hostId] ?? [:] {
+                if let incoming = accepted[sessionName], incoming.revision < current.revision {
+                    accepted[sessionName] = current
+                }
+            }
+            sharedTerminalLayoutsByHost[hostId] = accepted
+            hostsSupportingSharedTerminalLayouts.insert(hostId)
+        } else {
+            sharedTerminalLayoutsByHost.removeValue(forKey: hostId)
+            hostsSupportingSharedTerminalLayouts.remove(hostId)
+        }
         hostsWithReceivedState.insert(hostId)
 
         // Open response forms ride `AgentSession.state` inside `paneStates`, so a
@@ -275,6 +304,8 @@ final public class SessionStore {
         homeDirectoryByHost.removeValue(forKey: hostId)
         usageOverviewByHost.removeValue(forKey: hostId)
         sidebarSortModeByHost.removeValue(forKey: hostId)
+        sharedTerminalLayoutsByHost.removeValue(forKey: hostId)
+        hostsSupportingSharedTerminalLayouts.remove(hostId)
         hostsWithReceivedState.remove(hostId)
 
         logger.info("Cleared all sessions for host: \(hostId)")

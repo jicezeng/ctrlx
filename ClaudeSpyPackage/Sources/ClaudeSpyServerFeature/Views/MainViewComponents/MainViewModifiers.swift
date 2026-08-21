@@ -92,6 +92,30 @@ struct RemoteSplitCleanupModifier: ViewModifier {
     }
 }
 
+/// Applies Host-owned terminal placement when a local or remote shared layout
+/// changes. Kept out of `MainView.body` to avoid growing its SwiftUI generic
+/// expression past the compiler's type-checking budget.
+struct SharedTerminalLayoutObserversModifier<Local: Equatable, Remote: Equatable>: ViewModifier {
+    let local: Local?
+    let remote: Remote?
+    let onLocalChanged: () -> Void
+    let onRemoteChanged: () -> Void
+    let onDisappear: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: local) { _, _ in
+                onLocalChanged()
+            }
+            .onChange(of: remote) { _, _ in
+                onRemoteChanged()
+            }
+            .onDisappear {
+                onDisappear()
+            }
+    }
+}
+
 /// Hosts the transient error alert and the close-confirmation alert. Editor
 /// launch failures are routed through here as well so the two alert
 /// affordances stay co-located.

@@ -113,5 +113,10 @@
         case git
         case file(id: UUID)
         case browser(id: UUID)
+
+        var isWindow: Bool {
+            if case .window = self { return true }
+            return false
+        }
     }
 #endif
