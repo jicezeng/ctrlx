@@ -31,6 +31,8 @@ Approved. No unresolved Critical, High, Medium or Low findings remain.
 
 ### Medium
 
+- Kept `selectedRight` coherent when a shared terminal collapses while a
+  private browser/file tab remains on the right, avoiding an empty placeholder.
 - Pruned dead sessions and window IDs on the Host and advanced the canonical
   revision, preventing stale split state from surviving a tmux window close.
 - Preserved Viewer-local browser and file-tab state while replacing only
@@ -52,7 +54,7 @@ a second general-purpose workspace synchronization system.
 
 ## Verification
 
-- Full SwiftPM suite: 1,769 tests passed in 258 suites.
+- Full SwiftPM suite: 1,770 tests passed in 258 suites.
 - macOS `ClaudeSpyServer` Debug Xcode build succeeded.
 - Wire compatibility tests cover new and legacy snapshots.
 - Host-store tests cover validation, ratio clamping, revision assignment,

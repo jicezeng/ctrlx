@@ -381,6 +381,10 @@ final class SessionFileTabsState {
             rightSide.insert(.window(rightWindowId))
         }
 
+        if let selectedRight, !rightSide.contains(selectedRight) {
+            self.selectedRight = nil
+        }
+
         if !rightWindowIds.isEmpty {
             let selectedRightWindowId = layout.selectedRightWindowId
                 .flatMap { rightWindowIds.contains($0) ? $0 : nil }
@@ -389,8 +393,17 @@ final class SessionFileTabsState {
                 selectedRight = selectedRightWindowId.map(TabDragPayload.window)
             }
             splitRatio = CGFloat(min(max(layout.splitRatio, 0.15), 0.85))
-        } else if selectedRight?.windowId != nil {
-            selectedRight = nil
+        }
+
+        guard selectedRight == nil else { return }
+        if rightSide.contains(.fileExplorer) {
+            selectedRight = .fileExplorer
+        } else if rightSide.contains(.git) {
+            selectedRight = .git
+        } else if let browser = openBrowserTabs.last(where: { rightSide.contains(.browser($0.id)) }) {
+            selectedRight = .browser(browser.id)
+        } else if let file = openFileTabs.last(where: { rightSide.contains(.file($0.id)) }) {
+            selectedRight = .file(file.id)
         }
     }
 
