@@ -63,6 +63,7 @@ public actor TmuxCommandExecutor {
                  .stopTerminalStream,
                  .createTmuxSession,
                  .createTmuxWindow,
+                 .setSharedTerminalLayout,
                  .setYoloMode,
                  .markHandled,
                  .renameTmuxSession,

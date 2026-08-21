@@ -12,6 +12,10 @@ final public class MirrorWindowManager {
     /// Contains tmux metadata, agent session, terminal title, and yolo mode.
     public private(set) var paneStates: [String: PaneState] = [:]
 
+    /// Canonical terminal-window arrangements published to every Viewer.
+    /// Layout revisions are assigned here on the Host; the Relay is stateless.
+    public private(set) var sharedTerminalLayouts: [String: SharedTerminalLayout] = [:]
+
     /// Task for periodic session validation
     private var sessionValidationTask: Task<Void, Never>?
 
@@ -35,10 +39,8 @@ final public class MirrorWindowManager {
     /// to push updated state to viewers.
     public var onSessionMetadataChanged: (@MainActor @Sendable () async -> Void)?
 
-    /// Called after a tmux refresh prunes stale pane entries. Pruning can
-    /// lower `pendingSessionCount` (a killed pinned-Waiting terminal-only
-    /// session has no SessionEnd hook), so the coordinator broadcasts the
-    /// badge decrease from here (issue #702).
+    /// Called after a tmux refresh prunes stale pane entries or shared layout
+    /// window IDs. The coordinator broadcasts the resulting snapshot.
     public var onPaneStatesPruned: (@MainActor @Sendable () async -> Void)?
 
     /// Called only when process reconciliation changes a pane's terminal/agent
@@ -144,15 +146,91 @@ final public class MirrorWindowManager {
         if changed {
             paneStates = updatedStates
         }
+        let liveWindowIdsBySession = Dictionary(grouping: updatedStates.values, by: \.sessionName)
+            .mapValues { Set($0.map(\.stableWindowId)) }
+        var reconciledLayouts: [String: SharedTerminalLayout] = [:]
+        for (sessionName, layout) in sharedTerminalLayouts {
+            guard
+                let liveWindowIds = liveWindowIdsBySession[sessionName],
+                liveWindowIds.contains(layout.leftWindowId)
+            else { continue }
+
+            let rightWindowIds = layout.rightWindowIds.filter {
+                $0 != layout.leftWindowId && liveWindowIds.contains($0)
+            }
+            let selectedRightWindowId = layout.selectedRightWindowId
+                .flatMap { rightWindowIds.contains($0) ? $0 : nil }
+                ?? rightWindowIds.first
+            if
+                rightWindowIds == layout.rightWindowIds,
+                selectedRightWindowId == layout.selectedRightWindowId {
+                reconciledLayouts[sessionName] = layout
+            } else {
+                let revision = layout.revision == UInt64.max ? layout.revision : layout.revision + 1
+                reconciledLayouts[sessionName] = SharedTerminalLayout(
+                    leftWindowId: layout.leftWindowId,
+                    rightWindowIds: rightWindowIds,
+                    selectedRightWindowId: selectedRightWindowId,
+                    splitRatio: layout.splitRatio,
+                    revision: revision
+                )
+            }
+        }
+        let layoutChanged = reconciledLayouts != sharedTerminalLayouts
+        if layoutChanged {
+            sharedTerminalLayouts = reconciledLayouts
+            changed = true
+        }
         // Pruning can lower the pending count — e.g. `tmux kill-session` on a
         // pinned-Waiting terminal-only session, which has no SessionEnd hook of
         // its own — and the iOS badge is push-driven, so the host must emit the
         // decrease explicitly (issue #702; agent sessions get the same
         // treatment via `sessionEnded`).
-        if !stalePaneIds.isEmpty {
+        if !stalePaneIds.isEmpty || layoutChanged {
             Task { await onPaneStatesPruned?() }
         }
         return changed
+    }
+
+    /// Stores a validated logical layout and assigns its next Host revision.
+    /// Equal requests are ignored so Viewer reconciliation cannot echo-loop.
+    @discardableResult
+    public func setSharedTerminalLayout(
+        sessionName: String,
+        leftWindowId: String,
+        rightWindowIds: [String],
+        selectedRightWindowId: String?,
+        splitRatio: Double
+    ) -> Bool {
+        guard
+            !sessionName.isEmpty,
+            !leftWindowId.isEmpty,
+            Set(rightWindowIds).count == rightWindowIds.count,
+            !rightWindowIds.contains(leftWindowId),
+            selectedRightWindowId.map(rightWindowIds.contains) ?? rightWindowIds.isEmpty
+        else {
+            return false
+        }
+
+        let ratio = min(max(splitRatio, 0.15), 0.85)
+        if let current = sharedTerminalLayouts[sessionName],
+           current.leftWindowId == leftWindowId,
+           current.rightWindowIds == rightWindowIds,
+           current.selectedRightWindowId == selectedRightWindowId,
+           current.splitRatio == ratio {
+            return false
+        }
+
+        let currentRevision = sharedTerminalLayouts[sessionName]?.revision ?? 0
+        let revision = currentRevision == UInt64.max ? currentRevision : currentRevision + 1
+        sharedTerminalLayouts[sessionName] = SharedTerminalLayout(
+            leftWindowId: leftWindowId,
+            rightWindowIds: rightWindowIds,
+            selectedRightWindowId: selectedRightWindowId,
+            splitRatio: ratio,
+            revision: revision
+        )
+        return true
     }
 
     // MARK: - Periodic Session Validation

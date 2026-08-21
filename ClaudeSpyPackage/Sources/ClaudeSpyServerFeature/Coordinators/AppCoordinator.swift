@@ -3067,6 +3067,37 @@
                     return .success(for: command.id)
                 }
 
+                // The Host is the sole authority for shared terminal layout.
+                // Viewers submit logical window IDs; the Host validates them,
+                // assigns the revision and republishes the canonical snapshot.
+                if case let .setSharedTerminalLayout(spec) = command.command {
+                    let liveWindowIds = Set(tmux.windows.lazy
+                        .filter { $0.sessionName == spec.sessionName }
+                        .map(\.stableId))
+                    guard liveWindowIds.contains(spec.leftWindowId) else {
+                        return .failure(for: command.id, error: "Left window no longer exists")
+                    }
+                    guard
+                        Set(spec.rightWindowIds).count == spec.rightWindowIds.count,
+                        spec.rightWindowIds.allSatisfy(liveWindowIds.contains),
+                        !spec.rightWindowIds.contains(spec.leftWindowId),
+                        spec.selectedRightWindowId.map(spec.rightWindowIds.contains) ?? spec.rightWindowIds.isEmpty
+                    else {
+                        return .failure(for: command.id, error: "Right-side windows are invalid")
+                    }
+
+                    if winManager.setSharedTerminalLayout(
+                        sessionName: spec.sessionName,
+                        leftWindowId: spec.leftWindowId,
+                        rightWindowIds: spec.rightWindowIds,
+                        selectedRightWindowId: spec.selectedRightWindowId,
+                        splitRatio: spec.splitRatio
+                    ) {
+                        await connectionManager?.pushSessionStateToAll()
+                    }
+                    return .success(for: command.id)
+                }
+
                 // Handle create session command
                 if case let .createTmuxSession(spec) = command.command {
                     // Resolve the launch command from the owning plugin core when
@@ -3353,6 +3384,7 @@
                 // viewer connecting or refreshing gets current totals; `nil` when
                 // empty, so an older viewer sees no field at all (graceful skew).
                 let usageOverview = await self?.currentUsageOverview()
+                let sharedTerminalLayouts = await windowManager.sharedTerminalLayouts
 
                 // Open response forms ride `AgentSession.state` in `paneStates`, so a
                 // viewer connecting after a form opened still renders it from the
@@ -3366,7 +3398,8 @@
                     usageOverview: usageOverview,
                     // Viewers without their own sort preference (iOS) order
                     // this host's sessions with the host's mode.
-                    sidebarSortMode: await self?.settings.sidebarSortMode.rawValue
+                    sidebarSortMode: await self?.settings.sidebarSortMode.rawValue,
+                    sharedTerminalLayouts: sharedTerminalLayouts
                 )
             }
 

@@ -1,4 +1,5 @@
 #if os(macOS)
+    import ClaudeSpyNetworking
     import Foundation
     import Testing
     @testable import ClaudeSpyServerFeature
@@ -146,6 +147,83 @@
             #expect(restored.browserStates[b2] != nil)
             #expect(restored.selectedBrowserTabId == b2)
             #expect(restored.tabOrder == [.browser(b1), .browser(b2)])
+        }
+
+        @Test("Shared terminals do not suppress private layout restore")
+        func sharedTerminalLayoutMergesWithPrivateTabs() {
+            let browserId = UUID()
+            let saved = SavedFolderLayout(
+                browserTabs: [SavedBrowserTab(
+                    id: browserId,
+                    url: URL(string: "https://example.com")!
+                )],
+                tabOrder: [.browser(id: browserId)],
+                rightSide: [.browser(id: browserId)],
+                selectedRight: .browser(id: browserId),
+                splitRatio: 0.3
+            )
+            let shared = SharedTerminalLayout(
+                leftWindowId: "@1",
+                rightWindowIds: ["@2"],
+                selectedRightWindowId: "@2",
+                splitRatio: 0.6,
+                revision: 1
+            )
+            let tabs = SessionFileTabsState()
+            tabs.applySharedTerminalLayout(shared, liveWindowIds: ["@1", "@2"])
+
+            #expect(tabs.isPrivateWorkbenchEmpty)
+
+            LayoutSnapshotMapper.apply(
+                saved,
+                to: tabs,
+                fileBrowser: nil,
+                windowIdForIndex: { _ in nil },
+                makeBrowserState: { BrowserTabState(initialURL: $0.url) }
+            )
+            tabs.applySharedTerminalLayout(shared, liveWindowIds: ["@1", "@2"])
+
+            #expect(tabs.openBrowserTabs.map(\.id) == [browserId])
+            #expect(tabs.rightSide == [.browser(browserId), .window("@2")])
+            #expect(tabs.selectedRight == .browser(browserId))
+            #expect(tabs.splitRatio == 0.6)
+            #expect(!tabs.isPrivateWorkbenchEmpty)
+        }
+
+        @Test("A private right tab remains selected when the shared terminal collapses")
+        func collapsedSharedTerminalSelectsPrivateTab() {
+            let browserId = UUID()
+            let saved = SavedFolderLayout(
+                browserTabs: [SavedBrowserTab(
+                    id: browserId,
+                    url: URL(string: "https://example.com")!
+                )],
+                tabOrder: [.browser(id: browserId), .window(index: 1)],
+                rightSide: [.browser(id: browserId), .window(index: 1)],
+                selectedRight: .window(index: 1)
+            )
+            let tabs = SessionFileTabsState()
+            LayoutSnapshotMapper.apply(
+                saved,
+                to: tabs,
+                fileBrowser: nil,
+                windowIdForIndex: { $0 == 1 ? "@2" : nil },
+                makeBrowserState: { BrowserTabState(initialURL: $0.url) }
+            )
+
+            tabs.applySharedTerminalLayout(
+                SharedTerminalLayout(
+                    leftWindowId: "@1",
+                    rightWindowIds: [],
+                    selectedRightWindowId: nil,
+                    splitRatio: 0.5,
+                    revision: 2
+                ),
+                liveWindowIds: ["@1", "@2"]
+            )
+
+            #expect(tabs.rightSide == [.browser(browserId)])
+            #expect(tabs.selectedRight == .browser(browserId))
         }
 
         // MARK: - Codable

@@ -482,6 +482,38 @@ public struct ResizeTmuxPane: CommandSpec, Equatable {
     }
 }
 
+/// Request a new shared terminal-window layout for a tmux session.
+///
+/// The Viewer never assigns a revision. The Host validates both window IDs,
+/// updates its canonical snapshot and publishes the Host-assigned revision.
+public struct SetSharedTerminalLayout: CommandSpec, Equatable {
+    public typealias Response = CommandResponseMessage
+
+    public let sessionName: String
+    public let leftWindowId: String
+    public let rightWindowIds: [String]
+    public let selectedRightWindowId: String?
+    public let splitRatio: Double
+
+    public init(
+        sessionName: String,
+        leftWindowId: String,
+        rightWindowIds: [String] = [],
+        selectedRightWindowId: String? = nil,
+        splitRatio: Double = 0.5
+    ) {
+        self.sessionName = sessionName
+        self.leftWindowId = leftWindowId
+        self.rightWindowIds = rightWindowIds
+        self.selectedRightWindowId = selectedRightWindowId
+        self.splitRatio = splitRatio
+    }
+
+    public var commandType: CommandType {
+        .setSharedTerminalLayout(self)
+    }
+}
+
 /// Create a new tmux session. Returns success/failure.
 public struct CreateTmuxSession: CommandSpec, Equatable {
     public typealias Response = CommandResponseMessage
@@ -977,6 +1009,8 @@ public enum CommandType: Codable, Sendable, Equatable {
     case createTmuxSession(CreateTmuxSession)
     /// Resize a tmux pane
     case resizeTmuxPane(ResizeTmuxPane)
+    /// Set the shared terminal-window layout for a tmux session
+    case setSharedTerminalLayout(SetSharedTerminalLayout)
     /// Set yolo mode (auto-approve permissions) for a pane
     case setYoloMode(SetYoloMode)
     /// Mark a session as handled (user has seen it)

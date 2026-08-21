@@ -559,6 +559,8 @@ final public class ViewerRelayClient {
             return (try? await sendCommand(spec, paneId: "").get()) != nil
         case let .resizeTmuxPane(spec):
             return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .setSharedTerminalLayout(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
         case let .setYoloMode(spec):
             return (try? await sendCommand(spec, paneId: paneId).get()) != nil
         case let .markHandled(spec):
