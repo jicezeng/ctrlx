@@ -117,6 +117,10 @@ public struct MainView: View {
     /// this app run, so seeding happens at most once per session (and re-fires
     /// for a recycled session name only after cleanup clears it).
     @State private var seededSessions: Set<String> = []
+    /// Sessions currently waiting on the layout store. Auto-save must not run
+    /// until that read completes, or an early shared terminal snapshot can
+    /// overwrite the private file/browser layout we are about to restore.
+    @State private var seedingSessions: Set<String> = []
     /// Last layout snapshot persisted per session, so an unchanged workbench
     /// doesn't trigger a redundant disk write on every tmux refresh.
     @State private var lastPersistedLayouts: [String: SavedFolderLayout] = [:]
@@ -321,6 +325,7 @@ public struct MainView: View {
             // Forget seed/persist bookkeeping for removed sessions so a recycled
             // session name re-seeds from scratch next time.
             seededSessions.formIntersection(currentSessionNames)
+            seedingSessions.formIntersection(currentSessionNames)
             for key in lastPersistedLayouts.keys where !currentSessionNames.contains(key) {
                 lastPersistedLayouts.removeValue(forKey: key)
             }
@@ -2464,6 +2469,9 @@ public struct MainView: View {
         if seededSessions.remove(oldName) != nil {
             seededSessions.insert(newName)
         }
+        // Let the renamed session start a fresh read. The old in-flight task
+        // observes that `oldName` no longer exists and exits without applying.
+        seedingSessions.remove(oldName)
         if let layout = lastPersistedLayouts.removeValue(forKey: oldName) {
             lastPersistedLayouts[newName] = layout
         }
@@ -4660,7 +4668,7 @@ public struct MainView: View {
             sessionFileTabsStates[currentWindow.sessionName] = tabs
             return tabs
         }()
-        applySharedTerminalLayout(layout, to: tabs, liveWindowIds: liveIds)
+        tabs.applySharedTerminalLayout(layout, liveWindowIds: liveIds)
         if let left = windows.first(where: { $0.stableId == layout.leftWindowId }) {
             selectedWindow = left
         }
@@ -4685,7 +4693,7 @@ public struct MainView: View {
             remoteSessionTabsStates[key] = tabs
             return tabs
         }()
-        applySharedTerminalLayout(layout, to: tabs, liveWindowIds: liveIds)
+        tabs.applySharedTerminalLayout(layout, liveWindowIds: liveIds)
         if let left = windows.first(where: { $0.stableId == layout.leftWindowId }) {
             selectedRemoteWindowId = left.id
         }
@@ -4694,38 +4702,6 @@ public struct MainView: View {
             sessionName: remote.sessionName,
             sessionWindows: windows
         )
-    }
-
-    /// Replaces only terminal-window placement. Local browser/file tabs and
-    /// their current selection remain untouched.
-    private func applySharedTerminalLayout(
-        _ layout: SharedTerminalLayout,
-        to tabs: SessionFileTabsState,
-        liveWindowIds: Set<String>
-    ) {
-        tabs.rightSide = Set(tabs.rightSide.filter {
-            if case .window = $0 { return false }
-            return true
-        })
-
-        let rightWindowIds = layout.rightWindowIds.filter {
-            $0 != layout.leftWindowId && liveWindowIds.contains($0)
-        }
-        for rightWindowId in rightWindowIds {
-            tabs.rightSide.insert(.window(rightWindowId))
-        }
-
-        if !rightWindowIds.isEmpty {
-            let selectedRightWindowId = layout.selectedRightWindowId
-                .flatMap { rightWindowIds.contains($0) ? $0 : nil }
-                ?? rightWindowIds.first
-            if tabs.selectedRight == nil || tabs.selectedRight?.windowId != nil {
-                tabs.selectedRight = selectedRightWindowId.map(TabDragPayload.window)
-            }
-            tabs.splitRatio = CGFloat(min(max(layout.splitRatio, 0.15), 0.85))
-        } else if tabs.selectedRight?.windowId != nil {
-            tabs.selectedRight = nil
-        }
     }
 
     private func createNewSession(project: AgentProject?) {
@@ -5025,10 +5001,13 @@ private extension MainView {
             sessionFileTabsStates[sessionName] = tabs
         }
 
-        guard !seededSessions.contains(sessionName) else { return }
+        guard
+            !seededSessions.contains(sessionName),
+            !seedingSessions.contains(sessionName)
+        else { return }
 
         // Don't seed a session the user has already populated.
-        if !isWorkbenchEmpty(tabs) {
+        if !tabs.isPrivateWorkbenchEmpty {
             seededSessions.insert(sessionName)
             return
         }
@@ -5036,21 +5015,32 @@ private extension MainView {
             // Folder not resolvable yet — leave unmarked so a later change retries.
             return
         }
-        seededSessions.insert(sessionName)
+        seedingSessions.insert(sessionName)
 
         let key = SavedFolderRecord.Key(host: layoutHost, folder: folder)
         Task {
-            guard let chosen = await layoutStore.record(key)?.layout, !chosen.isEmpty else { return }
+            let chosen = await layoutStore.record(key)?.layout
 
             // The store await may have suspended across a cleanup pass that tore
             // this session down. Don't resurrect a dead session's tabs state.
-            guard tmuxService.sessions.contains(where: { $0.sessionName == sessionName }) else { return }
+            guard tmuxService.sessions.contains(where: { $0.sessionName == sessionName }) else {
+                seedingSessions.remove(sessionName)
+                return
+            }
 
             // Re-check freshness now that we've awaited the store. Cleanup may
             // have removed the state while the read was suspended; never
             // resurrect a dead session from this task.
-            guard let tabs = sessionFileTabsStates[sessionName] else { return }
-            guard isWorkbenchEmpty(tabs) else { return }
+            guard let tabs = sessionFileTabsStates[sessionName] else {
+                seedingSessions.remove(sessionName)
+                return
+            }
+            defer {
+                seedingSessions.remove(sessionName)
+                seededSessions.insert(sessionName)
+            }
+            guard let chosen, !chosen.isEmpty else { return }
+            guard tabs.isPrivateWorkbenchEmpty else { return }
 
             let sessionWindows = windows(forSession: sessionName)
             LayoutSnapshotMapper.apply(
@@ -5060,6 +5050,12 @@ private extension MainView {
                 windowIdForIndex: { index in sessionWindows.first { $0.windowIndex == index }?.stableId },
                 makeBrowserState: { BrowserTabState(initialURL: $0.url) }
             )
+            if let shared = windowManager.sharedTerminalLayouts[sessionName] {
+                tabs.applySharedTerminalLayout(
+                    shared,
+                    liveWindowIds: Set(sessionWindows.map(\.stableId))
+                )
+            }
             // Baseline the change-gate from the *applied* state, not `chosen`:
             // apply clamps the split ratio and resolves selection/window refs, so
             // re-snapshotting avoids one redundant save right after seeding.
@@ -5078,6 +5074,9 @@ private extension MainView {
         // Group the window list once instead of filtering per session below.
         let windowsBySession = Dictionary(grouping: tmuxService.windows, by: \.sessionName)
         for (sessionName, tabs) in sessionFileTabsStates {
+            // Seeding owns the first store access. Persisting shared terminal
+            // placement before it completes can destroy a saved private layout.
+            guard seededSessions.contains(sessionName) else { continue }
             let sessionWindows = windowsBySession[sessionName] ?? []
             guard let folder = resolveFolder(in: sessionWindows) else { continue }
             let snapshot = LayoutSnapshotMapper.snapshot(
@@ -5145,7 +5144,7 @@ private extension MainView {
         guard !seededRemoteSessions.contains(key) else { return }
 
         // Don't seed a session the user has already populated.
-        if let existing = remoteSessionTabsStates[key], !isWorkbenchEmpty(existing) {
+        if let existing = remoteSessionTabsStates[key], !existing.isPrivateWorkbenchEmpty {
             seededRemoteSessions.insert(key)
             return
         }
@@ -5171,7 +5170,7 @@ private extension MainView {
                 remoteSessionTabsStates[key] = new
                 return new
             }()
-            guard isWorkbenchEmpty(tabs) else { return }
+            guard tabs.isPrivateWorkbenchEmpty else { return }
 
             let sessionWindows = remoteSessionWindows(hostId: remote.hostId, sessionName: remote.sessionName)
             LayoutSnapshotMapper.apply(
@@ -5185,9 +5184,8 @@ private extension MainView {
                 for: remote.hostId,
                 sessionName: remote.sessionName
             ) {
-                applySharedTerminalLayout(
+                tabs.applySharedTerminalLayout(
                     shared,
-                    to: tabs,
                     liveWindowIds: Set(sessionWindows.map(\.stableId))
                 )
             }
@@ -5251,10 +5249,4 @@ private extension MainView {
         }
     }
 
-    /// A workbench is "empty" (safe to seed) when the user hasn't opened any
-    /// file/browser tab or split — `tabOrder` is ignored because the tab strip
-    /// auto-populates window/explorer entries even for a fresh session.
-    func isWorkbenchEmpty(_ tabs: SessionFileTabsState) -> Bool {
-        tabs.openFileTabs.isEmpty && tabs.openBrowserTabs.isEmpty && tabs.rightSide.isEmpty
-    }
 }

@@ -1,6 +1,7 @@
 import AppKit
 import AVKit
 import ClaudeSpyCommon
+import ClaudeSpyNetworking
 import Dependencies
 import Files
 import PDFKit
@@ -348,6 +349,49 @@ final class SessionFileTabsState {
         Set(rightSide.compactMap {
             if case let .window(id) = $0 { id } else { nil }
         })
+    }
+
+    /// Shared terminal placement is not private workbench content. A Host
+    /// snapshot may arrive before the saved file/browser layout is hydrated;
+    /// terminal-only state must not suppress that restore.
+    var isPrivateWorkbenchEmpty: Bool {
+        openFileTabs.isEmpty
+            && openBrowserTabs.isEmpty
+            && !rightSide.contains { payload in
+                if case .window = payload { return false }
+                return true
+            }
+    }
+
+    /// Replaces only terminal-window placement. File/browser tabs and their
+    /// current selection remain local to this app instance.
+    func applySharedTerminalLayout(
+        _ layout: SharedTerminalLayout,
+        liveWindowIds: Set<String>
+    ) {
+        rightSide = Set(rightSide.filter {
+            if case .window = $0 { return false }
+            return true
+        })
+
+        let rightWindowIds = layout.rightWindowIds.filter {
+            $0 != layout.leftWindowId && liveWindowIds.contains($0)
+        }
+        for rightWindowId in rightWindowIds {
+            rightSide.insert(.window(rightWindowId))
+        }
+
+        if !rightWindowIds.isEmpty {
+            let selectedRightWindowId = layout.selectedRightWindowId
+                .flatMap { rightWindowIds.contains($0) ? $0 : nil }
+                ?? rightWindowIds.first
+            if selectedRight == nil || selectedRight?.windowId != nil {
+                selectedRight = selectedRightWindowId.map(TabDragPayload.window)
+            }
+            splitRatio = CGFloat(min(max(layout.splitRatio, 0.15), 0.85))
+        } else if selectedRight?.windowId != nil {
+            selectedRight = nil
+        }
     }
 
     /// Rewrites every live reference to a tmux window after its owning session

@@ -17,7 +17,7 @@
 
 ## Verification
 
-- `swift test --package-path ClaudeSpyPackage --skip-update`: 1,768 tests passed.
+- `swift test --package-path ClaudeSpyPackage --skip-update`: 1,769 tests passed.
 - macOS Xcode build: `ClaudeSpyServer` Debug build succeeded using an isolated
   DerivedData directory and the repository's existing local package cache.
 - E2E scenarios cover Host-to-Viewer split, Viewer-to-Host collapse, multiple

@@ -13,6 +13,13 @@ Approved. No unresolved Critical, High, Medium or Low findings remain.
 
 ### High
 
+- Decoupled private file/browser hydration from shared terminal placement, so
+  an early Host split cannot suppress or overwrite a saved private workbench.
+- Blocked local auto-save until the first layout-store read completes, closing
+  the race where terminal-only shared state could overwrite that record first.
+- Reapplied the current Host canonical terminal layout after private hydration,
+  preserving both state domains without making either one authoritative for
+  the other.
 - Prevented a Host snapshot from resetting a same-session window selection
   before the user's new layout request could be published.
 - Replaced the lossy single right-window field with an ordered list plus the
@@ -45,7 +52,7 @@ a second general-purpose workspace synchronization system.
 
 ## Verification
 
-- Full SwiftPM suite: 1,768 tests passed in 258 suites.
+- Full SwiftPM suite: 1,769 tests passed in 258 suites.
 - macOS `ClaudeSpyServer` Debug Xcode build succeeded.
 - Wire compatibility tests cover new and legacy snapshots.
 - Host-store tests cover validation, ratio clamping, revision assignment,
