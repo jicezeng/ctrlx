@@ -47,8 +47,27 @@ struct CodexCLIInstaller: Sendable {
             return .agentUnavailable
         }
         if result.exitCode == 127 { return .agentUnavailable }
-        guard result.isSuccess else { return .notInstalled }
+        guard result.isSuccess else { return configuredInstallStatus(configRoot: configRoot) }
         return Self.parseStatus(from: result.stdoutString)
+    }
+
+    /// A broken unrelated marketplace can make `codex plugin list -m ctrlx`
+    /// fail even though Codex successfully added or removed our plugin. In that
+    /// case, use Codex's own persisted plugin table as the narrow fallback.
+    private func configuredInstallStatus(configRoot: String?) -> PluginInstallStatus {
+        let codexHome = configRoot
+            .map { URL(fileURLWithPath: $0).standardizedFileURL }
+            ?? CodexScanner.defaultCodexHome()
+        let configURL = codexHome.appendingPathComponent("config.toml")
+        let toml = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        return Self.parseConfiguredStatus(from: toml)
+    }
+
+    static func parseConfiguredStatus(from toml: String) -> PluginInstallStatus {
+        let section = #"[plugins."ctrlx@ctrlx"]"#
+        let isConfigured = toml.split(separator: "\n", omittingEmptySubsequences: false)
+            .contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == section }
+        return isConfigured ? .installed(version: nil) : .notInstalled
     }
 
     /// Parses `codex plugin list -m ctrlx` output. Only the `ctrlx@ctrlx`

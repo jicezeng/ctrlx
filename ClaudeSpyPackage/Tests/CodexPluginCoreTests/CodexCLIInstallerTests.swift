@@ -371,6 +371,11 @@ struct CodexCLIInstallerTests {
 
     @Test("installStatus returns .notInstalled when listing fails with non-127 exit")
     func installStatusNotInstalledOnNon127Failure() async throws {
+        let configRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ctrlx-codex-status-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: configRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: configRoot) }
+
         let processRunner = ProcessRunner { _, _, _, _ in
             .failure(exitCode: 1, stderr: "internal error")
         }
@@ -380,7 +385,36 @@ struct CodexCLIInstallerTests {
             marketplaceSource: marketplaceSource
         )
 
-        let status = await installer.installStatus(configRoot: nil)
+        let status = await installer.installStatus(configRoot: configRoot.path)
         #expect(status == .notInstalled)
+    }
+
+    @Test("installStatus falls back to config.toml when another marketplace breaks listing")
+    func installStatusFallsBackToConfiguredPlugin() async throws {
+        let configRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ctrlx-codex-status-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: configRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: configRoot) }
+        try Data(
+            """
+            [marketplaces.gallager]
+            source = "/Applications/Gallager.app/Contents/Resources/plugin/codex"
+
+            [plugins."ctrlx@ctrlx"]
+            enabled = true
+            """.utf8
+        ).write(to: configRoot.appendingPathComponent("config.toml"))
+
+        let processRunner = ProcessRunner { _, _, _, _ in
+            .failure(exitCode: 1, stderr: "failed to load configured marketplace snapshot gallager")
+        }
+        let installer = CodexCLIInstaller(
+            processRunner: processRunner,
+            command: "codex",
+            marketplaceSource: marketplaceSource
+        )
+
+        let status = await installer.installStatus(configRoot: configRoot.path)
+        #expect(status == .installed(version: nil))
     }
 }
