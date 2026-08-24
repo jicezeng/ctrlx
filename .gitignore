@@ -35,6 +35,7 @@ playground.xcworkspace
 .build/
 .build-local/
 /dist/
+/deploy2home.sh
 
 # CocoaPods
 #

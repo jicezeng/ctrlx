@@ -158,6 +158,17 @@ Release artifacts must be built from a clean primary worktree with the checked-i
 packaging scripts. Signing overrides and credentials belong only in ignored local
 configuration files.
 
+The private macOS download endpoint is served by Nginx on the home Mac. Build a
+DMG locally, then publish it over SSH and verify the public bytes with:
+
+```bash
+./scripts/package-local-macos.sh
+./deploy2home.sh
+```
+
+See [RELEASE.md](RELEASE.md) for the formal signed/notarized release path and
+the home publication guarantees.
+
 ## Corresponding source for binaries
 
 Every published CtrlX binary and hosted Relay version must identify an immutable

@@ -139,6 +139,16 @@ swift test --package-path ClaudeSpyPackage
 正式产物必须从干净的 primary worktree 使用仓库内打包脚本构建。签名覆盖项和凭据只允许放在
 Git 忽略的本地配置文件中。
 
+私有 macOS 下载入口由 home Mac 上的 Nginx 提供。本机生成 DMG 后，通过 SSH 推送到 home
+并从公网回读校验，不再复制到本机的 `happy-nginx` 目录：
+
+```bash
+./scripts/package-local-macos.sh
+./deploy2home.sh
+```
+
+正式签名、公证流程及 home 发布的校验保证见 [RELEASE.md](RELEASE.md)。
+
 ## 二进制对应源码
 
 每个发布的 CtrlX 二进制和托管 Relay 都必须指向包含完整对应源码与构建脚本的不可变 Git tag
