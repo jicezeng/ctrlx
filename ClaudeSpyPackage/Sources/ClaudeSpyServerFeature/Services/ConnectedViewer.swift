@@ -117,11 +117,11 @@ final public class ConnectedViewer: Identifiable {
     private let maxBackoffDelay = 60
 
     /// Seconds between keep-alive pings.
-    private let pingIntervalSeconds = 20
+    private let pingIntervalSeconds: Int
 
     /// Seconds to wait for a pong (or any other inbound frame) after a keep-alive
     /// ping before treating the socket as half-open.
-    private let pongTimeoutSeconds = 10
+    private let pongTimeoutSeconds: Int
 
     /// Set right before a keep-alive ping is sent, cleared on ANY inbound frame.
     /// If it is still set when the pong deadline elapses, the socket produced no
@@ -215,10 +215,19 @@ final public class ConnectedViewer: Identifiable {
     /// - Parameters:
     ///   - pairedViewer: The paired viewer configuration
     ///   - e2eeService: The E2EE service for this connection (pre-configured with partner key)
-    public init(pairedViewer: PairedViewer, e2eeService: E2EEService) {
+    ///   - pingIntervalSeconds: Seconds between keep-alive pings
+    ///   - pongTimeoutSeconds: Seconds to wait for an inbound frame after a ping
+    public init(
+        pairedViewer: PairedViewer,
+        e2eeService: E2EEService,
+        pingIntervalSeconds: Int = 20,
+        pongTimeoutSeconds: Int = 10
+    ) {
         self.id = pairedViewer.id
         self.pairedViewer = pairedViewer
         self.e2eeService = e2eeService
+        self.pingIntervalSeconds = pingIntervalSeconds
+        self.pongTimeoutSeconds = pongTimeoutSeconds
         self.partnerPublicKey = pairedViewer.partnerPublicKey
         self.partnerPublicKeyId = pairedViewer.partnerPublicKeyId
     }
@@ -633,10 +642,6 @@ final public class ConnectedViewer: Identifiable {
                 guard await self.send(registerMessage, generation: generation) else { return }
             }
         }
-
-        pingTask = Task { [weak self] in
-            await self?.pingLoop(using: task)
-        }
     }
 
     private func receiveMessages(using task: URLSessionWebSocketTask) async {
@@ -707,6 +712,16 @@ final public class ConnectedViewer: Identifiable {
                 reconnectionAttempt = 0
                 await updateState(.connected)
                 connectedViewerDeviceName = response.viewerDeviceName
+
+                // Registration is the point at which this socket becomes live.
+                // Starting earlier while state is `.connecting` makes pingLoop
+                // exit immediately and leaves half-open sockets undetected.
+                pingTask?.cancel()
+                if state.isConnected, let task = webSocketTask {
+                    pingTask = Task { [weak self] in
+                        await self?.pingLoop(using: task)
+                    }
+                }
 
                 // Persist the viewer name to settings so the UI shows the user's
                 // chosen device name instead of the placeholder from initial pairing.

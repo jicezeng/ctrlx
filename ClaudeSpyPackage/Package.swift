@@ -581,6 +581,7 @@ let targets: [Target] = [
             .dependenciesTestSupport,
             .clocks,
             .concurrencyExtras,
+            .vapor,
         ] + macOnlyTargetDependencies(for: "ClaudeSpyServerFeatureTests")
     ),
     .testTarget(
