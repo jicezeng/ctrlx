@@ -5,12 +5,11 @@
     import Foundation
     import os
 
-    /// Owns one finite iOS 26 monitoring session for the whole app.
+    /// Owns one finite iOS 26 monitoring session for active Agent turns.
     ///
-    /// Agent turns update the card and may emit notifications, but never own the
-    /// system task's lifetime. This removes the request/launch/finish races caused
-    /// by creating a new task for every prompt while keeping the task explicitly
-    /// bounded to two hours.
+    /// Concurrent turns share one system task. The first foreground submission
+    /// starts it and the last terminal turn completes it, avoiding both per-prompt
+    /// request races and an idle task that iOS can later present as failed.
     @Observable
     @MainActor
     final public class AgentBackgroundMonitoringService {
@@ -91,16 +90,16 @@
             continuedProcessing.prepare()
         }
 
-        /// Start the one app-wide monitoring lease from a foreground user action.
+        /// Start the shared monitoring lease from a foreground Agent submission.
         ///
         /// `BGContinuedProcessingTaskRequest` requires an explicit user action;
         /// app-launch and scene-phase callbacks must not call this method.
-        public func startFromUserAction() {
+        private func startMonitoringSession() -> Bool {
             guard
                 #available(iOS 26.0, *),
-                sceneIsActive,
-                monitoringSession == nil
-            else { return }
+                sceneIsActive
+            else { return false }
+            if monitoringSession != nil { return true }
 
             lastStartFailure = nil
             let identifier = Self.makeIdentifier()
@@ -109,7 +108,7 @@
                 startedAt: Date(),
                 isLaunched: false,
                 title: "CtrlX",
-                subtitle: "Agent notifications active",
+                subtitle: "Waiting for Agent",
                 completedActivityUnits: AgentBackgroundMonitoringPolicy.initialActivityUnits,
                 activityUnitLimit: AgentBackgroundMonitoringPolicy.maximumActivityUnits
             )
@@ -127,11 +126,12 @@
                         self?.handleExpiration(identifier: identifier)
                     }
                 ))
-                guard monitoringSession?.identifier == identifier else { return }
+                guard monitoringSession?.identifier == identifier else { return false }
                 startActivityReporter(identifier: identifier)
                 logger.info(
-                    "Global monitoring session submitted at \(session.startedAt.timeIntervalSince1970, privacy: .public)"
+                    "Agent monitoring session submitted at \(session.startedAt.timeIntervalSince1970, privacy: .public)"
                 )
+                return true
             } catch {
                 if monitoringSession?.identifier == identifier {
                     monitoringSession = nil
@@ -143,6 +143,7 @@
                 logger.error(
                     "Continued processing unavailable; using notifications only: \(self.lastStartFailure ?? "unknown error", privacy: .public)"
                 )
+                return false
             }
         }
 
@@ -162,8 +163,8 @@
             )
         }
 
-        /// Record a user-submitted turn in the global monitor. This never creates
-        /// a second system task and never replaces the existing one.
+        /// Record a user-submitted turn in the shared monitor. Concurrent turns
+        /// reuse the existing task.
         public func start(
             hostId: String,
             paneId: String,
@@ -171,7 +172,7 @@
             windowName: String
         ) {
             guard #available(iOS 26.0, *) else { return }
-            startFromUserAction()
+            guard startMonitoringSession() else { return }
 
             let key = PaneKey(pairId: hostId, paneId: paneId)
             rememberContext(
@@ -211,7 +212,7 @@
                 AgentBackgroundMonitoringPolicy.canSubmitPrompt(from: currentState)
             else { return }
 
-            startFromUserAction()
+            guard startMonitoringSession() else { return }
             panePhases[key] = .waitingForAgent
             lastNotificationDeliveryAtByPane.removeValue(forKey: key)
             refreshCard()
@@ -244,8 +245,7 @@
         }
 
         /// Reconcile Agent state missed while the Viewer transport was suspended.
-        /// A snapshot may update the card and emit a notification, but it never
-        /// ends the app-wide monitoring session.
+        /// A terminal snapshot ends the system task when it closes the last turn.
         public func handle(
             _ state: SessionStateMessage,
             beforeFinishing: (TerminalNotification) -> Void
@@ -360,8 +360,8 @@
             kickConnectionMaintenance(identifier: identifier)
         }
 
-        /// A Host lifecycle change only removes its pane context. Other Hosts and
-        /// the app-wide monitoring lease remain valid.
+        /// A Host lifecycle change removes its turns. Other active Hosts keep the
+        /// shared task alive.
         public func removeHost(_ hostId: String) {
             paneContexts = paneContexts.filter { $0.key.pairId != hostId }
             panePhases = panePhases.filter { $0.key.pairId != hostId }
@@ -372,7 +372,7 @@
             lastConnectionProbeAtByHost.removeValue(forKey: hostId)
             lastSnapshotAtByHost.removeValue(forKey: hostId)
             pendingSnapshotRequestAtByHost.removeValue(forKey: hostId)
-            refreshCard()
+            refreshOrFinishMonitoring(finalSubtitle: "Monitoring ended")
         }
 
         public func removePane(hostId: String, paneId: String) {
@@ -381,29 +381,30 @@
             panePhases.removeValue(forKey: key)
             terminalInputs.removeValue(forKey: key)
             lastNotificationDeliveryAtByPane.removeValue(forKey: key)
-            refreshCard()
+            refreshOrFinishMonitoring(finalSubtitle: "Monitoring ended")
         }
 
         public func stopAll() {
-            let identifier = monitoringSession?.identifier
-            resetLeaseState()
+            finishMonitoringSession(subtitle: "Monitoring off")
+            resetAllState()
             lastStartFailure = nil
-            if let identifier {
-                continuedProcessing.finish(identifier)
-            }
         }
 
-        private func resetLeaseState() {
+        private func clearMonitoringSessionState() {
             monitoringSession = nil
-            paneContexts.removeAll()
             panePhases.removeAll()
-            terminalInputs.removeAll()
             lastConnectionProbeAtByHost.removeAll()
             lastSnapshotAtByHost.removeAll()
             pendingSnapshotRequestAtByHost.removeAll()
-            lastNotificationDeliveryAtByPane.removeAll()
             activityReporter?.cancel()
             activityReporter = nil
+        }
+
+        private func resetAllState() {
+            clearMonitoringSessionState()
+            paneContexts.removeAll()
+            terminalInputs.removeAll()
+            lastNotificationDeliveryAtByPane.removeAll()
         }
 
         private func apply(
@@ -424,18 +425,20 @@
 
             switch AgentBackgroundMonitoringPolicy.decision(for: state, phase: phase) {
             case let .keep(nextPhase):
+                // An unrelated idle pane is not an active turn. Only an observed
+                // submission or a real working state may enter the shared task.
+                guard panePhases[key] != nil || nextPhase == .working else { return }
                 panePhases[key] = nextPhase
                 if nextPhase == .working {
                     refreshCard()
                 }
 
             case let .terminal(reason):
-                panePhases[key] = .waitingForAgent
+                guard panePhases[key] != nil else { return }
                 let subtitle = switch reason {
                 case .completed: "Finished"
                 case .waitingForInput: "Needs input"
                 }
-                refreshCard()
 
                 if AgentBackgroundMonitoringPolicy.shouldEmitTerminalNotification(
                     reason: reason,
@@ -449,6 +452,11 @@
                         body: Self.notificationBody(for: state, reason: reason)
                     ))
                 }
+
+                panePhases.removeValue(forKey: key)
+                paneContexts.removeValue(forKey: key)
+                terminalInputs.removeValue(forKey: key)
+                refreshOrFinishMonitoring(finalSubtitle: subtitle)
             }
         }
 
@@ -464,11 +472,11 @@
         }
 
         private func refreshCard() {
-            guard var session = monitoringSession else { return }
+            guard var session = monitoringSession, !panePhases.isEmpty else { return }
             let workingAgentCount = panePhases.values.lazy.filter { $0 == .working }.count
             session.title = "CtrlX"
             session.subtitle = switch workingAgentCount {
-            case 0: "Agent notifications active"
+            case 0: "Waiting for Agent"
             case 1: "1 Agent working"
             default: "\(workingAgentCount) Agents working"
             }
@@ -481,6 +489,35 @@
                     completedUnitCount: session.completedActivityUnits,
                     totalUnitCount: session.activityUnitLimit
                 )
+            )
+        }
+
+        private func refreshOrFinishMonitoring(finalSubtitle: String) {
+            if panePhases.isEmpty {
+                finishMonitoringSession(subtitle: finalSubtitle)
+            } else {
+                refreshCard()
+            }
+        }
+
+        private func finishMonitoringSession(subtitle: String) {
+            guard var session = monitoringSession else { return }
+            let identifier = session.identifier
+            session.subtitle = subtitle
+            session.completedActivityUnits = session.activityUnitLimit
+            continuedProcessing.update(
+                identifier,
+                ContinuedProcessingUpdate(
+                    title: session.title,
+                    subtitle: subtitle,
+                    completedUnitCount: session.activityUnitLimit,
+                    totalUnitCount: session.activityUnitLimit
+                )
+            )
+            clearMonitoringSessionState()
+            continuedProcessing.finish(identifier)
+            logger.info(
+                "Agent monitoring session completed: \(identifier, privacy: .public)"
             )
         }
 
@@ -503,7 +540,7 @@
                 )
             )
             logger.info(
-                "Global monitoring session renewed at unit \(session.completedActivityUnits, privacy: .public); limit=\(session.activityUnitLimit, privacy: .public)"
+                "Agent monitoring session renewed at unit \(session.completedActivityUnits, privacy: .public); limit=\(session.activityUnitLimit, privacy: .public)"
             )
         }
 
@@ -513,7 +550,7 @@
             monitoringSession = session
             let delay = Date().timeIntervalSince(session.startedAt)
             logger.info(
-                "Global monitoring session launched after \(String(format: "%.3f", delay), privacy: .public)s"
+                "Agent monitoring session launched after \(String(format: "%.3f", delay), privacy: .public)s"
             )
             kickConnectionMaintenance(identifier: identifier)
         }
@@ -521,9 +558,9 @@
         private func handleExpiration(identifier: String) {
             guard let session = monitoringSession, session.identifier == identifier else { return }
             let lifetime = Date().timeIntervalSince(session.startedAt)
-            resetLeaseState()
+            resetAllState()
             logger.warning(
-                "Global monitoring session expired after \(String(format: "%.3f", lifetime), privacy: .public)s"
+                "Agent monitoring session expired after \(String(format: "%.3f", lifetime), privacy: .public)s"
             )
         }
 
@@ -599,8 +636,7 @@
                 after: session.completedActivityUnits,
                 limit: session.activityUnitLimit
             ) else {
-                resetLeaseState()
-                continuedProcessing.finish(identifier)
+                finishMonitoringSession(subtitle: "Monitoring ended")
                 return false
             }
 

@@ -6,7 +6,8 @@ import Foundation
 /// The first `.idle` may describe the turn that existed before the prompt was
 /// submitted, so it cannot complete a newly-observed turn. Once `.working` has
 /// arrived, a later idle state is a valid terminal fallback. These decisions
-/// update the card and notifications; they never end the global system task.
+/// update the card and notifications; the service ends the shared task after
+/// the final tracked turn reaches a terminal decision.
 public enum AgentBackgroundMonitoringPolicy {
     /// Acknowledges that iOS launched the system monitor for this turn.
     public static let initialActivityUnits: Int64 = 1
@@ -72,9 +73,9 @@ public enum AgentBackgroundMonitoringPolicy {
         }
     }
 
-    /// Only a non-empty structured free-text turn represents new Agent work.
-    /// Terminal-key submissions are classified separately by
-    /// `AgentPromptInputAccumulator` because they do not produce a response.
+    /// A foreground response that can resume Agent work starts monitoring. Empty
+    /// free-text submissions are ignored; structured decisions are explicit user
+    /// actions and can start the Agent again after a blocking state.
     public static func shouldStart(for response: AgentResponse) -> Bool {
         let text: String
         switch response {
@@ -83,7 +84,7 @@ public enum AgentBackgroundMonitoringPolicy {
         case .permission,
              .askUserQuestion,
              .approvePlan:
-            return false
+            return true
         }
         return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

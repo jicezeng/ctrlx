@@ -1,6 +1,7 @@
 # CtrlX 3.1.0 Stage 4：iOS Agent 后台监控
 
-> Stage 6 的用户意图持久化与下次输入自恢复设计，已替代本文中
+> Stage 6 的用户意图持久化、下次输入自恢复和 active-turn 生命周期设计，
+> 已替代本文中“开关即启动全局租约”“Agent 结束后保留空闲卡片”、
 > “租约失效后开关关闭”和“不跨进程持久化”的旧语义。参见
 > `docs/v3.1.0/ios-agent-monitoring-reactivation/IMPLEMENTATION_PLAN.md`。
 

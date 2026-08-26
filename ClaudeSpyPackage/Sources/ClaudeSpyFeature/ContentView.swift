@@ -70,12 +70,15 @@
                 handleScenePhaseChange(newPhase)
             }
             .onChange(of: settings.agentBackgroundMonitoringEnabled) { _, enabled in
-                if enabled {
-                    agentBackgroundMonitoring.startFromUserAction()
-                } else {
-                    agentBackgroundMonitoring.stopAll()
-                }
+                handleAgentBackgroundMonitoringPreferenceChange(enabled)
             }
+        }
+
+        private func handleAgentBackgroundMonitoringPreferenceChange(_ enabled: Bool) {
+            // Enabling stores intent only. The next foreground Agent submission
+            // starts the user-initiated system task; disabling still stops now.
+            guard !enabled else { return }
+            agentBackgroundMonitoring.stopAll()
         }
 
         /// Handle scene phase changes to manage background task lifecycle.
@@ -682,11 +685,10 @@
                 } footer: {
                     Text(
                         "Quick Input shows a reply field above agent terminals. "
-                            + "Background monitoring keeps one finite notification session active "
-                            + "for up to two hours across Agent turns and connected Macs. "
-                            + "iOS shows no permission prompt. If a system session expires, the "
-                            + "next Agent input starts a new one; iOS does not allow silent "
-                            + "background renewal without a foreground user action."
+                            + "Background monitoring starts with an Agent input and ends after "
+                            + "all monitored Agents finish or need input. iOS shows no permission "
+                            + "prompt. If the system ends a session early, the next Agent input "
+                            + "starts a new one; iOS does not allow silent background renewal."
                     )
                 }
 

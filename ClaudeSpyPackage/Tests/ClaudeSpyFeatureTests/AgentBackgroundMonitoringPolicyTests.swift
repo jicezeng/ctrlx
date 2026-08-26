@@ -47,13 +47,13 @@ struct AgentBackgroundMonitoringPolicyTests {
         }
     }
 
-    @Test("Only non-empty free-text turns start monitoring")
+    @Test("Meaningful foreground responses start monitoring")
     func eligibleResponses() {
         #expect(AgentBackgroundMonitoringPolicy.shouldStart(for: .prompt(text: "run tests")))
         #expect(AgentBackgroundMonitoringPolicy.shouldStart(for: .replyAfterStop(text: "continue")))
         #expect(!AgentBackgroundMonitoringPolicy.shouldStart(for: .prompt(text: " \n ")))
         #expect(!AgentBackgroundMonitoringPolicy.shouldStart(for: .replyAfterStop(text: "")))
-        #expect(!AgentBackgroundMonitoringPolicy.shouldStart(for: .approvePlan(
+        #expect(AgentBackgroundMonitoringPolicy.shouldStart(for: .approvePlan(
             decision: .approve,
             editedPlan: nil
         )))
