@@ -109,6 +109,9 @@
         override init(frame: CGRect, font: UIFont?) {
             super.init(frame: frame, font: font)
             terminalDelegate = self
+            // CtrlX owns mouse-mode scrolling below. Keep SwiftTerm's taps local
+            // so double/triple tap still opens selection and paste in TUIs.
+            allowMouseReporting = false
             // Always render cursor as filled on iOS since the user is typically viewing
             // the remote terminal, not typing. The hollow/filled distinction is less useful
             // here — cursor visibility (DECTCEM ?25l/?25h) handles show/hide instead.
