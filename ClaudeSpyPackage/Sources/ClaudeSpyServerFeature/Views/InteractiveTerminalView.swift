@@ -1707,6 +1707,10 @@
             terminalView.getTerminal()
         }
 
+        func changeScrollback(_ lineLimit: Int?) {
+            terminalView.changeScrollback(lineLimit)
+        }
+
         // MARK: - Accessibility
 
         override func accessibilityValue() -> Any? {

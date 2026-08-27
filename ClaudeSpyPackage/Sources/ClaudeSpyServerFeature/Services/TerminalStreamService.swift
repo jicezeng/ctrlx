@@ -108,6 +108,11 @@ struct TerminalBootstrapTrace: Equatable, Sendable {
 @Observable
 @MainActor
 final public class TerminalStreamService {
+    enum SnapshotKind {
+        case initial
+        case reset
+    }
+
     // MARK: - Properties
 
     private let logger = Logger(label: "com.jicezeng.ctrlx.terminalstream")
@@ -237,16 +242,19 @@ final public class TerminalStreamService {
                 "subscriberCount": "\(context.ownership.count)",
             ])
 
-            let initial = await makeInitialStateMessage(
+            var initialContent = current.content
+            initialContent.append(await paneStreamManager.mouseModeSequences(for: paneId))
+            let queue = streamSender.terminalSendQueueSnapshot(for: viewerId)
+            let initialSendStart = ContinuousClock.now
+            let initialPayloadBytes = await sendSnapshot(
+                kind: .initial,
                 paneId: paneId,
                 width: current.width,
                 height: current.height,
-                content: current.content,
-                paneStreamManager: paneStreamManager
+                content: initialContent,
+                scrollbackLineLimit: current.scrollbackLineLimit,
+                recipients: [viewerId]
             )
-            let queue = streamSender.terminalSendQueueSnapshot(for: viewerId)
-            let initialSendStart = ContinuousClock.now
-            await streamSender.sendTerminalStream(initial.message, to: [viewerId])
             let initialSendMilliseconds = Self.milliseconds(
                 initialSendStart.duration(to: ContinuousClock.now)
             )
@@ -257,7 +265,7 @@ final public class TerminalStreamService {
                 paneId: paneId,
                 viewerId: viewerId,
                 captureMilliseconds: captureMilliseconds,
-                initialPayloadBytes: initial.payloadBytes,
+                initialPayloadBytes: initialPayloadBytes,
                 queue: queue,
                 initialSendMilliseconds: initialSendMilliseconds,
                 bootstrapStart: bootstrapStart
@@ -372,16 +380,19 @@ final public class TerminalStreamService {
 
         // Send the initial snapshot only to the requesting viewer. The ordered
         // consumer retains capture-time data in that viewer's bootstrap buffer.
-        let initial = await makeInitialStateMessage(
+        var initialContent = result.initialContent
+        initialContent.append(await paneStreamManager.mouseModeSequences(for: paneId))
+        let queue = streamSender.terminalSendQueueSnapshot(for: viewerId)
+        let initialSendStart = ContinuousClock.now
+        let initialPayloadBytes = await sendSnapshot(
+            kind: .initial,
             paneId: paneId,
             width: result.width,
             height: result.height,
-            content: result.initialContent,
-            paneStreamManager: paneStreamManager
+            content: initialContent,
+            scrollbackLineLimit: result.scrollbackLineLimit,
+            recipients: [viewerId]
         )
-        let queue = streamSender.terminalSendQueueSnapshot(for: viewerId)
-        let initialSendStart = ContinuousClock.now
-        await streamSender.sendTerminalStream(initial.message, to: [viewerId])
         let initialSendMilliseconds = Self.milliseconds(
             initialSendStart.duration(to: ContinuousClock.now)
         )
@@ -401,7 +412,7 @@ final public class TerminalStreamService {
             paneId: paneId,
             viewerId: viewerId,
             captureMilliseconds: captureMilliseconds,
-            initialPayloadBytes: initial.payloadBytes,
+            initialPayloadBytes: initialPayloadBytes,
             queue: queue,
             initialSendMilliseconds: initialSendMilliseconds,
             bootstrapStart: bootstrapStart
@@ -506,40 +517,69 @@ final public class TerminalStreamService {
         // bytes both here and from the shared live batch.
         await flushPendingData(for: context, paneId: paneId)
 
-        guard let streamSender else { return }
+        guard streamSender != nil else { return }
         let bootstrapData = context.takeBootstrapData(for: viewerId)
-        var offset = bootstrapData.startIndex
-        while offset < bootstrapData.endIndex {
-            let remaining = bootstrapData.distance(from: offset, to: bootstrapData.endIndex)
-            let end = bootstrapData.index(offset, offsetBy: min(maxBatchSize, remaining))
-            let message = TerminalStreamMessage.dataChunk(
-                paneId: paneId,
-                data: Data(bootstrapData[offset..<end])
-            )
-            TerminalTransportMetrics.shared.recordBatch(bytes: end - offset)
-            await streamSender.sendTerminalStream(message, to: [viewerId])
-            offset = end
-        }
+        await sendDataChunks(bootstrapData, paneId: paneId, recipients: [viewerId])
 
         context.finishBootstrap(for: viewerId)
     }
 
-    /// Builds an `initialState` message with the pane's current mouse-mode escape sequences
-    /// appended to `content`. Without these sequences, the viewer's SwiftTerm won't pick up
-    /// the host pane's current mouse tracking mode until the terminal app redraws.
-    private func makeInitialStateMessage(
+    /// Sends snapshot metadata first, followed by bounded data chunks. The existing
+    /// bootstrap ready barrier keeps initial snapshots offscreen until every chunk arrives,
+    /// while reset chunks remain ordered ahead of subsequent live bytes.
+    @discardableResult
+    func sendSnapshot(
+        kind: SnapshotKind,
         paneId: String,
         width: Int,
         height: Int,
         content: Data,
-        paneStreamManager: PaneStreamManager
-    ) async -> (message: TerminalStreamMessage, payloadBytes: Int) {
-        var payload = content
-        payload.append(await paneStreamManager.mouseModeSequences(for: paneId))
-        return (
-            .initialState(paneId: paneId, width: width, height: height, content: payload),
-            payload.count
-        )
+        scrollbackLineLimit: Int,
+        recipients: Set<String>
+    ) async -> Int {
+        guard let streamSender else { return 0 }
+        let normalizedLimit = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
+        let metadata = switch kind {
+        case .initial:
+            TerminalStreamMessage.initialState(
+                paneId: paneId,
+                width: width,
+                height: height,
+                content: Data(),
+                scrollbackLineLimit: normalizedLimit
+            )
+        case .reset:
+            TerminalStreamMessage.resetState(
+                paneId: paneId,
+                width: width,
+                height: height,
+                content: Data(),
+                scrollbackLineLimit: normalizedLimit
+            )
+        }
+        await streamSender.sendTerminalStream(metadata, to: recipients)
+        await sendDataChunks(content, paneId: paneId, recipients: recipients)
+        return content.count
+    }
+
+    private func sendDataChunks(
+        _ data: Data,
+        paneId: String,
+        recipients: Set<String>
+    ) async {
+        guard let streamSender else { return }
+        var offset = data.startIndex
+        while offset < data.endIndex {
+            let remaining = data.distance(from: offset, to: data.endIndex)
+            let end = data.index(offset, offsetBy: min(maxBatchSize, remaining))
+            let chunk = Data(data[offset..<end])
+            TerminalTransportMetrics.shared.recordBatch(bytes: chunk.count)
+            await streamSender.sendTerminalStream(
+                .dataChunk(paneId: paneId, data: chunk),
+                to: recipients
+            )
+            offset = end
+        }
     }
 
     private func logBootstrapIfSlow(
@@ -811,16 +851,18 @@ final public class TerminalStreamService {
         context.batchTask = nil
         context.clearPendingDataForReset()
 
-        guard let streamSender else { return }
+        guard streamSender != nil else { return }
         var content = snapshot.initialContent
         content.append(await paneStreamManager?.mouseModeSequences(for: paneId) ?? Data())
-        let message = TerminalStreamMessage.resetState(
+        await sendSnapshot(
+            kind: .reset,
             paneId: paneId,
             width: snapshot.width,
             height: snapshot.height,
-            content: content
+            content: content,
+            scrollbackLineLimit: snapshot.scrollbackLineLimit,
+            recipients: context.ownership.subscribers
         )
-        await streamSender.sendTerminalStream(message, to: context.ownership.subscribers)
     }
 
     /// Handle dimension change from PaneStreamManager

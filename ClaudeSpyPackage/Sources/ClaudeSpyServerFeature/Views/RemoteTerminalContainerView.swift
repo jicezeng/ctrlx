@@ -687,6 +687,7 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
         private var rows = 24
         private var fontName: String?
         private var fontSize: CGFloat?
+        private var scrollbackLineLimit: Int?
         private var containerSize: NSSize = .zero
         private var bootstrapPolicy = TerminalStreamBootstrapPolicy()
         private var bootstrapBuffer = TerminalStreamBootstrapBuffer()
@@ -716,6 +717,7 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
             // Disable custom block glyph rendering — see TerminalContainerView.init for details.
             terminalView.customBlockGlyphs = false
             terminalView.applyTheme(.defaultDark)
+            updateScrollbackLineLimit(TerminalScrollbackPolicy.defaultLineLimit)
             terminalView.isHidden = true
         }
 
@@ -982,6 +984,9 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
 
                 columns = state.width
                 rows = state.height
+                updateScrollbackLineLimit(
+                    state.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
+                )
                 bootstrapBuffer.appendDimensions(cols: columns, rows: rows)
                 bootstrapBuffer.appendData(data)
 
@@ -991,6 +996,9 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
                 guard let data = Data(base64Encoded: state.contentBase64) else { return }
                 columns = state.width
                 rows = state.height
+                updateScrollbackLineLimit(
+                    state.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
+                )
                 applyTerminalDimensions(cols: columns, rows: rows)
                 feedCoalescer.replace(with: data) { [terminalView] in
                     terminalView.getTerminal().resetToInitialState()
@@ -1090,6 +1098,13 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
             updateFont(name: settings.fontName, size: CGFloat(settings.fontSize))
             terminalView.applyTheme(settings.theme)
             terminalView.autoCopyOnSelect = settings.autoCopyOnSelect
+        }
+
+        private func updateScrollbackLineLimit(_ requested: Int) {
+            let lineLimit = TerminalScrollbackPolicy.normalizedLineLimit(requested)
+            guard lineLimit != scrollbackLineLimit else { return }
+            scrollbackLineLimit = lineLimit
+            terminalView.changeScrollback(lineLimit)
         }
 
         func updateContainerSize(_ size: NSSize) {

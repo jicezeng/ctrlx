@@ -578,6 +578,7 @@
         @ObservationIgnored private var recoveryPolicy = TerminalStreamRecoveryPolicy()
 
         private var bootstrapDimensions: (width: Int, height: Int)?
+        private var bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
 
         init(paneId: String, fontName: String, fontSize: CGFloat) {
             self.paneId = paneId
@@ -619,6 +620,7 @@
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
             bootstrapDimensions = nil
+            bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             let id = UUID()
             streamSessionId = id
             activeLeaseId = leaseId
@@ -634,6 +636,7 @@
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
             bootstrapDimensions = nil
+            bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             streamSessionId = nil
             streamState = .connecting
             terminalState = nil
@@ -644,6 +647,7 @@
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
             bootstrapDimensions = nil
+            bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             streamState = .error
             self.error = error.localizedDescription
         }
@@ -655,6 +659,7 @@
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
             bootstrapDimensions = nil
+            bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             streamSessionId = nil
             defer { activeLeaseId = nil }
             return recoveryPolicy.hasRequestedStream ? activeLeaseId : nil
@@ -696,22 +701,30 @@
                 else { return }
 
                 bootstrapDimensions = (initial.width, initial.height)
+                bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(
+                    initial.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
+                )
                 bootstrapBuffer.appendDimensions(cols: initial.width, rows: initial.height)
                 bootstrapBuffer.appendData(content)
 
             case let .resetState(snapshot):
                 guard let content = snapshot.content else { return }
+                let scrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(
+                    snapshot.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
+                )
                 if streamState == .streaming {
                     terminalState?.replace(
                         width: snapshot.width,
                         height: snapshot.height,
-                        content: content
+                        content: content,
+                        scrollbackLineLimit: scrollbackLineLimit
                     )
                 } else if bootstrapPolicy.hasInitialState {
                     // A high-water resync is authoritative. Drop bootstrap bytes
                     // that precede it, then preserve later live bytes in order.
                     bootstrapBuffer.reset()
                     bootstrapDimensions = (snapshot.width, snapshot.height)
+                    bootstrapScrollbackLineLimit = scrollbackLineLimit
                     bootstrapBuffer.appendDimensions(cols: snapshot.width, rows: snapshot.height)
                     bootstrapBuffer.appendData(content)
                 }
@@ -763,7 +776,8 @@
                 width: bootstrapDimensions.width,
                 height: bootstrapDimensions.height,
                 fontName: fontName,
-                fontSize: fontSize
+                fontSize: fontSize,
+                scrollbackLineLimit: bootstrapScrollbackLineLimit
             )
             state.stageInitialEvents(bootstrapBuffer.takeEvents())
             terminalState = state
@@ -810,6 +824,7 @@
         private(set) var height: Int
         let fontName: String
         let fontSize: CGFloat
+        private(set) var scrollbackLineLimit: Int
 
         /// Bootstrap events retained until the UIKit terminal is wired.
         /// Keeping dimensions between data events preserves terminal parsing
@@ -821,7 +836,7 @@
         var onData: ((Data) -> Void)?
 
         /// Callback to atomically reset the existing UIKit terminal instance.
-        var onReset: ((Int, Int, Data) -> Void)?
+        var onReset: ((Int, Int, Int, Data) -> Void)?
 
         /// Call after wiring data and resize callbacks to replay the complete
         /// bootstrap into the still-offscreen UIKit terminal.
@@ -852,11 +867,18 @@
         /// Captures the local SwiftTerm buffer without a host or relay request.
         var makeTextSnapshot: (() -> TerminalTextSnapshot?)?
 
-        init(width: Int, height: Int, fontName: String, fontSize: CGFloat) {
+        init(
+            width: Int,
+            height: Int,
+            fontName: String,
+            fontSize: CGFloat,
+            scrollbackLineLimit: Int = TerminalScrollbackPolicy.defaultLineLimit
+        ) {
             self.width = width
             self.height = height
             self.fontName = fontName
             self.fontSize = fontSize
+            self.scrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
         }
 
         func stageInitialEvents(_ events: [TerminalStreamBootstrapBuffer.Event]) {
@@ -877,13 +899,14 @@
             }
         }
 
-        func replace(width: Int, height: Int, content: Data) {
+        func replace(width: Int, height: Int, content: Data, scrollbackLineLimit: Int) {
             self.width = width
             self.height = height
+            self.scrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
             pendingInitialEvents = []
             pendingDimensions = nil
             if let onReset {
-                onReset(width, height, content)
+                onReset(width, height, self.scrollbackLineLimit, content)
             } else {
                 pendingInitialEvents = [
                     .dimensions(cols: width, rows: height),
@@ -942,6 +965,7 @@
             // Create interactive terminal view
             let initialFrame = CGRect(x: 0, y: 0, width: exactWidth, height: exactHeight)
             let terminalView = InteractiveTerminalView(frame: initialFrame, font: font)
+            terminalView.changeScrollback(terminalState.scrollbackLineLimit)
             terminalView.translatesAutoresizingMaskIntoConstraints = false
 
             // Configure terminal
@@ -1012,8 +1036,13 @@
             terminalState.onData = { [weak coordinator = context.coordinator] data in
                 coordinator?.enqueue(data)
             }
-            terminalState.onReset = { [weak coordinator = context.coordinator] width, height, data in
-                coordinator?.replace(width: width, height: height, content: data)
+            terminalState.onReset = { [weak coordinator = context.coordinator] width, height, lineLimit, data in
+                coordinator?.replace(
+                    width: width,
+                    height: height,
+                    scrollbackLineLimit: lineLimit,
+                    content: data
+                )
             }
             terminalState.onResize = { [weak coordinator = context.coordinator] newWidth, newHeight in
                 coordinator?.resizeAfterPendingFeed(width: newWidth, height: newHeight)
@@ -1107,7 +1136,8 @@
                 feedCoalescer.flushPendingNow()
             }
 
-            func replace(width: Int, height: Int, content: Data) {
+            func replace(width: Int, height: Int, scrollbackLineLimit: Int, content: Data) {
+                terminalView?.changeScrollback(scrollbackLineLimit)
                 handleResize(width: width, height: height)
                 feedCoalescer.replace(with: content) { [weak self] in
                     self?.terminalView?.getTerminal().resetToInitialState()

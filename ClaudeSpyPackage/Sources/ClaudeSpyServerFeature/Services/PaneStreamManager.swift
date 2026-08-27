@@ -112,6 +112,11 @@
         private let logger = Logger(label: "com.jicezeng.ctrlx.panestreammanager")
         private let tmuxService: TmuxService
         private let controlClientManager: TmuxControlClientManager
+        private let scrollbackLineLimitProvider: @MainActor () -> Int
+
+        private var configuredScrollbackLineLimit: Int {
+            TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimitProvider())
+        }
 
         /// Active per-pane state keyed by paneId. One entry per known pane.
         private var readers: [String: ReaderContext] = [:]
@@ -218,9 +223,16 @@
 
         // MARK: - Initialization
 
-        public init(tmuxService: TmuxService, controlClientManager: TmuxControlClientManager) {
+        public init(
+            tmuxService: TmuxService,
+            controlClientManager: TmuxControlClientManager,
+            scrollbackLineLimitProvider: @escaping @MainActor () -> Int = {
+                TerminalScrollbackPolicy.defaultLineLimit
+            }
+        ) {
             self.tmuxService = tmuxService
             self.controlClientManager = controlClientManager
+            self.scrollbackLineLimitProvider = scrollbackLineLimitProvider
 
             // Wire up dimension changes from control client
             controlClientManager.setOnDimensionChange { [weak self] paneId, width, height in
@@ -245,6 +257,22 @@
             public let width: Int
             /// Terminal height in rows
             public let height: Int
+            /// Maximum history lines represented by this stream.
+            public let scrollbackLineLimit: Int
+
+            public init(
+                subscriptionId: UUID,
+                initialContent: Data,
+                width: Int,
+                height: Int,
+                scrollbackLineLimit: Int = TerminalScrollbackPolicy.defaultLineLimit
+            ) {
+                self.subscriptionId = subscriptionId
+                self.initialContent = initialContent
+                self.width = width
+                self.height = height
+                self.scrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
+            }
         }
 
         /// Subscribe to a pane stream.
@@ -275,6 +303,7 @@
             onResync: (@MainActor (Result<SubscriptionResult, Error>) -> Void)? = nil
         ) async throws -> SubscriptionResult {
             let subscriptionId = UUID()
+            let scrollbackLineLimit = configuredScrollbackLineLimit
             let subscription = Subscription(
                 id: subscriptionId,
                 paneId: paneId,
@@ -372,7 +401,8 @@
                         width: context.width,
                         height: context.height,
                         controlClientManager: controlClientManager,
-                        sessionName: sessionName
+                        sessionName: sessionName,
+                        scrollbackLineLimit: scrollbackLineLimit
                     )
                 } catch {
                     // Roll back our claim. The reader stays alive in scan-only
@@ -413,7 +443,10 @@
                 // received `initialContent` and seeded its terminal, which
                 // produces out-of-order rendering.
                 do {
-                    initialContent = try await tmuxService.capturePaneWithScrollbackForStreaming(target)
+                    initialContent = try await tmuxService.capturePaneWithScrollbackForStreaming(
+                        target,
+                        scrollbackLineLimit: scrollbackLineLimit
+                    )
                 } catch {
                     logger.warning("Failed to capture initial content for new subscriber", metadata: [
                         "paneId": "\(paneId)",
@@ -450,7 +483,8 @@
                 subscriptionId: subscriptionId,
                 initialContent: initialContent,
                 width: width,
-                height: height
+                height: height,
+                scrollbackLineLimit: scrollbackLineLimit
             )
         }
 
@@ -535,12 +569,20 @@
         ///
         /// - Parameter paneId: The pane ID to capture content for
         /// - Returns: Current content, width, and height if the pane has subscribers; nil otherwise
-        public func currentContent(for paneId: String) async -> (content: Data, width: Int, height: Int)? {
+        public func currentContent(
+            for paneId: String
+        ) async -> (content: Data, width: Int, height: Int, scrollbackLineLimit: Int)? {
             guard let context = readers[paneId], !context.subscriberIds.isEmpty else { return nil }
-            guard let content = try? await tmuxService.capturePaneWithScrollbackForStreaming(context.target) else {
+            let scrollbackLineLimit = configuredScrollbackLineLimit
+            guard
+                let content = try? await tmuxService.capturePaneWithScrollbackForStreaming(
+                    context.target,
+                    scrollbackLineLimit: scrollbackLineLimit
+                )
+            else {
                 return nil
             }
-            return (content, context.width, context.height)
+            return (content, context.width, context.height, scrollbackLineLimit)
         }
 
         /// Requests an authoritative snapshot for one subscription after its
@@ -887,6 +929,7 @@
                     readers[paneId] = context
                 }
 
+                let scrollbackLineLimit = configuredScrollbackLineLimit
                 let captured: Data
                 do {
                     captured = try await tmuxService.capturePaneViaControlMode(
@@ -894,7 +937,8 @@
                         width: context.width,
                         height: context.height,
                         controlClientManager: controlClientManager,
-                        sessionName: context.sessionName
+                        sessionName: context.sessionName,
+                        scrollbackLineLimit: scrollbackLineLimit
                     )
                 } catch {
                     let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
@@ -923,7 +967,8 @@
                         subscriptionId: subscriptionId,
                         initialContent: captured,
                         width: context.width,
-                        height: context.height
+                        height: context.height,
+                        scrollbackLineLimit: scrollbackLineLimit
                     )))
                 }
 

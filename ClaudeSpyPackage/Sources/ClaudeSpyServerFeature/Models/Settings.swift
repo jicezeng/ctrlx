@@ -606,7 +606,7 @@ final public class AppSettings {
         static let fontName = "SF Mono"
         // swiftlint:disable:next custom_no_number_decimals
         static let fontSize = 12.0
-        static let scrollbackLines = 10_000
+        static let scrollbackLines = TerminalScrollbackPolicy.defaultLineLimit
         static let theme = TerminalTheme.defaultDark
         static let highlightSelectedSidebarSession = false
         static let appearanceMode = AppearanceMode.system

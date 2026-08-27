@@ -878,14 +878,14 @@ final public class TmuxService {
     /// the timing gap between capture and stream registration.
     /// - Parameters:
     ///   - target: The pane target
-    ///   - scrollbackMultiplier: How many times the visible height to capture as scrollback (default: 3)
+    ///   - scrollbackLineLimit: Maximum retained history lines to capture
     /// - Returns: Terminal data that will populate both scrollback and visible area
     public func capturePaneWithScrollbackForStreaming(
         _ target: String,
-        scrollbackMultiplier: Int = 3
+        scrollbackLineLimit: Int = TerminalScrollbackPolicy.defaultLineLimit
     ) async throws -> Data {
         let (width, height) = try await getPaneDimensions(target)
-        let scrollbackLines = height * scrollbackMultiplier
+        let scrollbackLines = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
 
         // `-N` preserves trailing spaces at each line's end (without `-J`'s
         // wrapped-line joining) on BOTH captures. Without it tmux trims trailing
@@ -898,9 +898,13 @@ final public class TmuxService {
         // now-preserved *default*-bg trailing spaces back off plain scrollback
         // rows so static history can't reflow into permanent blank rows on a
         // narrower resize (#429 class).
-        let scrollbackResult = try await runTmuxCommand(
-            ["capture-pane", "-t", target, "-p", "-e", "-N", "-S", "-\(scrollbackLines)", "-E", "-1"]
-        )
+        let scrollbackResult = if scrollbackLines > 0 {
+            try await runTmuxCommand(
+                ["capture-pane", "-t", target, "-p", "-e", "-N", "-S", "-\(scrollbackLines)", "-E", "-1"]
+            )
+        } else {
+            ProcessResult(exitCode: 0, stdout: Data(), stderr: Data())
+        }
         let visibleResult = try await runTmuxCommand(
             ["capture-pane", "-t", target, "-p", "-e", "-N"]
         )
@@ -932,7 +936,7 @@ final public class TmuxService {
     ///   - height: Known pane height (from previous query)
     ///   - controlClientManager: The manager to send commands through
     ///   - sessionName: The session name for the control client
-    ///   - scrollbackMultiplier: How many times the visible height to capture as scrollback
+    ///   - scrollbackLineLimit: Maximum retained history lines to capture
     /// - Returns: Terminal data for scrollback + visible area
     public func capturePaneViaControlMode(
         paneId: String,
@@ -940,7 +944,7 @@ final public class TmuxService {
         height: Int,
         controlClientManager: TmuxControlClientManager,
         sessionName: String,
-        scrollbackMultiplier: Int = 3
+        scrollbackLineLimit: Int = TerminalScrollbackPolicy.defaultLineLimit
     ) async throws -> Data {
         // Address the pane by its stable tmux pane ID rather than a
         // session:window.pane target string. With `renumber-windows on`,
@@ -948,16 +952,20 @@ final public class TmuxService {
         // are killed, which invalidates a stale target captured before the
         // kill — leading to `%error` from `capture-pane` and a blank mirror
         // until the user navigates away and back.
-        let scrollbackLines = height * scrollbackMultiplier
+        let scrollbackLines = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
 
         // `-N` preserves trailing spaces (see the matching note in
         // `capturePaneWithScrollbackForStreaming`) so multi-row background
         // bands survive the rebuild — on the scrollback capture too (#580), so
         // a band that scrolled into history keeps its background. Issue #578.
-        let scrollbackResponse = try await controlClientManager.sendCommand(
-            "capture-pane -t '\(paneId)' -p -e -N -S -\(scrollbackLines) -E -1",
-            sessionName: sessionName
-        )
+        let scrollbackResponse = if scrollbackLines > 0 {
+            try await controlClientManager.sendCommand(
+                "capture-pane -t '\(paneId)' -p -e -N -S -\(scrollbackLines) -E -1",
+                sessionName: sessionName
+            )
+        } else {
+            CommandResponse(commandNumber: 0, output: "", isError: false)
+        }
 
         let visibleResponse = try await controlClientManager.sendCommand(
             "capture-pane -t '\(paneId)' -p -e -N",

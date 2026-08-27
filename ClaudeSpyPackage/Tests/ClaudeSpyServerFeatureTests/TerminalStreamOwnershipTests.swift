@@ -33,6 +33,13 @@
                 return (state, delivery.recipients)
             }
         }
+
+        var initialDeliveries: [(state: TerminalStreamMessage.InitialState, recipients: Set<String>)] {
+            deliveries.compactMap { delivery in
+                guard case let .initialState(state) = delivery.message.updateType else { return nil }
+                return (state, delivery.recipients)
+            }
+        }
     }
 
     @Suite("Terminal stream ownership")
@@ -286,6 +293,30 @@
             #expect(context.isReady("viewer-a"))
         }
 
+        @Test("Initial snapshot metadata precedes bounded content chunks")
+        func initialSnapshotUsesBoundedChunks() async {
+            let sender = CapturingTerminalStreamSender()
+            let service = TerminalStreamService(streamSender: sender)
+            let snapshot = Data(repeating: 0x61, count: 20_000)
+
+            await service.sendSnapshot(
+                kind: .initial,
+                paneId: "%1",
+                width: 80,
+                height: 24,
+                content: snapshot,
+                scrollbackLineLimit: 10_000,
+                recipients: ["viewer-a"]
+            )
+
+            #expect(sender.initialDeliveries.count == 1)
+            #expect(sender.initialDeliveries[0].state.content == Data())
+            #expect(sender.initialDeliveries[0].state.scrollbackLineLimit == 10_000)
+            #expect(sender.initialDeliveries[0].recipients == ["viewer-a"])
+            #expect(sender.dataDeliveries.map(\.data.count) == [8_192, 8_192, 3_616])
+            #expect(sender.dataDeliveries.reduce(into: Data()) { $0.append($1.data) } == snapshot)
+        }
+
         @Test("Oversized live output is split into bounded relay messages")
         func liveOutputUsesBoundedChunks() async {
             let sender = CapturingTerminalStreamSender()
@@ -357,13 +388,16 @@
             let fresh = Data(repeating: 0x61, count: 8_192)
             await service.handleIncomingData(context: context, paneId: "%1", data: fresh)
 
-            #expect(sender.deliveries.count == 2)
+            #expect(sender.deliveries.count == 3)
             #expect(sender.resetDeliveries.count == 1)
-            #expect(sender.resetDeliveries[0].state.content == Data("snapshot".utf8))
+            #expect(sender.resetDeliveries[0].state.content == Data())
+            #expect(sender.resetDeliveries[0].state.scrollbackLineLimit == 10_000)
             #expect(sender.resetDeliveries[0].recipients == ["viewer-a", "viewer-b"])
-            #expect(sender.dataDeliveries.count == 1)
-            #expect(sender.dataDeliveries[0].data == fresh)
-            #expect(sender.dataDeliveries[0].recipients == ["viewer-a"])
+            #expect(sender.dataDeliveries.count == 2)
+            #expect(sender.dataDeliveries[0].data == Data("snapshot".utf8))
+            #expect(sender.dataDeliveries[0].recipients == ["viewer-a", "viewer-b"])
+            #expect(sender.dataDeliveries[1].data == fresh)
+            #expect(sender.dataDeliveries[1].recipients == ["viewer-a"])
             #expect(context.takeBootstrapData(for: "viewer-b") == fresh)
         }
 

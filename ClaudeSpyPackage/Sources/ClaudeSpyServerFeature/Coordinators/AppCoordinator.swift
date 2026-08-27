@@ -291,7 +291,8 @@
             // Create pane stream manager with control client manager
             self.paneStreamManager = PaneStreamManager(
                 tmuxService: tmuxService,
-                controlClientManager: controlClientManager
+                controlClientManager: controlClientManager,
+                scrollbackLineLimitProvider: { [settings] in settings.scrollbackLines }
             )
 
             // Create terminal stream service

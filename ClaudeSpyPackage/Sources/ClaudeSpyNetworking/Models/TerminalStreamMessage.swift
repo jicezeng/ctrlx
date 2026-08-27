@@ -71,10 +71,15 @@ public struct TerminalStreamMessage: Codable, Sendable, Identifiable {
         /// Current terminal buffer content as Base64-encoded data (raw bytes with ANSI)
         public let contentBase64: String
 
-        public init(width: Int, height: Int, content: Data) {
+        /// Maximum scrollback lines the Host captured for this stream.
+        /// Optional so viewers remain compatible with older Hosts.
+        public let scrollbackLineLimit: Int?
+
+        public init(width: Int, height: Int, content: Data, scrollbackLineLimit: Int? = nil) {
             self.width = width
             self.height = height
             self.contentBase64 = content.base64EncodedString()
+            self.scrollbackLineLimit = scrollbackLineLimit
         }
 
         /// Decodes the content from Base64
@@ -155,11 +160,17 @@ public extension TerminalStreamMessage {
         paneId: String,
         width: Int,
         height: Int,
-        content: Data
+        content: Data,
+        scrollbackLineLimit: Int? = nil
     ) -> TerminalStreamMessage {
         TerminalStreamMessage(
             paneId: paneId,
-            updateType: .initialState(InitialState(width: width, height: height, content: content))
+            updateType: .initialState(InitialState(
+                width: width,
+                height: height,
+                content: content,
+                scrollbackLineLimit: scrollbackLineLimit
+            ))
         )
     }
 
@@ -176,11 +187,17 @@ public extension TerminalStreamMessage {
         paneId: String,
         width: Int,
         height: Int,
-        content: Data
+        content: Data,
+        scrollbackLineLimit: Int? = nil
     ) -> TerminalStreamMessage {
         TerminalStreamMessage(
             paneId: paneId,
-            updateType: .resetState(InitialState(width: width, height: height, content: content))
+            updateType: .resetState(InitialState(
+                width: width,
+                height: height,
+                content: content,
+                scrollbackLineLimit: scrollbackLineLimit
+            ))
         )
     }
 

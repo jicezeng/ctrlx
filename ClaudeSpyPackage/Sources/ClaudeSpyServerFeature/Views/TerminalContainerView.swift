@@ -145,6 +145,7 @@ struct TerminalContainerView: NSViewRepresentable {
 
         private var fontName: String?
         private var fontSize: CGFloat?
+        private var scrollbackLineLimit: Int?
         private var containerSize: NSSize = .zero
 
         private var onStateChange: TerminalStateChangeHandler?
@@ -249,6 +250,7 @@ struct TerminalContainerView: NSViewRepresentable {
 
             // Apply initial settings
             updateFont(name: settings.fontName, size: CGFloat(settings.fontSize))
+            updateScrollbackLineLimit(settings.scrollbackLines)
             terminalView.applyTheme(settings.theme)
 
             // Wire up input handling. SwiftTerm emits a Meta/Option sequence as
@@ -646,8 +648,16 @@ struct TerminalContainerView: NSViewRepresentable {
 
         func updateSettings(_ settings: AppSettings) {
             updateFont(name: settings.fontName, size: CGFloat(settings.fontSize))
+            updateScrollbackLineLimit(settings.scrollbackLines)
             terminalView.applyTheme(settings.theme)
             terminalView.autoCopyOnSelect = settings.autoCopyOnSelect
+        }
+
+        private func updateScrollbackLineLimit(_ requested: Int) {
+            let lineLimit = TerminalScrollbackPolicy.normalizedLineLimit(requested)
+            guard lineLimit != scrollbackLineLimit else { return }
+            scrollbackLineLimit = lineLimit
+            terminalView.changeScrollback(lineLimit)
         }
 
         private func updateFont(name: String, size: CGFloat) {
