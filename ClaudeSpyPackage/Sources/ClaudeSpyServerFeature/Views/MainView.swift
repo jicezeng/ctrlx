@@ -783,7 +783,6 @@ public struct MainView: View {
             override: stateOverride,
             agentState: claudePane.flatMap { windowManager.paneStates[$0.paneId]?.agentSession?.state }
         )
-        let activePane = activeWindow?.activePane
         let isSessionAttached = tmuxService.attachedSessionNames.contains(session.sessionName)
         let isSelected = selectedWindow.map { selected in session.windows.contains(where: { $0.id == selected.id }) } ?? false
         // Compute effective progress here (and not just inside the row) so we can expose
@@ -871,7 +870,7 @@ public struct MainView: View {
                     Divider()
                 }
 
-                if let activePane {
+                if let activeWindow, let activePane = activeWindow.activePane {
                     Button {
                         attachToTerminal(activePane)
                     } label: {
@@ -884,9 +883,9 @@ public struct MainView: View {
                         Button {
                             Task {
                                 await performResize(
-                                    localTarget: activePane.target,
+                                    localWindowTarget: activeWindow.stableId,
                                     localPaneId: activePane.paneId,
-                                    widthOverride: activeWindow.flatMap(effectiveTerminalWidth(for:))
+                                    widthOverride: effectiveTerminalWidth(for: activeWindow)
                                 )
                             }
                         } label: {
@@ -903,9 +902,9 @@ public struct MainView: View {
                                 autoResizeEnabled.insert(activePane.paneId)
                                 Task {
                                     await performResize(
-                                        localTarget: activePane.target,
+                                        localWindowTarget: activeWindow.stableId,
                                         localPaneId: activePane.paneId,
-                                        widthOverride: activeWindow.flatMap(effectiveTerminalWidth(for:))
+                                        widthOverride: effectiveTerminalWidth(for: activeWindow)
                                     )
                                 }
                             } else {
@@ -1944,7 +1943,6 @@ public struct MainView: View {
 
                     resizeToolbarGroup(
                         resizeKey: activePane.paneId,
-                        localTarget: activePane.target,
                         localWindow: window,
                         isSessionAttached: tmuxService.attachedSessionNames.contains(window.sessionName)
                     )
@@ -2144,24 +2142,23 @@ public struct MainView: View {
     @ViewBuilder
     private func resizeToolbarGroup(
         resizeKey: String,
-        localTarget: String? = nil,
-        localWindow: LocalTmuxWindow? = nil,
+        localWindow: LocalTmuxWindow,
         isSessionAttached: Bool = false
     ) -> some View {
         let attachedHelp = "Cannot resize: session is attached to a terminal"
         let autoResizeActive = isAutoResizeActive(for: resizeKey)
         // For local windows, `resizeKey` is the bare paneId, so use it as the
-        // cache key in performResize. The width override comes from the
-        // window's effective split-aware width when available.
-        let widthOverride: CGFloat? = localWindow.flatMap(effectiveTerminalWidth(for:))
+        // cache key in performResize. The resize command itself targets the
+        // window's stable tmux ID so an exiting active pane cannot invalidate it.
+        let widthOverride = effectiveTerminalWidth(for: localWindow)
 
         // Hide manual resize button when auto-resize is active
         if !autoResizeActive {
             Button {
                 Task {
                     await performResize(
-                        localTarget: localTarget,
-                        localPaneId: localTarget != nil ? resizeKey : nil,
+                        localWindowTarget: localWindow.stableId,
+                        localPaneId: resizeKey,
                         widthOverride: widthOverride
                     )
                 }
@@ -2185,8 +2182,8 @@ public struct MainView: View {
                     autoResizeEnabled.insert(resizeKey)
                     Task {
                         await performResize(
-                            localTarget: localTarget,
-                            localPaneId: localTarget != nil ? resizeKey : nil,
+                            localWindowTarget: localWindow.stableId,
+                            localPaneId: resizeKey,
                             widthOverride: widthOverride
                         )
                     }
@@ -2247,7 +2244,7 @@ public struct MainView: View {
                         isAutoResizeActive(for: activePane.paneId),
                         !tmuxService.attachedSessionNames.contains(window.sessionName) {
                         await performResize(
-                            localTarget: activePane.target,
+                            localWindowTarget: window.stableId,
                             localPaneId: activePane.paneId,
                             widthOverride: widthOverride
                         )
@@ -2266,7 +2263,7 @@ public struct MainView: View {
                             isAutoResizeActive(for: rightPane.paneId),
                             !tmuxService.attachedSessionNames.contains(rightWindow.sessionName) {
                             await performResize(
-                                localTarget: rightPane.target,
+                                localWindowTarget: rightWindow.stableId,
                                 localPaneId: rightPane.paneId,
                                 widthOverride: rightWidth
                             )
@@ -2295,18 +2292,15 @@ public struct MainView: View {
     }
 
     private func performResize(
-        localTarget: String? = nil,
-        localPaneId: String? = nil,
+        localWindowTarget: String,
+        localPaneId: String,
         widthOverride: CGFloat? = nil
     ) async {
         let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
 
-        guard let localTarget else { return }
         do {
-            try await tmuxService.resizePane(localTarget, width: dimensions.columns, height: dimensions.rows)
-            if let localPaneId {
-                lastAutoResizeDimensions[localPaneId] = dimensions
-            }
+            try await tmuxService.resizePane(localWindowTarget, width: dimensions.columns, height: dimensions.rows)
+            lastAutoResizeDimensions[localPaneId] = dimensions
         } catch {
             attachError = "Failed to resize: \(error.localizedDescription)"
         }
