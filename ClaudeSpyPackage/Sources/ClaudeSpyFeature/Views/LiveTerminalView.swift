@@ -160,6 +160,10 @@
                                     copyOverlayButton
                                 }
                                 if showKeyboardButton, settings.terminalKeyboardControlPosition == .topRight {
+                                    TerminalVoiceInputButton(
+                                        isDisabled: !canSendTerminalInput,
+                                        sendKeys: sendTerminalKeys
+                                    )
                                     keyboardOverlayButton
                                 }
                             }
@@ -177,7 +181,8 @@
                         keyboardVisible: keyboardVisible,
                         isEnabled: isConnected && coordinator.streamState == .streaming,
                         bottomSafeAreaInset: bottomSafeAreaInset,
-                        action: { isInteractive.toggle() }
+                        action: { isInteractive.toggle() },
+                        sendVoiceKeys: sendTerminalKeys
                     )
                 }
             }
@@ -189,6 +194,13 @@
                 }
 
                 if showKeyboardButton, settings.terminalKeyboardControlPosition == .topRight, !hideNavigationBar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        TerminalVoiceInputButton(
+                            isDisabled: !canSendTerminalInput,
+                            sendKeys: sendTerminalKeys
+                        )
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             isInteractive.toggle()
@@ -358,8 +370,7 @@
                         terminalState: state,
                         isInteractive: effectiveInteractive,
                         onInput: { keys in
-                            coordinator.enqueueKeySend(keys: keys, relayClient: relayClient)
-                            onTerminalInput(keys)
+                            sendTerminalKeys(keys)
                         },
                         onRawInput: { data in
                             coordinator.enqueueRawInput(data: data, relayClient: relayClient)
@@ -400,6 +411,16 @@
                     .disabled(!isConnected)
                 }
             }
+        }
+
+        private var canSendTerminalInput: Bool {
+            isConnected && coordinator.streamState == .streaming
+        }
+
+        private func sendTerminalKeys(_ keys: [TmuxKey]) {
+            guard canSendTerminalInput, !keys.isEmpty else { return }
+            coordinator.enqueueKeySend(keys: keys, relayClient: relayClient)
+            onTerminalInput(keys)
         }
 
         // MARK: - Streaming

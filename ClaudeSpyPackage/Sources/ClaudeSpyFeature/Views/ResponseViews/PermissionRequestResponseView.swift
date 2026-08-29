@@ -186,6 +186,10 @@ struct PermissionRequestResponseView: View {
                 .accessibilityIdentifier("permission-custom-instructions")
                 .textFieldStyle(.plain)
                 .lineLimit(2...4)
+                .voiceInputAccessory(
+                    text: $customInstructions,
+                    isDisabled: state.isSending || !isConnected
+                )
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
                 .overlay(

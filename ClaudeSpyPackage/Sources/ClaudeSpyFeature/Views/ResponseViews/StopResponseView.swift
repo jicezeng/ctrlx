@@ -51,6 +51,7 @@ struct StopResponseView: View {
         return TextField(placeholder, text: $state.replyDraft, axis: .vertical)
             .textFieldStyle(.plain)
             .lineLimit(3...6)
+            .voiceInputAccessory(text: $state.replyDraft, isDisabled: state.isSending || !isConnected)
             .padding(12)
             .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))

@@ -50,4 +50,20 @@ struct TerminalInputProxyViewTests {
             insertion: "next"
         ))
     }
+
+    @Test("A fresh voice document does not delete separately typed input")
+    func freshVoiceDocument() {
+        var synchronizer = TerminalInputDocumentSynchronizer()
+        _ = synchronizer.advance(to: "first recording")
+        synchronizer.reset()
+
+        #expect(synchronizer.advance(to: "new") == TerminalInputDocumentDelta(
+            deletionCount: 0,
+            insertion: "new"
+        ))
+        #expect(synchronizer.advance(to: "new phrase") == TerminalInputDocumentDelta(
+            deletionCount: 0,
+            insertion: " phrase"
+        ))
+    }
 }

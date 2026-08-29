@@ -350,6 +350,7 @@ struct AskUserQuestionResponseView: View {
             TextField("Enter your response...", text: $customInputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(2...4)
+                .voiceInputAccessory(text: $customInputText, isDisabled: !isConnected)
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
                 .overlay(

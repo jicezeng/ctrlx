@@ -31,6 +31,10 @@
         /// Tracks keyboard visibility for the bottom input control
         @State private var keyboardVisible = false
 
+        /// Ordered sender for partial speech-recognition edits to the selected pane.
+        @State private var voiceKeystrokeDebouncer: KeystrokeDebouncer?
+        @State private var voiceKeystrokePaneId: String?
+
         /// Bottom system gesture inset before this view adds its keyboard bar.
         @State private var bottomSafeAreaInset: CGFloat = 0
 
@@ -169,7 +173,8 @@
                         keyboardVisible: keyboardVisible,
                         isEnabled: relayClient.isHostConnected && activePaneId != nil,
                         bottomSafeAreaInset: bottomSafeAreaInset,
-                        action: { isKeyboardActive.toggle() }
+                        action: { isKeyboardActive.toggle() },
+                        sendVoiceKeys: sendVoiceKeys
                     )
                 }
             }
@@ -261,6 +266,13 @@
                     }
                 }
                 if settings.terminalKeyboardControlPosition == .topRight {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        TerminalVoiceInputButton(
+                            isDisabled: !relayClient.isHostConnected || activePaneId == nil,
+                            sendKeys: sendVoiceKeys
+                        )
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             isKeyboardActive.toggle()
@@ -404,6 +416,9 @@
                 lastWrittenClipboardContent = content
             }
             .onChange(of: activePaneId) { oldValue, newValue in
+                voiceKeystrokeDebouncer?.cancelAll()
+                voiceKeystrokeDebouncer = nil
+                voiceKeystrokePaneId = nil
                 updateActiveService()
                 // Mark session as handled when switching to a pane with attention
                 Task { await activeService?.markHandledIfNeeded() }
@@ -414,6 +429,9 @@
                 Task {
                     await sendCommand(.selectTmuxPane, paneId: newValue)
                 }
+            }
+            .onDisappear {
+                voiceKeystrokeDebouncer?.cancelAll()
             }
         }
 
@@ -775,6 +793,30 @@
 
         private func sendCommand(_ command: CommandType, paneId: String) async {
             await relayClient.send(command, paneId: paneId)
+        }
+
+        private func sendVoiceKeys(_ keys: [TmuxKey]) {
+            guard
+                !keys.isEmpty,
+                relayClient.isHostConnected,
+                let activePaneId
+            else { return }
+
+            if voiceKeystrokePaneId != activePaneId {
+                voiceKeystrokeDebouncer?.cancelAll()
+                voiceKeystrokeDebouncer = KeystrokeDebouncer(
+                    paneId: activePaneId,
+                    relayClient: relayClient
+                )
+                voiceKeystrokePaneId = activePaneId
+            }
+
+            voiceKeystrokeDebouncer?.enqueue(keys)
+            observeTerminalInput(
+                keys,
+                paneId: activePaneId,
+                windowName: window?.windowName ?? ""
+            )
         }
 
         // MARK: - Close Window/Session

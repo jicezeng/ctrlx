@@ -47,6 +47,7 @@ struct PromptView: View {
         TextField(placeholder, text: $inputText, axis: .vertical)
             .textFieldStyle(.plain)
             .lineLimit(3...6)
+            .voiceInputAccessory(text: $inputText, isDisabled: state.isSending || !isConnected)
             .padding(12)
             .background(textFieldBackground)
             .overlay(textFieldBorder)
