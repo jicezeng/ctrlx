@@ -18,6 +18,7 @@
         var clipboards: [String] = []
         var progress: [TerminalProgressState] = []
         var overflowCount = 0
+        var terminations: [PipePaneReaderTermination] = []
 
         func pipePaneReader(_ paneId: String, didReceiveData data: Data) {
             self.data.append(data)
@@ -44,6 +45,14 @@
 
         func pipePaneReader(_ paneId: String, didReceiveProgress progress: TerminalProgressState) {
             self.progress.append(progress)
+        }
+
+        func pipePaneReader(
+            _ reader: PipePaneReader,
+            paneId: String,
+            didTerminate reason: PipePaneReaderTermination
+        ) {
+            terminations.append(reason)
         }
 
         var concatenatedData: Data {
@@ -351,6 +360,33 @@
 
     @Suite("PipePaneReader Tests")
     struct PipePaneReaderTests {
+        @Suite("Non-blocking reads")
+        struct NonBlockingReadTests {
+            @Test("Positive reads deliver data")
+            func positiveRead() {
+                #expect(PipePaneReadDisposition.classify(bytesRead: 42, errorCode: 0) == .data)
+            }
+
+            @Test("Transient errors keep the FIFO stream alive", arguments: [EAGAIN, EWOULDBLOCK, EINTR])
+            func transientError(errorCode: Int32) {
+                #expect(
+                    PipePaneReadDisposition.classify(bytesRead: -1, errorCode: errorCode) == .retry
+                )
+            }
+
+            @Test("EOF and permanent read errors terminate the FIFO stream")
+            func terminalReadResults() {
+                #expect(
+                    PipePaneReadDisposition.classify(bytesRead: 0, errorCode: 0)
+                        == .terminate(.endOfFile)
+                )
+                #expect(
+                    PipePaneReadDisposition.classify(bytesRead: -1, errorCode: EIO)
+                        == .terminate(.readError(EIO))
+                )
+            }
+        }
+
         @Suite("Ingress backpressure")
         struct IngressBackpressureTests {
             @Test("Overflow drops stale chunks and marks the exact retained boundary")

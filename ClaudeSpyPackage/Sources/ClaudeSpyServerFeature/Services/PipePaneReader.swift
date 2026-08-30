@@ -5,6 +5,35 @@
     import Logging
     import os.lock
 
+    enum PipePaneReaderTermination: Equatable, Sendable, CustomStringConvertible {
+        case endOfFile
+        case readError(Int32)
+
+        var description: String {
+            switch self {
+            case .endOfFile:
+                "EOF"
+            case let .readError(errorCode):
+                "read error \(errorCode): \(String(cString: strerror(errorCode)))"
+            }
+        }
+    }
+
+    enum PipePaneReadDisposition: Equatable, Sendable {
+        case data
+        case retry
+        case terminate(PipePaneReaderTermination)
+
+        static func classify(bytesRead: Int, errorCode: Int32) -> Self {
+            if bytesRead > 0 { return .data }
+            if bytesRead == 0 { return .terminate(.endOfFile) }
+            if errorCode == EAGAIN || errorCode == EWOULDBLOCK || errorCode == EINTR {
+                return .retry
+            }
+            return .terminate(.readError(errorCode))
+        }
+    }
+
     /// Receives events parsed by `PipePaneReader`.
     ///
     /// All methods are called on the main actor. The reader coalesces pending
@@ -23,6 +52,11 @@
         func pipePaneReader(_ paneId: String, didReceiveTitle title: String)
         func pipePaneReader(_ paneId: String, didReceiveClipboard content: String)
         func pipePaneReader(_ paneId: String, didReceiveProgress progress: TerminalProgressState)
+        func pipePaneReader(
+            _ reader: PipePaneReader,
+            paneId: String,
+            didTerminate reason: PipePaneReaderTermination
+        )
     }
 
     /// Manages FIFO-based raw byte delivery from tmux pipe-pane for a single pane.
@@ -67,6 +101,9 @@
         private let fifoPath: String
         private var fileHandle: FileHandle?
         private var isRunning = false
+        private var isStopping = false
+        private var terminationReported = false
+        private var streamGeneration: UUID?
 
         // Delivery
         private weak var delegate: (any PipePaneReaderDelegate)?
@@ -147,6 +184,8 @@
                 return
             }
 
+            isStopping = false
+            terminationReported = false
             mode = .scanOnly
             notificationParser.scanOnly = true
             buffer = []
@@ -201,6 +240,8 @@
 
             fileHandle = handle
             isRunning = true
+            let generation = UUID()
+            streamGeneration = generation
 
             // Step 4: Set up AsyncStream for FIFO-ordered data delivery.
             // readabilityHandler fires on a dispatch queue — yielding into the stream
@@ -222,17 +263,28 @@
                 // the handler executing.
                 var buf = [UInt8](repeating: 0, count: 65_536)
                 let bytesRead = read(fd, &buf, buf.count)
-                guard bytesRead > 0 else {
-                    // EOF or error — cat process died or pipe-pane stopped
+                let errorCode = bytesRead < 0 ? errno : 0
+                switch PipePaneReadDisposition.classify(
+                    bytesRead: bytesRead,
+                    errorCode: errorCode
+                ) {
+                case .data:
+                    let data = Data(buf[..<bytesRead])
+                    self?.ingressBuffer.enqueue(data)
+                    continuation.yield()
+
+                case .retry:
+                    // A non-blocking descriptor can transiently report no data
+                    // after the dispatch source fires. Keep the stream alive;
+                    // the source will invoke us again when bytes are readable.
+                    return
+
+                case let .terminate(reason):
                     continuation.finish()
                     Task { [weak self] in
-                        await self?.handleEOF()
+                        await self?.handleTermination(reason, generation: generation)
                     }
-                    return
                 }
-                let data = Data(buf[..<bytesRead])
-                self?.ingressBuffer.enqueue(data)
-                continuation.yield()
             }
 
             // Single consumer task — processes data in strict FIFO order
@@ -315,6 +367,8 @@
             guard isRunning else { return }
 
             logger.debug("Stopping pipe-pane for \(paneId)")
+            isStopping = true
+            streamGeneration = nil
 
             // Stop the readability handler and stream first
             fileHandle?.readabilityHandler = nil
@@ -337,6 +391,8 @@
             cleanupFifo()
 
             isRunning = false
+            isStopping = false
+            terminationReported = false
             mode = .scanOnly
             buffer = []
             bufferedBytes = 0
@@ -346,9 +402,14 @@
             tmuxEscapeBuffer = Data()
             notificationParser.reset()
             notificationParser.scanOnly = true
-            delegate = nil
-
             logger.info("pipe-pane stopped for \(paneId)")
+        }
+
+        /// A stopped dispatch handler may still enqueue a late callback. The
+        /// generation check in `handleTermination` rejects that callback after
+        /// this reader has been restarted for the same pane.
+        var isHealthy: Bool {
+            isRunning && !isStopping && !terminationReported
         }
 
         // MARK: - Data Processing
@@ -784,11 +845,22 @@
 
         // MARK: - Lifecycle
 
-        private func handleEOF() {
-            logger.warning("EOF on pipe-pane FIFO for \(paneId) — cat process may have died")
-            // Don't clean up here — the caller (PaneStreamManager) should handle reconnection
-            // or cleanup via stopPipePane()
+        private func handleTermination(
+            _ reason: PipePaneReaderTermination,
+            generation: UUID
+        ) async {
+            guard
+                isRunning,
+                !isStopping,
+                !terminationReported,
+                streamGeneration == generation
+            else { return }
+
+            terminationReported = true
+            logger.warning("pipe-pane FIFO terminated for \(paneId): \(reason)")
             fileHandle?.readabilityHandler = nil
+            dataContinuation?.finish()
+            await delegate?.pipePaneReader(self, paneId: paneId, didTerminate: reason)
         }
 
         private func cleanupFifo() {

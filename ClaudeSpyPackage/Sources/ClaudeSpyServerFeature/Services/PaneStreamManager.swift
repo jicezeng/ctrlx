@@ -146,6 +146,12 @@
         private var resyncTasks: [String: Task<Void, Never>] = [:]
         private var resyncingPaneIds: Set<String> = []
 
+        /// A terminated FIFO is restarted in place so existing subscriptions,
+        /// dimensions, and title state remain authoritative. One recovery task
+        /// per pane also prevents a burst of EOF/error callbacks from launching
+        /// competing `pipe-pane` commands.
+        private var readerRecoveryTasks: [String: Task<Void, Never>] = [:]
+
         /// `disconnectAll` is terminal for this manager. Keep late callbacks
         /// from restarting readers while shutdown drains in-flight work.
         private var isShuttingDown = false
@@ -618,8 +624,15 @@
             // when only one downstream queue reported overload.
             pendingResyncSubscribers[paneId, default: []].formUnion(context.subscriberIds)
             resyncingPaneIds.insert(paneId)
-            guard resyncTasks[paneId] == nil else { return }
+            startResyncTaskIfNeeded(paneId: paneId)
+        }
 
+        private func startResyncTaskIfNeeded(
+            paneId: String,
+            whileRecovering: Bool = false
+        ) {
+            guard whileRecovering || readerRecoveryTasks[paneId] == nil else { return }
+            guard resyncTasks[paneId] == nil else { return }
             resyncTasks[paneId] = Task { @MainActor [weak self] in
                 await self?.runResyncLoop(paneId: paneId)
             }
@@ -820,7 +833,11 @@
                     controlClientManager: controlClientManager,
                     sessionName: sessionName
                 )
-                guard !Task.isCancelled, !isShuttingDown else {
+                guard
+                    !Task.isCancelled,
+                    !isShuttingDown,
+                    await reader.isHealthy
+                else {
                     await reader.stopPipePane(
                         controlClientManager: controlClientManager,
                         sessionName: sessionName
@@ -852,6 +869,10 @@
         }
 
         private func tearDownReader(paneId: String) async {
+            if let task = readerRecoveryTasks.removeValue(forKey: paneId) {
+                task.cancel()
+                _ = await task.value
+            }
             if let task = resyncTasks.removeValue(forKey: paneId) {
                 task.cancel()
                 _ = await task.value
@@ -915,6 +936,27 @@
             onProgress?(paneId, progress)
         }
 
+        func pipePaneReader(
+            _ reader: PipePaneReader,
+            paneId: String,
+            didTerminate reason: PipePaneReaderTermination
+        ) {
+            guard
+                !isShuttingDown,
+                readers[paneId]?.reader === reader,
+                readerRecoveryTasks[paneId] == nil
+            else { return }
+
+            logger.warning("Recovering terminated pane reader", metadata: [
+                "paneId": "\(paneId)",
+                "reason": "\(reason)",
+            ])
+            resyncingPaneIds.insert(paneId)
+            readerRecoveryTasks[paneId] = Task { @MainActor [weak self] in
+                await self?.recoverReader(paneId: paneId, reader: reader)
+            }
+        }
+
         // MARK: - Private Forwarding
 
         private func forwardData(paneId: String, data: Data) {
@@ -925,6 +967,69 @@
                 if let subscription = subscriptions[subscriberId] {
                     subscription.onData(data)
                 }
+            }
+        }
+
+        /// Restarts the failed FIFO reader without replacing its pane context.
+        /// On success, active subscribers cross the existing snapshot boundary;
+        /// panes without subscribers simply return to scan-only monitoring.
+        private func recoverReader(paneId: String, reader: PipePaneReader) async {
+            var handedOffToResync = false
+            defer {
+                readerRecoveryTasks[paneId] = nil
+                if !handedOffToResync {
+                    resyncingPaneIds.remove(paneId)
+                }
+            }
+
+            if let task = resyncTasks.removeValue(forKey: paneId) {
+                task.cancel()
+                _ = await task.value
+            }
+            pendingResyncSubscribers.removeValue(forKey: paneId)
+            resyncingPaneIds.insert(paneId)
+
+            while !Task.isCancelled, !isShuttingDown {
+                guard let context = readers[paneId], context.reader === reader else { return }
+
+                await reader.stopPipePane(
+                    controlClientManager: controlClientManager,
+                    sessionName: context.sessionName
+                )
+                guard !Task.isCancelled, !isShuttingDown else { return }
+                guard readers[paneId]?.reader === reader else { return }
+
+                do {
+                    try await reader.startPipePane(
+                        controlClientManager: controlClientManager,
+                        sessionName: context.sessionName
+                    )
+                } catch {
+                    logger.warning("Failed to restart pane reader; retrying", metadata: [
+                        "paneId": "\(paneId)",
+                        "error": "\(error)",
+                    ])
+                }
+
+                if await reader.isHealthy {
+                    guard let refreshed = readers[paneId], refreshed.reader === reader else { return }
+                    if refreshed.subscriberIds.isEmpty {
+                        logger.info("Recovered scan-only pane reader", metadata: ["paneId": "\(paneId)"])
+                        return
+                    }
+
+                    pendingResyncSubscribers[paneId, default: []].formUnion(refreshed.subscriberIds)
+                    resyncingPaneIds.insert(paneId)
+                    startResyncTaskIfNeeded(paneId: paneId, whileRecovering: true)
+                    handedOffToResync = true
+                    logger.info("Recovered pane reader and requested snapshot", metadata: [
+                        "paneId": "\(paneId)",
+                        "subscribers": "\(refreshed.subscriberIds.count)",
+                    ])
+                    return
+                }
+
+                try? await Task.sleep(for: .milliseconds(500))
             }
         }
 
@@ -967,6 +1072,13 @@
                         scrollbackLineLimit: snapshotScrollbackLineLimit
                     )
                 } catch {
+                    // A reader recovery cancels any in-flight snapshot before
+                    // restarting the FIFO. Do not turn that internal handoff
+                    // into a user-visible terminal error.
+                    if Task.isCancelled || readerRecoveryTasks[paneId] != nil {
+                        await context.reader.setBuffering(false)
+                        return
+                    }
                     let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
                     await context.reader.setBuffering(false)
                     for subscriptionId in targets {
