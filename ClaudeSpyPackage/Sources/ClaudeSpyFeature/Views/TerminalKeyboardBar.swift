@@ -4,39 +4,76 @@
 
     /// A dedicated terminal-input control that stays outside terminal content.
     struct TerminalKeyboardBar: View {
-        let keyboardVisible: Bool
+        let keyboardRequested: Bool
         let isEnabled: Bool
-        let bottomSafeAreaInset: CGFloat
         let action: () -> Void
-        let sendVoiceKeys: ([TmuxKey]) -> Void
-
-        private var reclaimedBottomSafeArea: CGFloat {
-            guard !keyboardVisible else { return 0 }
-            return min(max(bottomSafeAreaInset, 0) / 2, 16)
-        }
+        var contextProvider: TerminalVoiceInputContextProvider = { nil }
+        let sendKeys: ([TmuxKey]) -> Void
 
         var body: some View {
             HStack(spacing: 6) {
                 Button(action: action) {
                     Label(
-                        keyboardVisible ? "Hide Keyboard" : "Input",
-                        symbol: keyboardVisible ? .keyboardChevronCompactDown : .keyboard
+                        "Keyboard",
+                        symbol: keyboardRequested ? .keyboardChevronCompactDown : .keyboard
                     )
-                    .font(.caption.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 18)
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity)
+                    .terminalInputControlStyle()
+                    .contentShape(Capsule())
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-                .controlSize(.mini)
+                .buttonStyle(.plain)
                 .disabled(!isEnabled)
+                .opacity(isEnabled ? 1 : 0.4)
+                .accessibilityLabel(keyboardRequested ? "Hide Keyboard" : "Show Keyboard")
                 .accessibilityIdentifier("terminal-keyboard-control")
 
                 TerminalVoiceInputButton(
                     isDisabled: !isEnabled,
                     showsLabel: true,
-                    sendKeys: sendVoiceKeys
+                    contextProvider: contextProvider,
+                    sendKeys: sendKeys
                 )
+
+                RepeatingTerminalKeyButton(
+                    title: "←",
+                    key: .left,
+                    accessibilityLabel: "Move Left",
+                    accessibilityIdentifier: "terminal-left-control",
+                    isEnabled: isEnabled,
+                    sendKeys: sendKeys
+                )
+
+                RepeatingTerminalKeyButton(
+                    title: "→",
+                    key: .right,
+                    accessibilityLabel: "Move Right",
+                    accessibilityIdentifier: "terminal-right-control",
+                    isEnabled: isEnabled,
+                    sendKeys: sendKeys
+                )
+
+                RepeatingTerminalKeyButton(
+                    title: "⌫",
+                    key: .backspace,
+                    accessibilityLabel: "Delete",
+                    accessibilityIdentifier: "terminal-delete-control",
+                    isEnabled: isEnabled,
+                    sendKeys: sendKeys
+                )
+
+                Button(action: sendReturn) {
+                    HStack(spacing: 4) {
+                        Text("↵")
+                        Text("Send")
+                    }
+                    .terminalInputControlStyle()
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(!isEnabled)
+                .opacity(isEnabled ? 1 : 0.4)
+                .accessibilityLabel("Send Return")
+                .accessibilityIdentifier("terminal-return-control")
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
@@ -44,10 +81,39 @@
             .overlay(alignment: .top) {
                 Divider()
             }
-            // Keep enough room for the Home Indicator while reclaiming part of
-            // the otherwise empty safe area. A home-button device reports zero,
-            // and the keyboard path never overlaps its own safe area.
-            .padding(.bottom, -reclaimedBottomSafeArea)
+        }
+
+        private func sendReturn() {
+            sendKeys([.enter])
+        }
+    }
+
+    private struct RepeatingTerminalKeyButton: View {
+        let title: String
+        let key: TmuxKey
+        let accessibilityLabel: String
+        let accessibilityIdentifier: String
+        let isEnabled: Bool
+        let sendKeys: ([TmuxKey]) -> Void
+
+        var body: some View {
+            Button(action: sendKey) {
+                Text(title)
+                    .frame(minWidth: 20)
+                    .terminalInputControlStyle()
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .buttonRepeatBehavior(.enabled)
+            .disabled(!isEnabled)
+            .opacity(isEnabled ? 1 : 0.4)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Press and hold to repeat")
+            .accessibilityIdentifier(accessibilityIdentifier)
+        }
+
+        private func sendKey() {
+            sendKeys([key])
         }
     }
 #endif

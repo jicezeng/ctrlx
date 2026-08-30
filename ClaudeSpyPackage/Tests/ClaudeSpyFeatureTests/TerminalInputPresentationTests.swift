@@ -3,51 +3,51 @@ import Testing
 
 @Suite("Terminal input presentation")
 struct TerminalInputPresentationTests {
-    @Test("The copy sheet suppresses toolbar-controlled terminal input")
-    func copySheetSuppressesToolbarInput() {
-        #expect(TerminalInputPresentation.isInteractive(
-            showKeyboardButton: true,
-            keyboardRequested: true,
+    @Test("An active terminal keeps shortcuts available without the keyboard")
+    func activeTerminalWithoutKeyboard() {
+        #expect(TerminalInputPresentation.resolve(
+            keyboardRequested: false,
             isActive: true,
             isCopyPresented: false
-        ))
-        #expect(!TerminalInputPresentation.isInteractive(
-            showKeyboardButton: true,
-            keyboardRequested: true,
-            isActive: true,
-            isCopyPresented: true
+        ) == TerminalInputPresentation.State(
+            inputEnabled: true,
+            keyboardRequested: false
         ))
     }
 
-    @Test("The copy sheet also suppresses parent-controlled multi-pane input")
-    func copySheetSuppressesParentInput() {
-        #expect(TerminalInputPresentation.isInteractive(
-            showKeyboardButton: false,
-            keyboardRequested: false,
+    @Test("Requesting the keyboard keeps both keyboard and shortcuts available")
+    func activeTerminalWithKeyboard() {
+        #expect(TerminalInputPresentation.resolve(
+            keyboardRequested: true,
             isActive: true,
             isCopyPresented: false
+        ) == TerminalInputPresentation.State(
+            inputEnabled: true,
+            keyboardRequested: true
         ))
-        #expect(!TerminalInputPresentation.isInteractive(
-            showKeyboardButton: false,
+    }
+
+    @Test("The copy sheet suppresses all terminal input")
+    func copySheetSuppressesInput() {
+        #expect(TerminalInputPresentation.resolve(
             keyboardRequested: false,
             isActive: true,
             isCopyPresented: true
+        ) == TerminalInputPresentation.State(
+            inputEnabled: false,
+            keyboardRequested: false
         ))
     }
 
     @Test("Inactive terminals never accept input")
     func inactiveTerminal() {
-        #expect(!TerminalInputPresentation.isInteractive(
-            showKeyboardButton: true,
+        #expect(TerminalInputPresentation.resolve(
             keyboardRequested: true,
             isActive: false,
             isCopyPresented: false
-        ))
-        #expect(!TerminalInputPresentation.isInteractive(
-            showKeyboardButton: false,
-            keyboardRequested: false,
-            isActive: false,
-            isCopyPresented: false
+        ) == TerminalInputPresentation.State(
+            inputEnabled: false,
+            keyboardRequested: false
         ))
     }
 }

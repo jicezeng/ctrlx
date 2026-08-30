@@ -75,6 +75,34 @@ extension View {
     import Observation
     import Speech
 
+    typealias TerminalVoiceInputContextProvider = @MainActor () -> String?
+
+    private struct TerminalInputControlStyle: ViewModifier {
+        let isActive: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isActive ? Color.red : Color.primary)
+                .padding(.horizontal, 10)
+                .frame(minHeight: 26)
+                .background(
+                    Capsule()
+                        .fill(isActive ? Color.red.opacity(0.12) : Color.secondary.opacity(0.1))
+                )
+                .overlay {
+                    Capsule()
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                }
+        }
+    }
+
+    extension View {
+        func terminalInputControlStyle(isActive: Bool = false) -> some View {
+            modifier(TerminalInputControlStyle(isActive: isActive))
+        }
+    }
+
     private enum VoiceInputPhase: Equatable {
         case idle
         case requestingPermission
@@ -98,6 +126,7 @@ extension View {
         @ObservationIgnored private var hasAudioTap = false
         @ObservationIgnored private var activeRecognitionID: UUID?
         @ObservationIgnored private var modernSession: AnyObject?
+        @ObservationIgnored private var recognitionContext: String?
 
         var isRecording: Bool {
             phase == .recording
@@ -116,9 +145,10 @@ extension View {
             }
         }
 
-        func beginPress() {
+        func beginPress(context: String?) {
             guard !isPressActive, phase == .idle else { return }
             isPressActive = true
+            recognitionContext = VoiceInputContext.terminalExcerpt(context)
             transcript = ""
             phase = .requestingPermission
 
@@ -167,11 +197,11 @@ extension View {
             }
         }
 
-        func toggleForAccessibility() {
+        func toggleForAccessibility(context: String?) {
             if isPressActive || phase == .recording {
                 endPress()
             } else {
-                beginPress()
+                beginPress(context: context)
             }
         }
 
@@ -181,6 +211,7 @@ extension View {
             permissionTask = nil
             cancelModernSession()
             stopAudio(cancelRecognition: true)
+            recognitionContext = nil
             phase = .idle
         }
 
@@ -188,6 +219,7 @@ extension View {
             isPressActive = false
             cancelModernSession()
             stopAudio(cancelRecognition: true)
+            recognitionContext = nil
             phase = .idle
             errorMessage = message
         }
@@ -202,7 +234,7 @@ extension View {
 
         @available(iOS 26.0, *)
         private func startModernRecognition() async throws {
-            let session = SpeechAnalyzerVoiceSession(contextualTerms: Self.contextualTerms)
+            let session = SpeechAnalyzerVoiceSession(contextualTerms: VoiceInputVocabulary.terms)
             modernSession = session
 
             do {
@@ -246,7 +278,7 @@ extension View {
             request.requiresOnDeviceRecognition = true
             request.addsPunctuation = true
             request.taskHint = .dictation
-            request.contextualStrings = Self.contextualTerms
+            request.contextualStrings = VoiceInputVocabulary.terms
             recognitionRequest = request
             let recognitionID = UUID()
             activeRecognitionID = recognitionID
@@ -293,14 +325,16 @@ extension View {
         private func finishModernRecognition(_ session: SpeechAnalyzerVoiceSession) {
             phase = .finalizing
             finalizationTask?.cancel()
-            finalizationTask = Task { [weak self, session] in
+            let terminalContext = recognitionContext
+            finalizationTask = Task { [weak self, session, terminalContext] in
                 do {
-                    let completedTranscript = try await session.finish()
+                    let recognition = try await session.finish()
                     guard !Task.isCancelled, let self else { return }
                     modernSession = nil
                     let correctedTranscript = await VoiceTranscriptCorrector.correct(
-                        completedTranscript,
-                        contextualTerms: Self.contextualTerms
+                        recognition,
+                        contextualTerms: VoiceInputVocabulary.terms,
+                        terminalContext: terminalContext
                     )
                     guard !Task.isCancelled else { return }
                     completeModernRecognition(correctedTranscript)
@@ -309,12 +343,14 @@ extension View {
                     modernSession = nil
                     let fallbackTranscript = transcript
                     if fallbackTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        recognitionContext = nil
                         phase = .idle
                         errorMessage = error.localizedDescription
                     } else {
                         let correctedTranscript = await VoiceTranscriptCorrector.correct(
                             fallbackTranscript,
-                            contextualTerms: Self.contextualTerms
+                            contextualTerms: VoiceInputVocabulary.terms,
+                            terminalContext: terminalContext
                         )
                         guard !Task.isCancelled else { return }
                         completeModernRecognition(correctedTranscript)
@@ -325,6 +361,7 @@ extension View {
 
         private func completeModernRecognition(_ completedTranscript: String) {
             finalizationTask = nil
+            recognitionContext = nil
             transcript = completedTranscript
             phase = .idle
         }
@@ -381,16 +418,19 @@ extension View {
 
         private func completeRecognition(cancelRecognition: Bool) {
             let completedTranscript = transcript
+            let terminalContext = recognitionContext
             stopAudio(cancelRecognition: cancelRecognition)
             phase = .finalizing
-            finalizationTask = Task { [weak self, completedTranscript] in
+            finalizationTask = Task { [weak self, completedTranscript, terminalContext] in
                 guard let self else { return }
                 let correctedTranscript = await VoiceTranscriptCorrector.correct(
                     completedTranscript,
-                    contextualTerms: Self.contextualTerms
+                    contextualTerms: VoiceInputVocabulary.terms,
+                    terminalContext: terminalContext
                 )
                 guard !Task.isCancelled else { return }
                 finalizationTask = nil
+                recognitionContext = nil
                 transcript = correctedTranscript
                 phase = .idle
             }
@@ -453,19 +493,6 @@ extension View {
             }
         }
 
-        private static let contextualTerms = [
-            "CtrlX",
-            "Codex",
-            "Claude",
-            "Claude Code",
-            "tmux",
-            "pane",
-            "session",
-            "Swift",
-            "SwiftUI",
-            "Xcode",
-            "xcodebuild",
-        ]
     }
 
     private enum VoiceInputError: LocalizedError {
@@ -493,6 +520,7 @@ extension View {
         let isDisabled: Bool
         var showsLabel = false
         var onInputStart: (() -> Void)?
+        var contextProvider: TerminalVoiceInputContextProvider = { nil }
 
         @State private var controller = VoiceInputController()
         @State private var baseText = ""
@@ -513,7 +541,7 @@ extension View {
                     if controller.phase == .idle {
                         prepareInput()
                     }
-                    controller.toggleForAccessibility()
+                    controller.toggleForAccessibility(context: contextProvider())
                 }
                 .sensoryFeedback(.impact(weight: .light), trigger: controller.isRecording)
                 .onChange(of: controller.transcript, updateText)
@@ -569,18 +597,7 @@ extension View {
                 icon()
                 Text(controller.isRecording ? "Release" : "Voice")
             }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(controller.isRecording ? .red : .primary)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 26)
-            .background(
-                Capsule()
-                    .fill(controller.isRecording ? Color.red.opacity(0.12) : Color.secondary.opacity(0.1))
-            )
-            .overlay {
-                Capsule()
-                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-            }
+            .terminalInputControlStyle(isActive: controller.isRecording)
             .scaleEffect(controller.isRecording ? 1.04 : 1)
             .animation(.easeInOut(duration: 0.15), value: controller.isRecording)
         }
@@ -591,7 +608,7 @@ extension View {
                     guard !isGestureActive, controller.phase == .idle else { return }
                     isGestureActive = true
                     prepareInput()
-                    controller.beginPress()
+                    controller.beginPress(context: contextProvider())
                 }
                 .onEnded { _ in
                     endGesture()
@@ -633,6 +650,7 @@ extension View {
     struct TerminalVoiceInputButton: View {
         let isDisabled: Bool
         var showsLabel = false
+        var contextProvider: TerminalVoiceInputContextProvider = { nil }
         let sendKeys: ([TmuxKey]) -> Void
 
         @State private var transcript = ""
@@ -643,7 +661,8 @@ extension View {
                 text: $transcript,
                 isDisabled: isDisabled,
                 showsLabel: showsLabel,
-                onInputStart: beginInput
+                onInputStart: beginInput,
+                contextProvider: contextProvider
             )
             .onChange(of: transcript, synchronizeInput)
         }

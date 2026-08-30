@@ -46,9 +46,13 @@
         let showCopyButton: Bool
 
         /// Whether this terminal pane is the active/selected one.
-        /// When false, keyboard input is suppressed regardless of `isInteractive`.
+        /// When false, keyboard input and its shortcut bar are suppressed.
         /// Used in multi-pane layouts where only the selected pane accepts input.
         let isActive: Bool
+
+        /// Whether a parent-managed multi-pane layout wants the software keyboard.
+        /// The selected pane keeps its shortcut bar available even when this is false.
+        let parentKeyboardRequested: Bool
 
         /// Submits a structured `AgentResponse` for the open response form.
         let submitResponse: ResponseSender
@@ -57,6 +61,10 @@
         /// The parent uses this only to detect user-submitted Agent turns.
         let onTerminalInput: @MainActor ([TmuxKey]) -> Void
 
+        /// Lets a parent-owned input bar capture this pane's terminal text only
+        /// when dictation starts, without continuously mirroring terminal output.
+        let onVoiceInputContextProviderChange: @MainActor (TerminalVoiceInputContextProvider?) -> Void
+
         /// Live OTEL telemetry for this pane's session (issue #597), shown as a
         /// thin meter strip above the terminal (surface C).
         var telemetry: SessionTelemetry?
@@ -64,14 +72,8 @@
         @Environment(ViewerRelayClient.self) private var relayClient
         @State private var coordinator: StreamCoordinator
 
-        /// Whether the terminal is in interactive mode (keyboard is showing)
+        /// Whether this standalone terminal requests the software keyboard.
         @State private var isInteractive = false
-
-        /// Tracks keyboard visibility to label the bottom input control and trigger layout updates
-        @State private var keyboardVisible = false
-
-        /// Bottom system gesture inset before this view adds its keyboard bar.
-        @State private var bottomSafeAreaInset: CGFloat = 0
 
         /// Changes when the user manually retries a failed stream. Combined with
         /// `isConnected`, this gives the stream task a stable, explicit identity.
@@ -98,10 +100,14 @@
             showKeyboardButton: Bool = true,
             showCopyButton: Bool = true,
             isActive: Bool = true,
+            parentKeyboardRequested: Bool = false,
             settings: IOSSettings,
             telemetry: SessionTelemetry? = nil,
             submitResponse: @escaping ResponseSender,
-            onTerminalInput: @escaping @MainActor ([TmuxKey]) -> Void = { _ in }
+            onTerminalInput: @escaping @MainActor ([TmuxKey]) -> Void = { _ in },
+            onVoiceInputContextProviderChange: @escaping @MainActor (
+                TerminalVoiceInputContextProvider?
+            ) -> Void = { _ in }
         ) {
             self.paneId = paneId
             self._responseState = responseState
@@ -114,9 +120,11 @@
             self.settings = settings
             self.showCopyButton = showCopyButton
             self.isActive = isActive
+            self.parentKeyboardRequested = parentKeyboardRequested
             self.telemetry = telemetry
             self.submitResponse = submitResponse
             self.onTerminalInput = onTerminalInput
+            self.onVoiceInputContextProviderChange = onVoiceInputContextProviderChange
             self.coordinator = StreamCoordinator(
                 paneId: paneId,
                 fontName: settings.terminalFontName,
@@ -162,6 +170,7 @@
                                 if showKeyboardButton, settings.terminalKeyboardControlPosition == .topRight {
                                     TerminalVoiceInputButton(
                                         isDisabled: !canSendTerminalInput,
+                                        contextProvider: terminalVoiceInputContext,
                                         sendKeys: sendTerminalKeys
                                     )
                                     keyboardOverlayButton
@@ -170,19 +179,14 @@
                         }
                     }
             }
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.safeAreaInsets.bottom
-            } action: { newValue in
-                bottomSafeAreaInset = newValue
-            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if showKeyboardButton, settings.terminalKeyboardControlPosition == .bottomBar {
                     TerminalKeyboardBar(
-                        keyboardVisible: keyboardVisible,
+                        keyboardRequested: isInteractive,
                         isEnabled: isConnected && coordinator.streamState == .streaming,
-                        bottomSafeAreaInset: bottomSafeAreaInset,
                         action: { isInteractive.toggle() },
-                        sendVoiceKeys: sendTerminalKeys
+                        contextProvider: terminalVoiceInputContext,
+                        sendKeys: sendTerminalKeys
                     )
                 }
             }
@@ -197,6 +201,7 @@
                     ToolbarItem(placement: .topBarTrailing) {
                         TerminalVoiceInputButton(
                             isDisabled: !canSendTerminalInput,
+                            contextProvider: terminalVoiceInputContext,
                             sendKeys: sendTerminalKeys
                         )
                     }
@@ -206,8 +211,8 @@
                             isInteractive.toggle()
                         } label: {
                             Label(
-                                keyboardVisible ? "Hide Keyboard" : "Show Keyboard",
-                                symbol: keyboardVisible ? .keyboardChevronCompactDown : .keyboard
+                                isInteractive ? "Hide Keyboard" : "Show Keyboard",
+                                symbol: isInteractive ? .keyboardChevronCompactDown : .keyboard
                             )
                         }
                         .disabled(!isConnected || coordinator.streamState != .streaming)
@@ -225,22 +230,20 @@
             .task(id: StreamTaskID(isConnected: isConnected, retryGeneration: streamRetryGeneration)) {
                 await synchronizeStreamingWithConnection()
             }
-            .onDisappear {
-                Task { await stopStreaming() }
+            .onAppear {
+                let coordinator = coordinator
+                onVoiceInputContextProviderChange { [weak coordinator] in
+                    coordinator?.voiceInputContext()
+                }
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                keyboardVisible = true
+            .onDisappear {
+                onVoiceInputContextProviderChange(nil)
+                Task { await stopStreaming() }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
                 // The viewport is final now. One deterministic scroll replaces
                 // the old uncancelled 350 ms tasks fired by keyboardWillShow.
                 coordinator.terminalState?.scrollToBottom?()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                keyboardVisible = false
-                // Note: We intentionally don't set isInteractive = false here because keyboard
-                // switching (e.g., to SwiftTerm's secondary keyboard) briefly fires this notification.
-                // The slight state desync is preferable to breaking keyboard switching.
             }
             .onChange(of: coordinator.streamState) { _, newState in
                 if
@@ -287,14 +290,14 @@
             Button {
                 isInteractive.toggle()
             } label: {
-                (keyboardVisible ? Symbols.keyboardChevronCompactDown.image : Symbols.keyboard.image)
+                (isInteractive ? Symbols.keyboardChevronCompactDown.image : Symbols.keyboard.image)
                     .font(.system(size: 20))
                     .foregroundStyle(.white)
                     .padding(8)
                     .background(.black.opacity(0.5))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .accessibilityLabel(keyboardVisible ? "Hide Keyboard" : "Show Keyboard")
+            .accessibilityLabel(isInteractive ? "Hide Keyboard" : "Show Keyboard")
             .disabled(!isConnected || coordinator.streamState != .streaming)
             .padding(8)
         }
@@ -319,13 +322,8 @@
                 return
             }
 
-            let terminalWasInteractive = TerminalInputPresentation.isInteractive(
-                showKeyboardButton: showKeyboardButton,
-                keyboardRequested: isInteractive,
-                isActive: isActive,
-                isCopyPresented: false
-            )
-            restoresTerminalInputAfterCopy = showKeyboardButton && terminalWasInteractive
+            let presentation = terminalInputPresentation(isCopyPresented: false)
+            restoresTerminalInputAfterCopy = showKeyboardButton && presentation.keyboardRequested
             isInteractive = false
 
             // Sheet presentation does not reliably release the terminal's
@@ -339,6 +337,10 @@
                 for: nil
             )
             textSnapshot = snapshot
+        }
+
+        private func terminalVoiceInputContext() -> String? {
+            coordinator.voiceInputContext()
         }
 
         private func restoreTerminalInputAfterCopy() {
@@ -360,15 +362,13 @@
                     // A presented copy sheet always wins over both toolbar and
                     // parent-controlled input. This prevents the underlying
                     // UIKit terminal from reclaiming first responder mid-sheet.
-                    let effectiveInteractive = TerminalInputPresentation.isInteractive(
-                        showKeyboardButton: showKeyboardButton,
-                        keyboardRequested: isInteractive,
-                        isActive: isActive,
+                    let inputPresentation = terminalInputPresentation(
                         isCopyPresented: textSnapshot != nil
                     )
                     TerminalStreamContainerView(
                         terminalState: state,
-                        isInteractive: effectiveInteractive,
+                        inputEnabled: inputPresentation.inputEnabled,
+                        keyboardRequested: inputPresentation.keyboardRequested,
                         onInput: { keys in
                             sendTerminalKeys(keys)
                         },
@@ -415,6 +415,16 @@
 
         private var canSendTerminalInput: Bool {
             isConnected && coordinator.streamState == .streaming
+        }
+
+        private func terminalInputPresentation(
+            isCopyPresented: Bool
+        ) -> TerminalInputPresentation.State {
+            TerminalInputPresentation.resolve(
+                keyboardRequested: showKeyboardButton ? isInteractive : parentKeyboardRequested,
+                isActive: isActive,
+                isCopyPresented: isCopyPresented
+            )
         }
 
         private func sendTerminalKeys(_ keys: [TmuxKey]) {
@@ -610,6 +620,12 @@
         /// Cancel any in-flight key-send chain.
         func cancelPendingKeys() {
             keystrokeDebouncer?.cancelAll()
+        }
+
+        func voiceInputContext() -> String? {
+            VoiceInputContext.terminalExcerpt(
+                terminalState?.makeTextSnapshot?()?.text
+            )
         }
 
         func nextStartMode() -> TerminalStreamRecoveryPolicy.StartMode {
@@ -955,13 +971,16 @@
 
     /// UIKit container for the streaming terminal.
     ///
-    /// Uses `InteractiveTerminalView` which supports both read-only and interactive modes.
-    /// When `isInteractive` is true, the keyboard is shown and input is forwarded via `onInput`.
+    /// Uses `InteractiveTerminalView` which keeps its shortcut accessory available
+    /// independently from the software keyboard.
     private struct TerminalStreamContainerView: UIViewRepresentable {
         let terminalState: TerminalState
 
-        /// Whether the terminal accepts keyboard input
-        let isInteractive: Bool
+        /// Whether this terminal owns the input accessory and accepts input.
+        let inputEnabled: Bool
+
+        /// Whether the software keyboard should be visible below the accessory.
+        let keyboardRequested: Bool
 
         /// Callback when user types (keys are ready for relay transmission)
         let onInput: @MainActor ([TmuxKey]) -> Void
@@ -1096,7 +1115,8 @@
             // already finished, so keyboard safe-area animation cannot race it.
             context.coordinator.finishInitialPresentation(
                 scrollView: scrollView,
-                isInteractive: isInteractive
+                inputEnabled: inputEnabled,
+                keyboardRequested: keyboardRequested
             )
 
             return scrollView
@@ -1112,7 +1132,10 @@
             terminalView.onInput = onInput
             terminalView.onRawInput = onRawInput
 
-            context.coordinator.updateInteraction(isInteractive)
+            context.coordinator.updateInteraction(
+                inputEnabled: inputEnabled,
+                keyboardRequested: keyboardRequested
+            )
         }
 
         func makeCoordinator() -> Coordinator {
@@ -1128,8 +1151,11 @@
             var widthConstraint: NSLayoutConstraint?
             var heightConstraint: NSLayoutConstraint?
 
-            private var requestedInteractive = false
-            private var appliedInteractive: Bool?
+            private var requestedInputPresentation = TerminalInputPresentation.State(
+                inputEnabled: false,
+                keyboardRequested: false
+            )
+            private var appliedInputPresentation: TerminalInputPresentation.State?
             private var didFinishInitialPresentation = false
             private var initialPresentationTask: Task<Void, Never>?
 
@@ -1187,8 +1213,15 @@
                 handleResize(width: width, height: height)
             }
 
-            func finishInitialPresentation(scrollView: UIScrollView, isInteractive: Bool) {
-                requestedInteractive = isInteractive
+            func finishInitialPresentation(
+                scrollView: UIScrollView,
+                inputEnabled: Bool,
+                keyboardRequested: Bool
+            ) {
+                requestedInputPresentation = TerminalInputPresentation.State(
+                    inputEnabled: inputEnabled,
+                    keyboardRequested: keyboardRequested
+                )
                 initialPresentationTask?.cancel()
                 initialPresentationTask = Task { @MainActor [weak self, weak scrollView] in
                     await Task.yield()
@@ -1203,20 +1236,25 @@
                 }
             }
 
-            func updateInteraction(_ isInteractive: Bool) {
-                requestedInteractive = isInteractive
+            func updateInteraction(inputEnabled: Bool, keyboardRequested: Bool) {
+                requestedInputPresentation = TerminalInputPresentation.State(
+                    inputEnabled: inputEnabled,
+                    keyboardRequested: keyboardRequested
+                )
                 guard didFinishInitialPresentation else { return }
                 applyRequestedInteraction()
             }
 
             private func applyRequestedInteraction() {
-                guard appliedInteractive != requestedInteractive, let terminalView else { return }
-                appliedInteractive = requestedInteractive
-                if requestedInteractive {
-                    terminalView.activateInput()
-                } else {
-                    terminalView.deactivateInput()
-                }
+                guard
+                    appliedInputPresentation != requestedInputPresentation,
+                    let terminalView
+                else { return }
+                appliedInputPresentation = requestedInputPresentation
+                terminalView.updateInput(
+                    isEnabled: requestedInputPresentation.inputEnabled,
+                    keyboardRequested: requestedInputPresentation.keyboardRequested
+                )
             }
 
             func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {

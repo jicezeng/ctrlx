@@ -1,0 +1,121 @@
+import Foundation
+
+struct VoiceRecognitionResult: Sendable {
+    let primaryTranscript: String
+    let alternativeTranscripts: [String]
+    let liveTranscript: String
+    let diagnosticID: String
+
+    init(
+        primaryTranscript: String,
+        alternativeTranscripts: [String] = [],
+        liveTranscript: String = "",
+        diagnosticID: String = UUID().uuidString
+    ) {
+        self.primaryTranscript = primaryTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.alternativeTranscripts = Self.uniqueNonempty(
+            alternativeTranscripts,
+            excluding: self.primaryTranscript
+        )
+        self.liveTranscript = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.diagnosticID = diagnosticID
+    }
+
+    var bestAvailableTranscript: String {
+        primaryTranscript.isEmpty ? liveTranscript : primaryTranscript
+    }
+
+    private static func uniqueNonempty(_ values: [String], excluding excluded: String) -> [String] {
+        var seen = Set([excluded])
+        return values.compactMap { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { return nil }
+            return trimmed
+        }
+    }
+}
+
+/// Builds a small N-best list when Speech emits an utterance as multiple result
+/// segments. Lower-ranked alternatives are pruned eagerly so correction input
+/// stays bounded even for long dictation.
+struct VoiceRecognitionCandidateAccumulator {
+    private struct Candidate {
+        let text: String
+        let rank: Int
+        let insertionOrder: Int
+    }
+
+    private let maximumCandidateCount: Int
+    private var candidates: [Candidate] = [.init(text: "", rank: 0, insertionOrder: 0)]
+    private var nextInsertionOrder = 1
+
+    init(maximumCandidateCount: Int = 3) {
+        self.maximumCandidateCount = max(1, maximumCandidateCount)
+    }
+
+    mutating func append(primary: String, alternatives: [String]) {
+        let options = uniqueSegmentOptions(primary: primary, alternatives: alternatives)
+        guard !options.isEmpty else { return }
+
+        var combined: [Candidate] = []
+        for prefix in candidates {
+            for (optionIndex, option) in options.enumerated() {
+                combined.append(
+                    Candidate(
+                        text: prefix.text + option,
+                        rank: prefix.rank + optionIndex,
+                        insertionOrder: nextInsertionOrder
+                    )
+                )
+                nextInsertionOrder += 1
+            }
+        }
+
+        combined.sort {
+            if $0.rank != $1.rank { return $0.rank < $1.rank }
+            return $0.insertionOrder < $1.insertionOrder
+        }
+
+        var seen = Set<String>()
+        candidates = combined.filter { seen.insert($0.text).inserted }
+        if candidates.count > maximumCandidateCount {
+            candidates.removeLast(candidates.count - maximumCandidateCount)
+        }
+    }
+
+    func makeResult(liveTranscript: String, diagnosticID: String) -> VoiceRecognitionResult {
+        let transcripts = candidates
+            .map(\.text)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+        return VoiceRecognitionResult(
+            primaryTranscript: transcripts.first ?? "",
+            alternativeTranscripts: Array(transcripts.dropFirst()),
+            liveTranscript: liveTranscript,
+            diagnosticID: diagnosticID
+        )
+    }
+
+    private func uniqueSegmentOptions(primary: String, alternatives: [String]) -> [String] {
+        var seen = Set<String>()
+        return ([primary] + alternatives).filter { option in
+            !option.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && seen.insert(option).inserted
+        }
+    }
+}
+
+enum VoiceInputContext {
+    static let maximumTerminalCharacterCount = 800
+
+    static func terminalExcerpt(
+        _ text: String?,
+        maximumCount: Int = maximumTerminalCharacterCount
+    ) -> String? {
+        guard maximumCount > 0 else { return nil }
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.count > maximumCount else { return trimmed }
+        return "…" + trimmed.suffix(maximumCount)
+    }
+}

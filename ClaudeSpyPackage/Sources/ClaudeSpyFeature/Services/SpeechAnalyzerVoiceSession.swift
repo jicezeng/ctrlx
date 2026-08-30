@@ -10,25 +10,31 @@
 
         private let audioEngine = AVAudioEngine()
         private let contextualTerms: [String]
+        private let diagnosticID = UUID().uuidString
 
         private var analyzer: SpeechAnalyzer?
         private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
-        private var resultTasks: [Task<Void, Never>] = []
-        private var liveResultError: Error?
-        private var finalResultError: Error?
-        private var liveTranscriptState = VoiceInputTranscriptState()
-        private var finalTranscriptState = VoiceInputTranscriptState()
+        private var resultTask: Task<Void, Never>?
+        private var resultError: Error?
+        private var transcriptState = VoiceInputTranscriptState()
         private var stableTranscriptState = VoiceInputStableTranscriptState()
         private var isFinishing = false
         private var hasAudioTap = false
+        private var audioRecorder: VoiceAudioRecorder?
 
         init(contextualTerms: [String]) {
             self.contextualTerms = contextualTerms
         }
 
         func start(onUpdate: @escaping UpdateHandler) async throws {
-            let transcribers = try await ModernSpeechTranscribers.preferred(for: preferredLocale)
-            let modules = transcribers.modules
+            let transcriber = try await ModernSpeechTranscriber.preferred(for: preferredLocale)
+            let modules = [transcriber.module]
+            VoiceInputDiagnostics.recognizer(
+                transcriber.diagnosticName,
+                stage: "live",
+                locale: transcriber.selectedLocale,
+                id: diagnosticID
+            )
 
             if let installationRequest = try await AssetInventory.assetInstallationRequest(
                 supporting: modules
@@ -55,10 +61,7 @@
             let (inputSequence, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
             self.analyzer = analyzer
             self.inputContinuation = inputContinuation
-            resultTasks = [
-                makeResultTask(for: transcribers.live, role: .live, onUpdate: onUpdate),
-                makeResultTask(for: transcribers.final, role: .final, onUpdate: onUpdate),
-            ]
+            resultTask = makeResultTask(for: transcriber, onUpdate: onUpdate)
 
             do {
                 try await analyzer.start(inputSequence: inputSequence)
@@ -72,9 +75,10 @@
             }
         }
 
-        func finish() async throws -> String {
+        func finish() async throws -> VoiceRecognitionResult {
             isFinishing = true
             stopAudioInput()
+            let recordingURL = audioRecorder?.finish()
             inputContinuation?.finish()
             inputContinuation = nil
 
@@ -82,24 +86,43 @@
                 if let analyzer {
                     try await analyzer.finalizeAndFinishThroughEndOfInput()
                 }
-                for resultTask in resultTasks {
+                if let resultTask {
                     await resultTask.value
                 }
 
-                let accurateText = finalTranscriptState.text
-                let liveText = liveTranscriptState.text
-                let completedText = accurateText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? liveText
-                    : accurateText
+                let liveText = transcriptState.text
+                let liveResultError = resultError
+                analyzer = nil
+                resultTask = nil
+                resultError = nil
 
-                if completedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   let resultError = finalResultError ?? liveResultError
+                var recognitionResult = VoiceRecognitionResult(
+                    primaryTranscript: "",
+                    liveTranscript: liveText,
+                    diagnosticID: diagnosticID
+                )
+                var accurateResultError: Error?
+                if let recordingURL {
+                    do {
+                        recognitionResult = try await transcribeRecordedAudio(
+                            at: recordingURL,
+                            liveTranscript: liveText
+                        )
+                    } catch {
+                        accurateResultError = error
+                        VoiceInputDiagnostics.recognitionFallback(error: error, id: diagnosticID)
+                    }
+                }
+
+                if recognitionResult.bestAvailableTranscript.isEmpty,
+                   let resultError = accurateResultError ?? liveResultError
                 {
                     throw resultError
                 }
 
+                VoiceInputDiagnostics.recognitionResult(recognitionResult)
                 cleanup()
-                return completedText
+                return recognitionResult
             } catch {
                 await cancel()
                 throw error
@@ -111,7 +134,7 @@
             inputContinuation?.finish()
             inputContinuation = nil
             await analyzer?.cancelAndFinishNow()
-            resultTasks.forEach { $0.cancel() }
+            resultTask?.cancel()
             cleanup()
         }
 
@@ -122,7 +145,6 @@
 
         private func makeResultTask(
             for transcriber: ModernSpeechTranscriber,
-            role: ModernSpeechResultRole,
             onUpdate: @escaping UpdateHandler
         ) -> Task<Void, Never> {
             switch transcriber {
@@ -133,13 +155,12 @@
                             self?.receive(
                                 text: String(result.text.characters),
                                 isFinal: result.isFinal,
-                                role: role,
                                 onUpdate: onUpdate
                             )
                         }
                     } catch is CancellationError {
                     } catch {
-                        self?.store(error, for: role)
+                        self?.resultError = error
                     }
                 }
 
@@ -150,13 +171,12 @@
                             self?.receive(
                                 text: String(result.text.characters),
                                 isFinal: result.isFinal,
-                                role: role,
                                 onUpdate: onUpdate
                             )
                         }
                     } catch is CancellationError {
                     } catch {
-                        self?.store(error, for: role)
+                        self?.resultError = error
                     }
                 }
             }
@@ -165,26 +185,11 @@
         private func receive(
             text: String,
             isFinal: Bool,
-            role: ModernSpeechResultRole,
             onUpdate: UpdateHandler
         ) {
-            switch role {
-            case .live:
-                let candidate = liveTranscriptState.receive(text, isFinal: isFinal)
-                guard !isFinishing else { return }
-                onUpdate(stableTranscriptState.receive(candidate))
-            case .final:
-                finalTranscriptState.receive(text, isFinal: isFinal)
-            }
-        }
-
-        private func store(_ error: Error, for role: ModernSpeechResultRole) {
-            switch role {
-            case .live:
-                liveResultError = error
-            case .final:
-                finalResultError = error
-            }
+            let candidate = transcriptState.receive(text, isFinal: isFinal)
+            guard !isFinishing else { return }
+            onUpdate(stableTranscriptState.receive(candidate))
         }
 
         private func startAudioInput(
@@ -192,7 +197,7 @@
             inputContinuation: AsyncStream<AnalyzerInput>.Continuation
         ) throws {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try audioSession.setCategory(.playAndRecord, mode: .spokenAudio, options: .duckOthers)
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
             let inputNode = audioEngine.inputNode
@@ -206,12 +211,15 @@
             ) else {
                 throw SpeechAnalyzerVoiceSessionError.audioConverterUnavailable
             }
+            let audioRecorder = try VoiceAudioRecorder(format: inputFormat)
+            self.audioRecorder = audioRecorder
 
             inputNode.installTap(
                 onBus: 0,
-                bufferSize: 4_096,
+                bufferSize: 1_024,
                 format: inputFormat
             ) { @Sendable buffer, _ in
+                audioRecorder.append(buffer)
                 guard let convertedBuffer = converter.convert(buffer) else { return }
                 inputContinuation.yield(AnalyzerInput(buffer: convertedBuffer))
             }
@@ -235,33 +243,71 @@
             )
         }
 
+        private func transcribeRecordedAudio(
+            at url: URL,
+            liveTranscript: String
+        ) async throws -> VoiceRecognitionResult {
+            let transcriber = try await ModernSpeechTranscriber.accurate(for: preferredLocale)
+            let modules = [transcriber.module]
+            VoiceInputDiagnostics.recognizer(
+                transcriber.diagnosticName,
+                stage: "final",
+                locale: transcriber.selectedLocale,
+                id: diagnosticID
+            )
+
+            if let installationRequest = try await AssetInventory.assetInstallationRequest(
+                supporting: modules
+            ) {
+                try await installationRequest.downloadAndInstall()
+            }
+
+            let options = SpeechAnalyzer.Options(
+                priority: .userInitiated,
+                modelRetention: .lingering
+            )
+            let analyzer = SpeechAnalyzer(modules: modules, options: options)
+            let context = AnalysisContext()
+            context.contextualStrings[.general] = contextualTerms
+            try await analyzer.setContext(context)
+
+            let audioFile = try AVAudioFile(forReading: url)
+            let resultTask = Task {
+                try await transcriber.collectedResult(
+                    liveTranscript: liveTranscript,
+                    diagnosticID: diagnosticID
+                )
+            }
+
+            do {
+                if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
+                    try await analyzer.finalizeAndFinish(through: lastSample)
+                } else {
+                    await analyzer.cancelAndFinishNow()
+                }
+                return try await resultTask.value
+            } catch {
+                resultTask.cancel()
+                await analyzer.cancelAndFinishNow()
+                _ = try? await resultTask.value
+                throw error
+            }
+        }
+
         private func cleanup() {
+            audioRecorder?.discard()
+            audioRecorder = nil
             analyzer = nil
-            resultTasks = []
-            liveResultError = nil
-            finalResultError = nil
-            liveTranscriptState.reset()
-            finalTranscriptState.reset()
+            resultTask = nil
+            resultError = nil
+            transcriptState.reset()
             stableTranscriptState.reset()
             isFinishing = false
         }
     }
 
     @available(iOS 26.0, *)
-    private enum ModernSpeechResultRole {
-        case live
-        case final
-    }
-
-    @available(iOS 26.0, *)
-    private struct ModernSpeechTranscribers {
-        let live: ModernSpeechTranscriber
-        let final: ModernSpeechTranscriber
-
-        var modules: [any SpeechModule] {
-            [live.module, final.module]
-        }
-
+    private extension ModernSpeechTranscriber {
         static func preferred(for locale: Locale) async throws -> Self {
             let speechLocale: Locale?
             if SpeechTranscriber.isAvailable {
@@ -271,53 +317,80 @@
             }
             let dictationLocale = await DictationTranscriber.supportedLocale(equivalentTo: locale)
 
-            if let dictationLocale {
-                let live: ModernSpeechTranscriber
-                if let speechLocale {
-                    live = .speech(
-                        SpeechTranscriber(
-                            locale: speechLocale,
-                            preset: .progressiveTranscription
-                        )
-                    )
-                } else {
-                    live = .dictation(
-                        DictationTranscriber(
-                            locale: dictationLocale,
-                            preset: .progressiveLongDictation
-                        )
-                    )
-                }
-
-                return Self(
-                    live: live,
-                    final: .dictation(
-                        DictationTranscriber(
-                            locale: dictationLocale,
-                            preset: .longDictation
-                        )
+            if let speechLocale {
+                return .speech(
+                    SpeechTranscriber(
+                        locale: speechLocale,
+                        preset: .progressiveTranscription
                     )
                 )
             }
 
-            if let speechLocale {
-                return Self(
-                    live: .speech(
-                        SpeechTranscriber(
-                            locale: speechLocale,
-                            preset: .progressiveTranscription
-                        )
-                    ),
-                    final: .speech(
-                        SpeechTranscriber(
-                            locale: speechLocale,
-                            preset: .transcriptionWithAlternatives
-                        )
+            if let dictationLocale {
+                return .dictation(
+                    DictationTranscriber(
+                        locale: dictationLocale,
+                        preset: .progressiveLongDictation
                     )
                 )
             }
 
             throw SpeechAnalyzerVoiceSessionError.unsupportedLanguage
+        }
+
+        static func accurate(for locale: Locale) async throws -> Self {
+            if SpeechTranscriber.isAvailable,
+               let speechLocale = await SpeechTranscriber.supportedLocale(equivalentTo: locale)
+            {
+                return .speech(
+                    SpeechTranscriber(
+                        locale: speechLocale,
+                        preset: .transcriptionWithAlternatives
+                    )
+                )
+            }
+
+            if let dictationLocale = await DictationTranscriber.supportedLocale(equivalentTo: locale) {
+                var preset = DictationTranscriber.Preset.longDictation
+                preset.reportingOptions.insert(.alternativeTranscriptions)
+                return .dictation(
+                    DictationTranscriber(
+                        locale: dictationLocale,
+                        preset: preset
+                    )
+                )
+            }
+
+            throw SpeechAnalyzerVoiceSessionError.unsupportedLanguage
+        }
+
+        func collectedResult(
+            liveTranscript: String,
+            diagnosticID: String
+        ) async throws -> VoiceRecognitionResult {
+            var accumulator = VoiceRecognitionCandidateAccumulator()
+
+            switch self {
+            case let .speech(transcriber):
+                for try await result in transcriber.results {
+                    accumulator.append(
+                        primary: String(result.text.characters),
+                        alternatives: result.alternatives.map { String($0.characters) }
+                    )
+                }
+            case let .dictation(transcriber):
+                for try await result in transcriber.results {
+                    accumulator.append(
+                        primary: String(result.text.characters),
+                        alternatives: result.alternatives.map { String($0.characters) }
+                    )
+                }
+            }
+
+            return accumulator.makeResult(
+                liveTranscript: liveTranscript,
+                diagnosticID: diagnosticID
+            )
         }
     }
 
@@ -332,6 +405,24 @@
                 transcriber
             case let .dictation(transcriber):
                 transcriber
+            }
+        }
+
+        var diagnosticName: String {
+            switch self {
+            case .speech:
+                "SpeechTranscriber"
+            case .dictation:
+                "DictationTranscriber"
+            }
+        }
+
+        var selectedLocale: Locale {
+            switch self {
+            case let .speech(transcriber):
+                transcriber.selectedLocales.first ?? .current
+            case let .dictation(transcriber):
+                transcriber.selectedLocales.first ?? .current
             }
         }
     }
@@ -393,6 +484,47 @@
 
                 return outputBuffer
             }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private final class VoiceAudioRecorder: @unchecked Sendable {
+        private let url: URL
+        private let lock = NSLock()
+        private var audioFile: AVAudioFile?
+        private var hasFailed = false
+
+        init(format: AVAudioFormat) throws {
+            url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ctrlx-voice-\(UUID().uuidString).caf")
+            audioFile = try AVAudioFile(forWriting: url, settings: format.settings)
+        }
+
+        func append(_ buffer: AVAudioPCMBuffer) {
+            lock.withLock {
+                guard let audioFile, !hasFailed else { return }
+                do {
+                    try audioFile.write(from: buffer)
+                } catch {
+                    hasFailed = true
+                    self.audioFile = nil
+                }
+            }
+        }
+
+        func finish() -> URL? {
+            lock.withLock {
+                audioFile = nil
+                return hasFailed ? nil : url
+            }
+        }
+
+        func discard() {
+            let url = lock.withLock {
+                audioFile = nil
+                return self.url
+            }
+            try? FileManager.default.removeItem(at: url)
         }
     }
 

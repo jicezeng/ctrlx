@@ -1,6 +1,21 @@
 @testable import ClaudeSpyFeature
 import Testing
 
+@Suite("Voice input vocabulary")
+struct VoiceInputVocabularyTests {
+    @Test("Contains common mixed-language product terms")
+    func productTerms() {
+        #expect(VoiceInputVocabulary.terms.contains("iPhone Air"))
+        #expect(VoiceInputVocabulary.terms.contains("Claude Code"))
+        #expect(VoiceInputVocabulary.terms.contains("CtrlX"))
+    }
+
+    @Test("Does not contain duplicate terms")
+    func uniqueTerms() {
+        #expect(Set(VoiceInputVocabulary.terms).count == VoiceInputVocabulary.terms.count)
+    }
+}
+
 @Suite("Voice input text composer")
 struct VoiceInputTextComposerTests {
     @Test("Uses the transcript for an empty draft")
@@ -89,6 +104,66 @@ struct VoiceInputStableTranscriptStateTests {
 
         #expect(state.receive("next") == "next")
         #expect(state.receive("next phrase") == "next phrase")
+    }
+}
+
+@Suite("Voice recognition candidates")
+struct VoiceRecognitionCandidateAccumulatorTests {
+    @Test("Combines segmented alternatives while keeping the primary first")
+    func combinesSegments() {
+        var accumulator = VoiceRecognitionCandidateAccumulator(maximumCandidateCount: 5)
+        accumulator.append(primary: "安装到", alternatives: ["安转到"])
+        accumulator.append(primary: "iPhone Air", alternatives: ["iPhoner"])
+
+        let result = accumulator.makeResult(
+            liveTranscript: "安装到iPhoner",
+            diagnosticID: "test"
+        )
+
+        #expect(result.primaryTranscript == "安装到iPhone Air")
+        #expect(result.alternativeTranscripts.contains("安转到iPhone Air"))
+        #expect(result.alternativeTranscripts.contains("安装到iPhoner"))
+        #expect(result.liveTranscript == "安装到iPhoner")
+    }
+
+    @Test("Drops duplicate and empty alternatives")
+    func uniqueAlternatives() {
+        var accumulator = VoiceRecognitionCandidateAccumulator()
+        accumulator.append(
+            primary: "CtrlX",
+            alternatives: ["CtrlX", "", "control X", "control X"]
+        )
+
+        let result = accumulator.makeResult(liveTranscript: "", diagnosticID: "test")
+
+        #expect(result.primaryTranscript == "CtrlX")
+        #expect(result.alternativeTranscripts == ["control X"])
+    }
+
+    @Test("Uses the live transcript when accurate recognition is empty")
+    func liveFallback() {
+        let result = VoiceRecognitionCandidateAccumulator().makeResult(
+            liveTranscript: "继续安装",
+            diagnosticID: "test"
+        )
+
+        #expect(result.bestAvailableTranscript == "继续安装")
+    }
+}
+
+@Suite("Voice input context")
+struct VoiceInputContextTests {
+    @Test("Keeps only the most recent terminal context")
+    func terminalSuffix() {
+        #expect(
+            VoiceInputContext.terminalExcerpt("0123456789", maximumCount: 4)
+                == "…6789"
+        )
+    }
+
+    @Test("Ignores blank terminal context")
+    func blankContext() {
+        #expect(VoiceInputContext.terminalExcerpt(" \n ") == nil)
     }
 }
 

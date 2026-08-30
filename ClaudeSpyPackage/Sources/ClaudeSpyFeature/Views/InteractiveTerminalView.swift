@@ -40,8 +40,23 @@
 
         /// Controls whether the terminal can accept keyboard input.
         /// When false, tapping the terminal won't show the keyboard.
-        /// Use `activateInput()` and `deactivateInput()` to control this.
+        /// Use `updateInput(isEnabled:keyboardRequested:)` to control this.
         var inputEnabled = false
+
+        /// A transparent input view hides the software keyboard while keeping
+        /// UIKit's input accessory (Esc/Ctrl/Tab/arrows) attached to the responder.
+        /// Matching the accessory's height leaves one shortcut-row of breathing
+        /// room below the controls instead of pinning them to the screen edge.
+        private lazy var hiddenKeyboardView: UIView = {
+            let accessoryHeight = inputAccessoryView?.bounds.height
+                ?? (UIDevice.current.userInterfaceIdiom == .phone ? 36 : 48)
+            let view = UIView(
+                frame: CGRect(x: 0, y: 0, width: 0, height: accessoryHeight)
+            )
+            view.backgroundColor = .clear
+            return view
+        }()
+        private var keyboardRequested = false
 
         /// UIKit keyboard/IME state belongs to a native shadow editor. The
         /// terminal remains the renderer and byte encoder; the editor retains
@@ -201,20 +216,31 @@
 
         // MARK: - Focus Management
 
-        /// Call to enable input and show the keyboard
-        func activateInput() {
+        /// Keeps the shortcut accessory available for the active terminal while
+        /// independently showing or hiding the software keyboard.
+        func updateInput(isEnabled: Bool, keyboardRequested: Bool) {
+            guard isEnabled else {
+                inputEnabled = false
+                inputProxy.inputEnabled = false
+                if inputProxy.isFirstResponder {
+                    _ = inputProxy.resignFirstResponder()
+                }
+                return
+            }
+
+            let keyboardRequestChanged = self.keyboardRequested != keyboardRequested
+            self.keyboardRequested = keyboardRequested
+            inputView = keyboardRequested ? nil : hiddenKeyboardView
             inputEnabled = true
             inputProxy.inputEnabled = true
-            guard !inputProxy.isFirstResponder else { return }
-            _ = inputProxy.becomeFirstResponder()
-        }
 
-        /// Call to hide the keyboard and disable input
-        func deactivateInput() {
-            inputEnabled = false
-            inputProxy.inputEnabled = false
-            guard inputProxy.isFirstResponder else { return }
-            _ = inputProxy.resignFirstResponder()
+            if inputProxy.isFirstResponder {
+                if keyboardRequestChanged {
+                    inputProxy.reloadInputViews()
+                }
+            } else {
+                _ = inputProxy.becomeFirstResponder()
+            }
         }
 
         // MARK: - URL Detection

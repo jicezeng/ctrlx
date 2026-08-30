@@ -25,18 +25,14 @@
         /// The currently selected pane (receives keyboard input)
         @State private var activePaneId: String?
 
-        /// Whether keyboard input is active on the selected pane
+        /// Whether the software keyboard is requested for the selected pane.
+        /// Terminal shortcuts remain available when this is false.
         @State private var isKeyboardActive: Bool
-
-        /// Tracks keyboard visibility for the bottom input control
-        @State private var keyboardVisible = false
 
         /// Ordered sender for partial speech-recognition edits to the selected pane.
         @State private var voiceKeystrokeDebouncer: KeystrokeDebouncer?
         @State private var voiceKeystrokePaneId: String?
-
-        /// Bottom system gesture inset before this view adds its keyboard bar.
-        @State private var bottomSafeAreaInset: CGFloat = 0
+        @State private var voiceInputContextProviders: [String: TerminalVoiceInputContextProvider] = [:]
 
         /// Service for the active pane's Claude session (nil if no session)
         @State private var activeService: SessionDetailService?
@@ -162,19 +158,14 @@
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
                 barWidth = newWidth
             }
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.safeAreaInsets.bottom
-            } action: { newValue in
-                bottomSafeAreaInset = newValue
-            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if window != nil, settings.terminalKeyboardControlPosition == .bottomBar {
                     TerminalKeyboardBar(
-                        keyboardVisible: keyboardVisible,
+                        keyboardRequested: isKeyboardActive,
                         isEnabled: relayClient.isHostConnected && activePaneId != nil,
-                        bottomSafeAreaInset: bottomSafeAreaInset,
                         action: { isKeyboardActive.toggle() },
-                        sendVoiceKeys: sendVoiceKeys
+                        contextProvider: activeVoiceInputContext,
+                        sendKeys: sendVoiceKeys
                     )
                 }
             }
@@ -269,6 +260,7 @@
                     ToolbarItem(placement: .topBarTrailing) {
                         TerminalVoiceInputButton(
                             isDisabled: !relayClient.isHostConnected || activePaneId == nil,
+                            contextProvider: activeVoiceInputContext,
                             sendKeys: sendVoiceKeys
                         )
                     }
@@ -278,8 +270,8 @@
                             isKeyboardActive.toggle()
                         } label: {
                             Label(
-                                keyboardVisible ? "Hide Keyboard" : "Show Keyboard",
-                                symbol: keyboardVisible ? .keyboardChevronCompactDown : .keyboard
+                                isKeyboardActive ? "Hide Keyboard" : "Show Keyboard",
+                                symbol: isKeyboardActive ? .keyboardChevronCompactDown : .keyboard
                             )
                         }
                         .disabled(!relayClient.isHostConnected || activePaneId == nil)
@@ -323,12 +315,6 @@
                         }
                     }
                 }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                keyboardVisible = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                keyboardVisible = false
             }
             .alert(
                 closeConfirmation?.title ?? "Close?",
@@ -621,7 +607,8 @@
                 hideNavigationBar: false,
                 showKeyboardButton: false,
                 showCopyButton: pane.paneId == activePaneId,
-                isActive: pane.paneId == activePaneId && isKeyboardActive,
+                isActive: pane.paneId == activePaneId,
+                parentKeyboardRequested: isKeyboardActive,
                 settings: settings,
                 telemetry: pane.telemetry,
                 // Tiled panes pass `responseState: .constant(nil)`, so no response
@@ -633,6 +620,13 @@
                         paneId: pane.paneId,
                         windowName: windowName
                     )
+                },
+                onVoiceInputContextProviderChange: { provider in
+                    if let provider {
+                        voiceInputContextProviders[pane.paneId] = provider
+                    } else {
+                        voiceInputContextProviders.removeValue(forKey: pane.paneId)
+                    }
                 }
             )
             .environment(relayClient)
@@ -817,6 +811,32 @@
                 paneId: activePaneId,
                 windowName: window?.windowName ?? ""
             )
+        }
+
+        private func activeVoiceInputContext() -> String? {
+            guard let activePaneId else { return nil }
+
+            var sections: [String] = []
+            if let terminalText = voiceInputContextProviders[activePaneId]?(),
+               let excerpt = VoiceInputContext.terminalExcerpt(terminalText, maximumCount: 1_200)
+            {
+                sections.append("Recent terminal text:\n\(excerpt)")
+            }
+
+            if let pane = window?.panes.first(where: { $0.paneId == activePaneId }) {
+                sections.append("Session: \(sessionName)")
+                if !pane.windowName.isEmpty {
+                    sections.append("Window: \(pane.windowName)")
+                }
+                if let command = pane.command, !command.isEmpty {
+                    sections.append("Running command: \(command)")
+                }
+                if let currentPath = pane.currentPath, !currentPath.isEmpty {
+                    sections.append("Current path: \(currentPath)")
+                }
+            }
+
+            return sections.isEmpty ? nil : sections.joined(separator: "\n")
         }
 
         // MARK: - Close Window/Session

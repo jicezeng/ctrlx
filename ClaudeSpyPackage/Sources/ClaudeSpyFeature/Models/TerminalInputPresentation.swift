@@ -1,11 +1,17 @@
 enum TerminalInputPresentation {
-    static func isInteractive(
-        showKeyboardButton: Bool,
+    struct State: Equatable {
+        let inputEnabled: Bool
+        let keyboardRequested: Bool
+    }
+
+    static func resolve(
         keyboardRequested: Bool,
         isActive: Bool,
         isCopyPresented: Bool
-    ) -> Bool {
-        guard isActive, !isCopyPresented else { return false }
-        return showKeyboardButton ? keyboardRequested : true
+    ) -> State {
+        guard isActive, !isCopyPresented else {
+            return State(inputEnabled: false, keyboardRequested: false)
+        }
+        return State(inputEnabled: true, keyboardRequested: keyboardRequested)
     }
 }
