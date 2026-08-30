@@ -2225,49 +2225,49 @@ public struct MainView: View {
         // Cancel any pending debounced resize
         autoResizeTask?.cancel()
 
-        // Capture current selection before the debounce sleep to avoid racing with window switches
-        let currentWindow = selectedWindow
-        let currentRemote = selectedRemoteSession
-        let rightWindow = rightPaneTerminalWindow()
-
         autoResizeTask = Task {
             // Debounce: wait for layout to stabilize (especially during session switches)
             try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
+            guard
+                !Task.isCancelled,
+                selectedRemoteSession == nil,
+                let selectedWindowId = selectedWindow?.stableId,
+                let window = tmuxService.windows.first(where: { $0.stableId == selectedWindowId }),
+                let activePane = window.activePane
+            else { return }
 
-            if let window = currentWindow, let activePane = window.activePane, currentRemote == nil {
-                let widthOverride = effectiveTerminalWidth(for: window)
-                let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
-                let cached = lastAutoResizeDimensions[activePane.paneId]
-                if cached?.columns != dimensions.columns || cached?.rows != dimensions.rows {
-                    if
-                        isAutoResizeActive(for: activePane.paneId),
-                        !tmuxService.attachedSessionNames.contains(window.sessionName) {
-                        await performResize(
-                            localWindowTarget: window.stableId,
-                            localPaneId: activePane.paneId,
-                            widthOverride: widthOverride
-                        )
-                    }
+            let widthOverride = effectiveTerminalWidth(for: window)
+            let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
+            let cached = lastAutoResizeDimensions[activePane.paneId]
+            if cached?.columns != dimensions.columns || cached?.rows != dimensions.rows {
+                if
+                    isAutoResizeActive(for: activePane.paneId),
+                    !tmuxService.attachedSessionNames.contains(window.sessionName) {
+                    await performResize(
+                        localWindowTarget: window.stableId,
+                        localPaneId: activePane.paneId,
+                        widthOverride: widthOverride,
+                        reportsFailure: false
+                    )
                 }
+            }
 
-                // Right-pane terminal (split mode): a different tmux window can
-                // live on the right side. Resize it to fit the right half so
-                // each terminal matches its rendered area.
-                if let rightWindow, let rightPane = rightWindow.activePane {
-                    let rightWidth = effectiveTerminalWidth(for: rightWindow)
-                    let rightDimensions = calculateOptimalTerminalDimensions(widthOverride: rightWidth)
-                    let rightCached = lastAutoResizeDimensions[rightPane.paneId]
-                    if rightCached?.columns != rightDimensions.columns || rightCached?.rows != rightDimensions.rows {
-                        if
-                            isAutoResizeActive(for: rightPane.paneId),
-                            !tmuxService.attachedSessionNames.contains(rightWindow.sessionName) {
-                            await performResize(
-                                localWindowTarget: rightWindow.stableId,
-                                localPaneId: rightPane.paneId,
-                                widthOverride: rightWidth
-                            )
-                        }
+            // Resolve the right pane after resizing the left: the selection can
+            // change while the tmux command is suspended.
+            if let rightWindow = rightPaneTerminalWindow(), let rightPane = rightWindow.activePane {
+                let rightWidth = effectiveTerminalWidth(for: rightWindow)
+                let rightDimensions = calculateOptimalTerminalDimensions(widthOverride: rightWidth)
+                let rightCached = lastAutoResizeDimensions[rightPane.paneId]
+                if rightCached?.columns != rightDimensions.columns || rightCached?.rows != rightDimensions.rows {
+                    if
+                        isAutoResizeActive(for: rightPane.paneId),
+                        !tmuxService.attachedSessionNames.contains(rightWindow.sessionName) {
+                        await performResize(
+                            localWindowTarget: rightWindow.stableId,
+                            localPaneId: rightPane.paneId,
+                            widthOverride: rightWidth,
+                            reportsFailure: false
+                        )
                     }
                 }
             }
@@ -2294,7 +2294,8 @@ public struct MainView: View {
     private func performResize(
         localWindowTarget: String,
         localPaneId: String,
-        widthOverride: CGFloat? = nil
+        widthOverride: CGFloat? = nil,
+        reportsFailure: Bool = true
     ) async {
         let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
 
@@ -2302,7 +2303,9 @@ public struct MainView: View {
             try await tmuxService.resizePane(localWindowTarget, width: dimensions.columns, height: dimensions.rows)
             lastAutoResizeDimensions[localPaneId] = dimensions
         } catch {
-            attachError = "Failed to resize: \(error.localizedDescription)"
+            if reportsFailure {
+                attachError = "Failed to resize: \(error.localizedDescription)"
+            }
         }
     }
 
