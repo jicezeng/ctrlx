@@ -71,7 +71,8 @@ public struct TerminalStreamMessage: Codable, Sendable, Identifiable {
         /// Current terminal buffer content as Base64-encoded data (raw bytes with ANSI)
         public let contentBase64: String
 
-        /// Maximum scrollback lines the Host captured for this stream.
+        /// Maximum scrollback lines the viewer should retain for this stream.
+        /// The bootstrap snapshot itself may contain fewer historical lines.
         /// Optional so viewers remain compatible with older Hosts.
         public let scrollbackLineLimit: Int?
 

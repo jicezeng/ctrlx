@@ -221,7 +221,10 @@ final public class TerminalStreamService {
             context.beginBootstrap(for: viewerId, leaseId: leaseId)
 
             let captureStart = ContinuousClock.now
-            guard let current = await paneStreamManager.currentContent(for: paneId) else {
+            guard let current = await paneStreamManager.currentContent(
+                for: paneId,
+                maximumSnapshotScrollbackLineLimit: TerminalScrollbackPolicy.maximumRemoteSnapshotLineLimit
+            ) else {
                 await stopStreaming(
                     paneId: paneId,
                     force: true,
@@ -313,6 +316,7 @@ final public class TerminalStreamService {
             result = try await paneStreamManager.subscribe(
                 paneId: paneId,
                 target: target,
+                maximumSnapshotScrollbackLineLimit: TerminalScrollbackPolicy.maximumRemoteSnapshotLineLimit,
                 onData: { [weak self] (data: Data) in
                     guard let self else { return }
                     guard self.activeStreams[paneId] != nil else { return }

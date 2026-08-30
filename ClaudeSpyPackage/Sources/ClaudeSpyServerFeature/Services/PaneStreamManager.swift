@@ -75,6 +75,7 @@
         private struct Subscription {
             let id: UUID
             let paneId: String
+            let maximumSnapshotScrollbackLineLimit: Int?
             let onData: @MainActor (Data) -> Void
             let onDimensionChange: (@MainActor (Int, Int) -> Void)?
             let onTitleChange: (@MainActor (String) -> Void)?
@@ -116,6 +117,13 @@
 
         private var configuredScrollbackLineLimit: Int {
             TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimitProvider())
+        }
+
+        private func resolvedSnapshotScrollbackLineLimit(maximum: Int?) -> Int {
+            TerminalScrollbackPolicy.snapshotLineLimit(
+                configuredLineLimit: configuredScrollbackLineLimit,
+                maximumSnapshotLineLimit: maximum
+            )
         }
 
         /// Active per-pane state keyed by paneId. One entry per known pane.
@@ -257,7 +265,8 @@
             public let width: Int
             /// Terminal height in rows
             public let height: Int
-            /// Maximum history lines represented by this stream.
+            /// Maximum history lines the subscriber should retain while streaming.
+            /// The initial snapshot may contain fewer historical lines.
             public let scrollbackLineLimit: Int
 
             public init(
@@ -295,6 +304,7 @@
         public func subscribe(
             paneId: String,
             target: String,
+            maximumSnapshotScrollbackLineLimit: Int? = nil,
             onData: @escaping @MainActor (Data) -> Void,
             onDimensionChange: (@MainActor (Int, Int) -> Void)? = nil,
             onTitleChange: (@MainActor (String) -> Void)? = nil,
@@ -303,10 +313,14 @@
             onResync: (@MainActor (Result<SubscriptionResult, Error>) -> Void)? = nil
         ) async throws -> SubscriptionResult {
             let subscriptionId = UUID()
-            let scrollbackLineLimit = configuredScrollbackLineLimit
+            let viewerScrollbackLineLimit = configuredScrollbackLineLimit
+            let snapshotScrollbackLineLimit = resolvedSnapshotScrollbackLineLimit(
+                maximum: maximumSnapshotScrollbackLineLimit
+            )
             let subscription = Subscription(
                 id: subscriptionId,
                 paneId: paneId,
+                maximumSnapshotScrollbackLineLimit: maximumSnapshotScrollbackLineLimit,
                 onData: onData,
                 onDimensionChange: onDimensionChange,
                 onTitleChange: onTitleChange,
@@ -402,7 +416,7 @@
                         height: context.height,
                         controlClientManager: controlClientManager,
                         sessionName: sessionName,
-                        scrollbackLineLimit: scrollbackLineLimit
+                        scrollbackLineLimit: snapshotScrollbackLineLimit
                     )
                 } catch {
                     // Roll back our claim. The reader stays alive in scan-only
@@ -445,7 +459,7 @@
                 do {
                     initialContent = try await tmuxService.capturePaneWithScrollbackForStreaming(
                         target,
-                        scrollbackLineLimit: scrollbackLineLimit
+                        scrollbackLineLimit: snapshotScrollbackLineLimit
                     )
                 } catch {
                     logger.warning("Failed to capture initial content for new subscriber", metadata: [
@@ -484,7 +498,7 @@
                 initialContent: initialContent,
                 width: width,
                 height: height,
-                scrollbackLineLimit: scrollbackLineLimit
+                scrollbackLineLimit: viewerScrollbackLineLimit
             )
         }
 
@@ -570,19 +584,23 @@
         /// - Parameter paneId: The pane ID to capture content for
         /// - Returns: Current content, width, and height if the pane has subscribers; nil otherwise
         public func currentContent(
-            for paneId: String
+            for paneId: String,
+            maximumSnapshotScrollbackLineLimit: Int? = nil
         ) async -> (content: Data, width: Int, height: Int, scrollbackLineLimit: Int)? {
             guard let context = readers[paneId], !context.subscriberIds.isEmpty else { return nil }
-            let scrollbackLineLimit = configuredScrollbackLineLimit
+            let viewerScrollbackLineLimit = configuredScrollbackLineLimit
+            let snapshotScrollbackLineLimit = resolvedSnapshotScrollbackLineLimit(
+                maximum: maximumSnapshotScrollbackLineLimit
+            )
             guard
                 let content = try? await tmuxService.capturePaneWithScrollbackForStreaming(
                     context.target,
-                    scrollbackLineLimit: scrollbackLineLimit
+                    scrollbackLineLimit: snapshotScrollbackLineLimit
                 )
             else {
                 return nil
             }
-            return (content, context.width, context.height, scrollbackLineLimit)
+            return (content, context.width, context.height, viewerScrollbackLineLimit)
         }
 
         /// Requests an authoritative snapshot for one subscription after its
@@ -929,7 +947,15 @@
                     readers[paneId] = context
                 }
 
-                let scrollbackLineLimit = configuredScrollbackLineLimit
+                let viewerScrollbackLineLimit = configuredScrollbackLineLimit
+                let snapshotScrollbackLineLimit = context.subscriberIds
+                    .compactMap { subscriptions[$0] }
+                    .map {
+                        resolvedSnapshotScrollbackLineLimit(
+                            maximum: $0.maximumSnapshotScrollbackLineLimit
+                        )
+                    }
+                    .max() ?? viewerScrollbackLineLimit
                 let captured: Data
                 do {
                     captured = try await tmuxService.capturePaneViaControlMode(
@@ -938,7 +964,7 @@
                         height: context.height,
                         controlClientManager: controlClientManager,
                         sessionName: context.sessionName,
-                        scrollbackLineLimit: scrollbackLineLimit
+                        scrollbackLineLimit: snapshotScrollbackLineLimit
                     )
                 } catch {
                     let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
@@ -968,7 +994,7 @@
                         initialContent: captured,
                         width: context.width,
                         height: context.height,
-                        scrollbackLineLimit: scrollbackLineLimit
+                        scrollbackLineLimit: viewerScrollbackLineLimit
                     )))
                 }
 
