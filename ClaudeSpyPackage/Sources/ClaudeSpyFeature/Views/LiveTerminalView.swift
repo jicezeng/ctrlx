@@ -1025,7 +1025,7 @@
             // view provides vertical scrolling — SwiftTerm naturally maintains the
             // correct buffer size via processSizeChange because the view frame
             // matches the terminal dimensions.
-            let scrollView = UIScrollView()
+            let scrollView = BottomAnchoredTerminalScrollView()
             scrollView.backgroundColor = .black
             scrollView.addSubview(terminalView)
             scrollView.showsHorizontalScrollIndicator = true
@@ -1094,11 +1094,9 @@
                 guard let terminalView else { return }
                 // Inner: scroll SwiftTerm's scrollback to bottom
                 terminalView.scrollToBottom()
-                // Outer: scroll to show the bottom of the terminal (where the cursor/prompt is)
-                if let scrollView {
-                    let maxY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
-                    scrollView.contentOffset.y = maxY
-                }
+                // Outer: keep the cursor/prompt anchored through the next real
+                // UIKit layout, including safe-area and keyboard changes.
+                scrollView?.requestScrollToBottom()
             }
 
             // Parse the complete bootstrap before returning the native view.
@@ -1278,6 +1276,41 @@
             func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
                 if !decelerate { dragInitialOffsetY = nil }
             }
+        }
+    }
+
+    /// UIScrollView does not preserve a bottom content offset when its viewport
+    /// height changes. Track the previous layout boundary so startup, safe-area,
+    /// keyboard, and rotation layouts keep showing the prompt while a user who
+    /// scrolled into history remains undisturbed.
+    private final class BottomAnchoredTerminalScrollView: UIScrollView {
+        private var anchorPolicy = TerminalBottomAnchorPolicy()
+        private var forcesBottomOnNextLayout = true
+
+        override func layoutSubviews() {
+            let offsetBeforeLayout = contentOffset.y
+            super.layoutSubviews()
+
+            let maximumOffset = max(0, contentSize.height - bounds.height)
+            let targetOffset = anchorPolicy.targetOffset(
+                currentOffset: Double(offsetBeforeLayout),
+                maximumOffset: Double(maximumOffset),
+                force: forcesBottomOnNextLayout
+            )
+            forcesBottomOnNextLayout = false
+
+            guard let targetOffset else { return }
+            let targetY = CGFloat(targetOffset)
+            guard abs(contentOffset.y - targetY) > CGFloat(TerminalBottomAnchorPolicy.tolerance) else {
+                return
+            }
+            contentOffset.y = targetY
+        }
+
+        func requestScrollToBottom() {
+            forcesBottomOnNextLayout = true
+            setNeedsLayout()
+            layoutIfNeeded()
         }
     }
 
