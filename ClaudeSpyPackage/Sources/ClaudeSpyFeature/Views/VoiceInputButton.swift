@@ -85,7 +85,7 @@ extension View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(isActive ? Color.red : Color.primary)
                 .padding(.horizontal, 10)
-                .frame(minHeight: 26)
+                .frame(minHeight: 32)
                 .background(
                     Capsule()
                         .fill(isActive ? Color.red.opacity(0.12) : Color.secondary.opacity(0.1))
