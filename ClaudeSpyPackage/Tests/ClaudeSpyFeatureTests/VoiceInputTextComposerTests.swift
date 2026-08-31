@@ -183,6 +183,23 @@ struct VoiceTranscriptCorrectionPromptTests {
         #expect(!instructions.contains("otherwise preserve the primary transcript"))
     }
 
+    @Test("Corrects English speech while protecting only explicit code")
+    func englishCorrectionGuidance() {
+        let instructions = VoiceTranscriptCorrectionPrompt.instructions(
+            localeIdentifier: "zh-Hans-CN",
+            contextualTerms: ["CtrlX", "Claude Code", "iPhone Air"]
+        )
+
+        #expect(instructions.contains("An English-looking span is not automatically code"))
+        #expect(instructions.contains("安装到 iPhoner"))
+        #expect(instructions.contains("安装到 iPhone Air"))
+        #expect(instructions.contains("启动 class code"))
+        #expect(instructions.contains("启动 Claude Code"))
+        #expect(instructions.contains("explicitly code-shaped"))
+        #expect(instructions.contains("`--verbose`"))
+        #expect(!instructions.contains("Preserve commands, paths, code, flags, identifiers"))
+    }
+
     @Test("Keeps terminal context short and labels it as weak evidence")
     func weakTerminalContext() {
         let context = String(repeating: "x", count: 300) + "Current path: /tmp/ctrlx"
