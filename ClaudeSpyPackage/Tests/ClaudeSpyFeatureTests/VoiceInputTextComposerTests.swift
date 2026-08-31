@@ -167,6 +167,53 @@ struct VoiceInputContextTests {
     }
 }
 
+@Suite("Voice transcript correction prompt")
+struct VoiceTranscriptCorrectionPromptTests {
+    @Test("Allows whole-sentence semantics to fix a homophone outside the candidates")
+    func semanticHomophoneGuidance() {
+        let instructions = VoiceTranscriptCorrectionPrompt.instructions(
+            localeIdentifier: "zh-Hans-CN",
+            contextualTerms: ["CtrlX"]
+        )
+
+        #expect(instructions.contains("not a closed list"))
+        #expect(instructions.contains("corrected word is absent from the candidates"))
+        #expect(instructions.contains("这些相信的词"))
+        #expect(instructions.contains("这些相近的词"))
+        #expect(!instructions.contains("otherwise preserve the primary transcript"))
+    }
+
+    @Test("Keeps terminal context short and labels it as weak evidence")
+    func weakTerminalContext() {
+        let context = String(repeating: "x", count: 300) + "Current path: /tmp/ctrlx"
+        let excerpt = VoiceTranscriptCorrectionPrompt.terminalContextExcerpt(context)
+        let prompt = VoiceTranscriptCorrectionPrompt.make(
+            recognition: VoiceRecognitionResult(primaryTranscript: "修复这个问题"),
+            terminalContext: excerpt
+        )
+
+        #expect(excerpt == "…" + context.suffix(240))
+        #expect(prompt.contains("Weak terminal vocabulary context"))
+        #expect(!prompt.contains(String(repeating: "x", count: 300)))
+    }
+
+    @Test("Presents alternatives and live text as phonetic hints")
+    func phoneticHints() {
+        let prompt = VoiceTranscriptCorrectionPrompt.make(
+            recognition: VoiceRecognitionResult(
+                primaryTranscript: "安装到iPhoner",
+                alternativeTranscripts: ["安装到iPhone Air"],
+                liveTranscript: "安装到爱疯Air"
+            ),
+            terminalContext: nil
+        )
+
+        #expect(prompt.contains("Primary draft:\n安装到iPhoner"))
+        #expect(prompt.contains("Phonetic alternatives:\n1. 安装到iPhone Air"))
+        #expect(prompt.contains("Live phonetic hint:\n安装到爱疯Air"))
+    }
+}
+
 @Suite("Voice transcript correction policy")
 struct VoiceTranscriptCorrectionPolicyTests {
     @Test("Accepts a concise corrected transcript")
