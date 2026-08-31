@@ -13,7 +13,7 @@
     /// - `canBecomeFirstResponder` controlled by `inputEnabled` property
     /// - Implements `TerminalViewDelegate` to capture typed characters
     /// - Converts raw bytes to `TmuxKey` representations for relay transmission
-    /// - Preserves scroll position when new content arrives
+    /// - Lets SwiftTerm preserve its authoritative scrollback position
     /// - Long-press on URLs opens them in Safari
     ///
     /// Usage:
@@ -34,9 +34,6 @@
 
         /// Callback invoked when the terminal title changes (via OSC 0 or OSC 2 escape sequences).
         var onTitleChange: (@MainActor (String) -> Void)?
-
-        /// Set to true after initial content has been loaded to enable scroll preservation
-        var preserveUserScroll = false
 
         /// Controls whether the terminal can accept keyboard input.
         /// When false, tapping the terminal won't show the keyboard.
@@ -80,9 +77,6 @@
             }
             return proxy
         }()
-
-        /// When true, blocks all contentOffset changes to preserve scroll position
-        private var blockScrollChanges = false
 
         /// Pan gesture used to synthesize SGR mouse scroll events when the host has
         /// tmux mouse mode enabled. Only begins when `isMouseModeActive` is true.
@@ -162,29 +156,13 @@
             }
         }
 
-        /// Block contentOffset changes while preserving scroll position
-        override var contentOffset: CGPoint {
-            get { super.contentOffset }
-            set {
-                if blockScrollChanges {
-                    return
-                }
-                super.contentOffset = newValue
-            }
-        }
-
-        /// Feeds data while preserving scroll position if user has scrolled up.
-        func feedPreservingScroll(_ bytes: ArraySlice<UInt8>) {
-            if preserveUserScroll {
-                let maxScrollY = max(0, contentSize.height - bounds.height)
-                let isAtBottom = maxScrollY <= 0 || super.contentOffset.y >= maxScrollY - 5
-                blockScrollChanges = !isAtBottom
-            }
-
+        /// Feeds terminal bytes without shadowing SwiftTerm's scroll state.
+        /// SwiftTerm keeps `yDisp`, `userScrolling`, and `contentOffset` in sync,
+        /// including preserving history while the user is scrolled up.
+        func feedTerminalData(_ bytes: ArraySlice<UInt8>) {
             feed(byteArray: bytes)
             extractAndClearPayloads(afterFeeding: bytes)
 
-            blockScrollChanges = false
             setNeedsLayout()
         }
 
@@ -205,8 +183,7 @@
 
         /// Scrolls the inner terminal (SwiftTerm's scrollback) to the bottom.
         func scrollToBottom() {
-            let maxY = max(0, contentSize.height - bounds.height)
-            super.contentOffset = CGPoint(x: 0, y: maxY)
+            scroll(toPosition: 1)
         }
 
         /// Captures the active terminal buffer for stable, system-native text selection.

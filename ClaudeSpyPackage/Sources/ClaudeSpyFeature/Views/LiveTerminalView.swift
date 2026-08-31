@@ -1170,7 +1170,7 @@
                 id: "ios:\(ObjectIdentifier(self))"
             ) { [weak self] data in
                 guard let terminalView = self?.terminalView else { return }
-                terminalView.feedPreservingScroll([UInt8](data)[...])
+                terminalView.feedTerminalData([UInt8](data)[...])
             }
 
             func enqueue(_ data: Data) {
@@ -1227,7 +1227,6 @@
 
                     scrollView.layoutIfNeeded()
                     terminalState?.scrollToBottom?()
-                    terminalView?.preserveUserScroll = true
                     didFinishInitialPresentation = true
                     applyRequestedInteraction()
                     initialPresentationTask = nil
