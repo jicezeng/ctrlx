@@ -70,6 +70,95 @@
         }
     }
 
+    /// Maps Control shortcuts before SwiftTerm's text-input machinery sees
+    /// them. CtrlX is a tmux input proxy, so these are logical terminal keys,
+    /// not text for AppKit to interpret (for example, Ctrl+T as `transpose:`).
+    enum TerminalControlKeyMapper {
+        static func key(
+            charactersIgnoringModifiers: String?,
+            keyCode: UInt16,
+            modifierFlags: NSEvent.ModifierFlags
+        ) -> TmuxKey? {
+            let activeModifiers = modifierFlags
+                .intersection([.shift, .control, .option, .command])
+            guard activeModifiers == .control else { return nil }
+
+            if let character = controlCharacter(from: charactersIgnoringModifiers) {
+                return .ctrl(character)
+            }
+
+            // Some input methods do not expose a printable
+            // `charactersIgnoringModifiers` value for Control shortcuts. Fall
+            // back to the hardware key only in that case so normal keyboard
+            // layouts still determine the shortcut character.
+            guard let character = ansiControlCharacter(for: keyCode) else { return nil }
+            return .ctrl(character)
+        }
+
+        private static func controlCharacter(from characters: String?) -> Character? {
+            guard
+                let characters,
+                characters.unicodeScalars.count == 1,
+                let scalar = characters.unicodeScalars.first
+            else { return nil }
+
+            switch scalar.value {
+            case 0:
+                return " "
+            case 1 ... 26:
+                return Character(UnicodeScalar(scalar.value + 0x60)!)
+            case 0x41 ... 0x5A:
+                return Character(String(scalar).lowercased())
+            case 0x61 ... 0x7A:
+                return Character(scalar)
+            case 0x20, 0x40, 0x5B ... 0x5F, 0x60, 0x3F:
+                return Character(scalar)
+            case 0x36:
+                return "^"
+            default:
+                return nil
+            }
+        }
+
+        private static func ansiControlCharacter(for keyCode: UInt16) -> Character? {
+            switch keyCode {
+            case 0: "a"
+            case 11: "b"
+            case 8: "c"
+            case 2: "d"
+            case 14: "e"
+            case 3: "f"
+            case 5: "g"
+            case 4: "h"
+            case 34: "i"
+            case 38: "j"
+            case 40: "k"
+            case 37: "l"
+            case 46: "m"
+            case 45: "n"
+            case 31: "o"
+            case 35: "p"
+            case 12: "q"
+            case 15: "r"
+            case 1: "s"
+            case 17: "t"
+            case 32: "u"
+            case 9: "v"
+            case 13: "w"
+            case 7: "x"
+            case 16: "y"
+            case 6: "z"
+            case 33: "["
+            case 42: "\\"
+            case 30: "]"
+            case 22: "^"
+            case 49: " "
+            case 50: "`"
+            default: nil
+            }
+        }
+    }
+
     /// Intercepts events: horizontal scrolls handled here, vertical/mouse forwarded to terminal.
     final private class ScrollEventOverlay: NSView {
         weak var terminalView: TerminalView?
@@ -634,12 +723,21 @@
             }
         }
 
-        private func interceptTerminalKeyDown(_ event: NSEvent) -> Bool {
+        func interceptTerminalKeyDown(_ event: NSEvent) -> Bool {
             guard
                 !isEditorActive,
                 event.window === window,
                 window?.firstResponder === terminalView
             else { return false }
+
+            if let controlKey = TerminalControlKeyMapper.key(
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags
+            ) {
+                onInput?([controlKey])
+                return true
+            }
 
             // SwiftTerm's legacy keyDown path dispatches both Enter and
             // Shift+Enter through `insertNewline:`, collapsing the modifier
