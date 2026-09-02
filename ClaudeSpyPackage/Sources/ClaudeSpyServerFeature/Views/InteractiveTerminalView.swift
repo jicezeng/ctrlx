@@ -1346,11 +1346,9 @@
             guard cellSize.width > 0, cellSize.height > 0 else { return nil }
 
             // Translate the click into terminalView's own bottom-left coordinate
-            // space. When dimensions are locked (tmux pane), terminalView is
-            // pinned to the top of the InteractiveTerminalView with
-            // `frame.origin.y = bounds.height - frame.height`, so accounting
-            // for the offset is required — otherwise clicks near the visual top
-            // map below row 0 and get clamped, hiding the real row.
+            // space. A locked tmux canvas can be inset when it fits or clipped
+            // when it overflows, so accounting for its vertical offset is
+            // required to map clicks to the real terminal row.
             let terminalLocalY = point.y - terminalView.frame.origin.y
             let terminalPoint = NSPoint(
                 x: point.x + horizontalOffset,
@@ -1718,13 +1716,14 @@
             terminalWidth = size.width
             // When dimensions are locked (tmux pane), use the optimal height
             // to avoid triggering SwiftTerm's processSizeChange which would
-            // recalculate rows and corrupt the terminal buffer. Position the
-            // terminal at the top of the container (high y in AppKit coords).
+            // recalculate rows and corrupt the terminal buffer. Keep a fitting
+            // terminal top-aligned, but bottom-align an overflowing terminal so
+            // the prompt/cursor on its final row cannot be clipped.
             let height: CGFloat
             let originY: CGFloat
             if lockedDimensions != nil {
                 height = size.height
-                originY = bounds.height - height
+                originY = lockedTerminalOriginY(for: height)
             } else {
                 height = bounds.height
                 originY = 0
@@ -1750,15 +1749,25 @@
             }
             // When dimensions are locked, don't change the terminal frame
             // height — this triggers SwiftTerm's processSizeChange which
-            // corrupts the buffer. Keep it at optimal height, pinned to top.
+            // corrupts the buffer. Re-anchor the fixed-height canvas whenever
+            // the viewer layout changes.
             if lockedDimensions == nil {
                 terminalView.frame.size.height = bounds.height
             } else {
-                terminalView.frame.origin.y = bounds.height - terminalView.frame.size.height
+                terminalView.frame.origin.y = lockedTerminalOriginY(
+                    for: terminalView.frame.size.height
+                )
             }
             updateHorizontalScroller()
             scheduleURLUnderlineUpdate()
             onResize?(frame.size)
+        }
+
+        /// AppKit clips subviews to this wrapper's bounds. Preserve the host's
+        /// fixed terminal grid while ensuring its last row remains visible when
+        /// the viewer has less vertical space than the host.
+        private func lockedTerminalOriginY(for terminalHeight: CGFloat) -> CGFloat {
+            max(0, bounds.height - terminalHeight)
         }
 
         // MARK: - TerminalView Forwarding
