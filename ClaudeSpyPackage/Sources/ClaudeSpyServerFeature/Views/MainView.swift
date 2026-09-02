@@ -141,6 +141,10 @@ public struct MainView: View {
     /// local one, and so the host-keyed lifecycle (cleared on unpair) stays
     /// independent of the local session-name lifecycle.
     @State private var seededRemoteSessions: Set<RemoteSessionTabsKey> = []
+    /// Remote sessions currently awaiting their persisted browser layout. This
+    /// prevents the auto-save loop from treating a terminal-only intermediate
+    /// state as the completed Viewer workbench.
+    @State private var seedingRemoteSessions: Set<RemoteSessionTabsKey> = []
     @State private var lastPersistedRemoteLayouts: [RemoteSessionTabsKey: SavedFolderLayout] = [:]
     @State private var pendingRemoteLayoutSaves: [RemoteSessionTabsKey: Task<Void, Never>] = [:]
 
@@ -449,6 +453,9 @@ public struct MainView: View {
             // a final write for a just-unpaired host is allowed to land.
             for key in seededRemoteSessions where !currentHostIdsSet.contains(key.hostId) {
                 seededRemoteSessions.remove(key)
+            }
+            for key in seedingRemoteSessions where !currentHostIdsSet.contains(key.hostId) {
+                seedingRemoteSessions.remove(key)
             }
             for key in lastPersistedRemoteLayouts.keys where !currentHostIdsSet.contains(key.hostId) {
                 lastPersistedRemoteLayouts.removeValue(forKey: key)
@@ -3965,6 +3972,9 @@ public struct MainView: View {
         for key in seededRemoteSessions where isStale(key) {
             seededRemoteSessions.remove(key)
         }
+        for key in seedingRemoteSessions where isStale(key) {
+            seedingRemoteSessions.remove(key)
+        }
         for key in lastPersistedRemoteLayouts.keys where isStale(key) {
             lastPersistedRemoteLayouts.removeValue(forKey: key)
         }
@@ -4872,6 +4882,9 @@ public struct MainView: View {
         if seededRemoteSessions.remove(oldKey) != nil {
             seededRemoteSessions.insert(newKey)
         }
+        // Let the renamed session start a fresh read. The old in-flight task
+        // validates its original session after awaiting and exits harmlessly.
+        seedingRemoteSessions.remove(oldKey)
         if let layout = lastPersistedRemoteLayouts.removeValue(forKey: oldKey) {
             lastPersistedRemoteLayouts[newKey] = layout
         }
@@ -5166,10 +5179,19 @@ private extension MainView {
     func seedRemoteLayoutIfNeeded() {
         guard isLayoutStoreReady, let remote = selectedRemoteSession else { return }
         let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
-        guard !seededRemoteSessions.contains(key) else { return }
+
+        let tabs = remoteSessionTabsStates[key] ?? {
+            let new = SessionFileTabsState()
+            remoteSessionTabsStates[key] = new
+            return new
+        }()
+        guard
+            !seededRemoteSessions.contains(key),
+            !seedingRemoteSessions.contains(key)
+        else { return }
 
         // Don't seed a session the user has already populated.
-        if let existing = remoteSessionTabsStates[key], !existing.isPrivateWorkbenchEmpty {
+        if !tabs.isPrivateWorkbenchEmpty {
             seededRemoteSessions.insert(key)
             return
         }
@@ -5177,34 +5199,58 @@ private extension MainView {
             // Folder not synced yet — leave unmarked so a later change retries.
             return
         }
-        seededRemoteSessions.insert(key)
+        seedingRemoteSessions.insert(key)
 
         let recordKey = SavedFolderRecord.Key(host: remote.hostId, folder: folder)
         Task {
-            guard let chosen = await layoutStore.record(recordKey)?.layout, !chosen.isEmpty else { return }
+            let stored = await layoutStore.record(recordKey)?.layout
 
             // The store await may have suspended across a disconnect/unpair that
             // cleared this host's sessions. Don't resurrect a gone session.
             guard
                 let sessionStore = coordinator.remoteSessionStore,
                 sessionStore.sessions(for: remote.hostId).contains(where: { $0.sessionName == remote.sessionName })
-            else { return }
+            else {
+                seedingRemoteSessions.remove(key)
+                return
+            }
 
-            let tabs = remoteSessionTabsStates[key] ?? {
-                let new = SessionFileTabsState()
-                remoteSessionTabsStates[key] = new
-                return new
-            }()
-            guard tabs.isPrivateWorkbenchEmpty else { return }
+            guard let tabs = remoteSessionTabsStates[key] else {
+                seedingRemoteSessions.remove(key)
+                return
+            }
+            defer {
+                seedingRemoteSessions.remove(key)
+                seededRemoteSessions.insert(key)
+            }
 
             let sessionWindows = remoteSessionWindows(hostId: remote.hostId, sessionName: remote.sessionName)
-            LayoutSnapshotMapper.apply(
-                chosen,
-                to: tabs,
-                fileBrowser: nil,
-                windowIdForIndex: { index in sessionWindows.first { $0.windowIndex == index }?.stableId },
-                makeBrowserState: { BrowserTabState(initialURL: $0.url) }
-            )
+            if let stored {
+                let chosen = LayoutSnapshotMapper.viewerPrivateLayout(from: stored)
+                // Rewrite legacy/general-purpose Viewer records once so an app
+                // upgrade heals the persisted source of an empty right split.
+                if chosen != stored {
+                    if chosen.isEmpty {
+                        await layoutStore.remove(recordKey)
+                    } else {
+                        await layoutStore.save(SavedFolderRecord(
+                            host: remote.hostId,
+                            folder: folder,
+                            lastActive: Date(),
+                            layout: chosen
+                        ))
+                    }
+                }
+                if !chosen.isEmpty, tabs.isPrivateWorkbenchEmpty {
+                    LayoutSnapshotMapper.apply(
+                        chosen,
+                        to: tabs,
+                        fileBrowser: nil,
+                        windowIdForIndex: { _ in nil },
+                        makeBrowserState: { BrowserTabState(initialURL: $0.url) }
+                    )
+                }
+            }
             if let shared = coordinator.remoteSessionStore?.sharedTerminalLayout(
                 for: remote.hostId,
                 sessionName: remote.sessionName
@@ -5217,10 +5263,12 @@ private extension MainView {
             // Baseline the change-gate from the *applied* state (apply clamps the
             // split ratio and resolves window refs) so seeding doesn't trigger an
             // immediate redundant re-save.
-            lastPersistedRemoteLayouts[key] = LayoutSnapshotMapper.snapshot(
-                from: tabs,
-                fileBrowser: nil,
-                windowIndexForId: { id in sessionWindows.first { $0.stableId == id }?.windowIndex }
+            lastPersistedRemoteLayouts[key] = LayoutSnapshotMapper.viewerPrivateLayout(
+                from: LayoutSnapshotMapper.snapshot(
+                    from: tabs,
+                    fileBrowser: nil,
+                    windowIndexForId: { id in sessionWindows.first { $0.stableId == id }?.windowIndex }
+                )
             )
         }
     }
@@ -5240,25 +5288,23 @@ private extension MainView {
             uniqueKeysWithValues: hostIds.map { ($0, sessionStore.windows(for: $0)) }
         )
         for (key, tabs) in remoteSessionTabsStates {
+            // The restore read owns the first store access. Never persist the
+            // terminal-only state that exists while that read is in flight.
+            guard seededRemoteSessions.contains(key) else { continue }
             let sessionWindows = (windowsByHost[key.hostId] ?? [])
                 .filter { $0.sessionName == key.sessionName }
             guard let folder = resolveRemoteFolder(in: sessionWindows) else { continue }
-            var snapshot = LayoutSnapshotMapper.snapshot(
-                from: tabs,
-                fileBrowser: nil,
-                windowIndexForId: { id in sessionWindows.first { $0.stableId == id }?.windowIndex }
+            let snapshot = LayoutSnapshotMapper.viewerPrivateLayout(
+                from: LayoutSnapshotMapper.snapshot(
+                    from: tabs,
+                    fileBrowser: nil,
+                    windowIndexForId: { id in sessionWindows.first { $0.stableId == id }?.windowIndex }
+                )
             )
-            // Terminal placement is Host-owned shared state. Keep only the
-            // Viewer's private browser layout in its per-folder persistence.
-            snapshot.tabOrder.removeAll { $0.isWindow }
-            snapshot.rightSide.removeAll { $0.isWindow }
-            if snapshot.selectedRight?.isWindow == true {
-                snapshot.selectedRight = nil
-            }
-            guard !snapshot.isEmpty else { continue }
             guard lastPersistedRemoteLayouts[key] != snapshot else { continue }
             lastPersistedRemoteLayouts[key] = snapshot
 
+            let recordKey = SavedFolderRecord.Key(host: key.hostId, folder: folder)
             let record = SavedFolderRecord(
                 host: key.hostId,
                 folder: folder,
@@ -5269,7 +5315,11 @@ private extension MainView {
             let previous = pendingRemoteLayoutSaves[key]
             pendingRemoteLayoutSaves[key] = Task {
                 await previous?.value
-                await layoutStore.save(record)
+                if snapshot.isEmpty {
+                    await layoutStore.remove(recordKey)
+                } else {
+                    await layoutStore.save(record)
+                }
             }
         }
     }

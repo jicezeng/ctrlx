@@ -104,10 +104,10 @@ struct SharedTerminalLayoutObserversModifier<Local: Equatable, Remote: Equatable
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: local) { _, _ in
+            .onChange(of: local, initial: true) { _, _ in
                 onLocalChanged()
             }
-            .onChange(of: remote) { _, _ in
+            .onChange(of: remote, initial: true) { _, _ in
                 onRemoteChanged()
             }
             .onDisappear {

@@ -226,6 +226,68 @@
             #expect(tabs.selectedRight == .browser(browserId))
         }
 
+        @Test("Viewer persistence drops every Host-owned or unsupported tab reference")
+        func viewerPrivateLayoutSanitizesGeneralLayout() {
+            let browserId = UUID()
+            let missingBrowserId = UUID()
+            let fileId = UUID()
+            let saved = SavedFolderLayout(
+                fileTabs: [SavedFileTab(id: fileId, path: "/proj/a.swift", directoryPath: "/proj")],
+                browserTabs: [SavedBrowserTab(
+                    id: browserId,
+                    url: URL(string: "https://example.com")!
+                )],
+                tabOrder: [
+                    .window(index: 1), .fileExplorer, .git, .file(id: fileId),
+                    .browser(id: missingBrowserId), .browser(id: browserId),
+                ],
+                rightSide: [.window(index: 1), .git, .browser(id: missingBrowserId), .browser(id: browserId)],
+                selectedLeft: .fileExplorer,
+                selectedRight: .git,
+                splitRatio: 0.63,
+                fileTree: SavedFileTree(sidebarWidth: 240)
+            )
+
+            let viewer = LayoutSnapshotMapper.viewerPrivateLayout(from: saved)
+
+            #expect(viewer.fileTabs.isEmpty)
+            #expect(viewer.fileTree == nil)
+            #expect(viewer.browserTabs == saved.browserTabs)
+            #expect(viewer.tabOrder == [.browser(id: browserId)])
+            #expect(viewer.rightSide == [.browser(id: browserId)])
+            #expect(viewer.selectedLeft == nil)
+            #expect(viewer.selectedRight == nil)
+            #expect(viewer.splitRatio == 0.63)
+        }
+
+        @Test("Legacy Viewer-only stale split sanitizes to a full-width terminal")
+        func viewerLegacyStaleSplitCollapses() {
+            let saved = SavedFolderLayout(
+                tabOrder: [.window(index: 1), .fileExplorer, .git],
+                rightSide: [.window(index: 1), .git],
+                selectedRight: .git
+            )
+            let viewer = LayoutSnapshotMapper.viewerPrivateLayout(from: saved)
+            let tabs = SessionFileTabsState()
+
+            LayoutSnapshotMapper.apply(
+                viewer,
+                to: tabs,
+                fileBrowser: nil,
+                windowIdForIndex: { _ in nil },
+                makeBrowserState: { BrowserTabState(initialURL: $0.url) }
+            )
+            tabs.applySharedTerminalLayout(
+                SharedTerminalLayout(leftWindowId: "@1", revision: 3),
+                liveWindowIds: ["@1", "@2"]
+            )
+
+            #expect(viewer.isEmpty)
+            #expect(tabs.rightSide.isEmpty)
+            #expect(tabs.selectedRight == nil)
+            #expect(!tabs.isSplit)
+        }
+
         // MARK: - Host terminal-layout authority
 
         @Test("A background session restores its persisted terminal split without opening private tabs")

@@ -154,6 +154,39 @@
             )
         }
 
+        /// Restricts a saved layout to state a remote Viewer can own and render.
+        /// Terminal placement is Host-owned shared state, while remote file/Git
+        /// views do not exist. Keeping those references in a Viewer record can
+        /// leave `rightSide` non-empty with no renderable right pane, producing a
+        /// permanent half-width terminal after restore.
+        static func viewerPrivateLayout(from layout: SavedFolderLayout) -> SavedFolderLayout {
+            let browserIds = Set(layout.browserTabs.map(\.id))
+
+            func validBrowserRef(_ ref: SavedTabRef) -> SavedTabRef? {
+                guard case let .browser(id) = ref, browserIds.contains(id) else { return nil }
+                return ref
+            }
+
+            let rightSide = layout.rightSide.compactMap(validBrowserRef)
+            let rightSideSet = Set(rightSide)
+            let selectedRight = layout.selectedRight
+                .flatMap(validBrowserRef)
+                .flatMap { rightSideSet.contains($0) ? $0 : nil }
+            let selectedLeft = layout.selectedLeft
+                .flatMap(validBrowserRef)
+                .flatMap { rightSideSet.contains($0) ? nil : $0 }
+
+            return SavedFolderLayout(
+                schemaVersion: layout.schemaVersion,
+                browserTabs: layout.browserTabs,
+                tabOrder: layout.tabOrder.compactMap(validBrowserRef),
+                rightSide: rightSide,
+                selectedLeft: selectedLeft,
+                selectedRight: selectedRight,
+                splitRatio: layout.splitRatio
+            )
+        }
+
         // MARK: - Restore
 
         /// Hydrate a *fresh* (empty) workbench from a saved layout. No-op-safe to
