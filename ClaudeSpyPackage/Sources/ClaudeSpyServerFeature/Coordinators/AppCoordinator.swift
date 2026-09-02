@@ -3440,6 +3440,14 @@
                 await connectionManager?.pushSessionStateToAll()
             }
 
+            // Cold-start layout hydration is asynchronous and can finish after
+            // a Viewer has already received its first snapshot. Publish the new
+            // per-session authority immediately so the Viewer can render it and
+            // only then become eligible to request layout changes.
+            windowManager.onSharedTerminalLayoutInitialized = { [weak connectionManager] in
+                await connectionManager?.pushSessionStateToAll()
+            }
+
             // A pruned pane can lower the pending count (killing a pinned
             // terminal-only session has no SessionEnd hook) — carry the iOS
             // badge down with it. Decrease-only and deduplicated by the

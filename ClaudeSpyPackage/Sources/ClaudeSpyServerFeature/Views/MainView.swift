@@ -113,6 +113,11 @@ public struct MainView: View {
     /// `docs/folder-layout-persistence-plan.md`). Restores open file/browser
     /// tabs + split layout when a session is first viewed.
     @Dependency(LayoutStore.self) private var layoutStore
+    /// Layout pruning must finish before either the private workbench or the
+    /// Host-owned terminal layout reads from disk. This also gives a cold-start
+    /// Viewer a precise intermediate state: no per-session layout means
+    /// "initializing", never "unsplit".
+    @State private var isLayoutStoreReady = false
     /// Sessions whose workbench has already been seeded from persisted layout
     /// this app run, so seeding happens at most once per session (and re-fires
     /// for a recycled session name only after cleanup clears it).
@@ -177,6 +182,8 @@ public struct MainView: View {
             // Also drop remote records for hosts we're no longer paired with;
             // local records (host `layoutHost`) are always kept (issue #608).
             await layoutStore.pruneHosts(Set(settings.pairedHosts.map(\.id)).union([layoutHost]))
+            isLayoutStoreReady = true
+            windowManager.initializeSharedTerminalLayoutsIfNeeded()
             seedLayoutIfNeeded()
             seedRemoteLayoutIfNeeded()
         }
@@ -303,9 +310,17 @@ public struct MainView: View {
                 }
             }
 
-            // Retry seeding the selected session in case its folder only became
-            // resolvable now that panes have loaded (cold-launch timing). Cheap:
-            // a no-op once the session is in `seededSessions`.
+            // Restore Host authority for every live session, not only the
+            // selected one. A Viewer may open a background session first after
+            // the Host restarts, so every session needs an explicit canonical
+            // layout before it can accept Viewer layout requests.
+            if isLayoutStoreReady {
+                windowManager.initializeSharedTerminalLayoutsIfNeeded()
+            }
+
+            // Retry seeding the selected session's private workbench in case its
+            // folder only became resolvable now that panes have loaded. Cheap: a
+            // no-op once the session is in `seededSessions`.
             seedLayoutIfNeeded()
 
             // Auto-save each session's live workbench layout (skips unchanged
@@ -4520,19 +4535,6 @@ public struct MainView: View {
     private func scheduleSharedTerminalLayoutSync() {
         sharedLayoutSyncTask?.cancel()
 
-        let target: SharedLayoutSyncTarget?
-        if selectedRemoteSession == nil, let request = currentLocalTerminalLayoutRequest() {
-            target = .local(request)
-        } else if
-            let remote = selectedRemoteSession,
-            coordinator.remoteSessionStore?.supportsSharedTerminalLayouts(for: remote.hostId) == true,
-            let request = currentRemoteTerminalLayoutRequest(remote: remote) {
-            target = .remote(hostId: remote.hostId, request: request)
-        } else {
-            target = nil
-        }
-        guard let target else { return }
-
         sharedLayoutSyncTask = Task {
             do {
                 try await Task.sleep(for: .milliseconds(150))
@@ -4540,6 +4542,26 @@ public struct MainView: View {
                 return
             }
             guard !Task.isCancelled else { return }
+
+            // Resolve the target after the debounce. Applying an incoming Host
+            // layout can change both the split and the selected-left window in
+            // one SwiftUI update; capturing either value before that update
+            // settles can echo a stale layout back over the canonical one.
+            let target: SharedLayoutSyncTarget?
+            if selectedRemoteSession == nil, let request = currentLocalTerminalLayoutRequest() {
+                target = .local(request)
+            } else if
+                let remote = selectedRemoteSession,
+                coordinator.remoteSessionStore?.hasAuthoritativeSharedTerminalLayout(
+                    for: remote.hostId,
+                    sessionName: remote.sessionName
+                ) == true,
+                let request = currentRemoteTerminalLayoutRequest(remote: remote) {
+                target = .remote(hostId: remote.hostId, request: request)
+            } else {
+                target = nil
+            }
+            guard let target else { return }
 
             switch target {
             case let .local(request):
@@ -4576,7 +4598,13 @@ public struct MainView: View {
     }
 
     private func currentLocalTerminalLayoutRequest() -> SetSharedTerminalLayout? {
-        guard let leftWindow = selectedWindow else { return nil }
+        guard
+            let leftWindow = selectedWindow,
+            // A missing Host entry is a cold-start initialization state, not an
+            // implicit unsplit layout. Let persistence establish authority first
+            // so the UI cannot overwrite a saved split with a default request.
+            windowManager.sharedTerminalLayouts[leftWindow.sessionName] != nil
+        else { return nil }
         let windows = tmuxService.windows.filter { $0.sessionName == leftWindow.sessionName }
         let tabs = sessionFileTabsStates[leftWindow.sessionName]
         let rightWindowIds = sharedRightWindowIds(
@@ -4984,7 +5012,7 @@ private extension MainView {
     /// folder's current layout and a recycled session name no longer resurrects a
     /// stale per-session record (plan §4.3).
     func seedLayoutIfNeeded() {
-        guard let sessionName = selectedWindow?.sessionName else { return }
+        guard isLayoutStoreReady, let sessionName = selectedWindow?.sessionName else { return }
 
         // A selected session always owns tab-strip state, even when it only
         // contains terminals. Window drag/reorder mutates this model; treating
@@ -5136,7 +5164,7 @@ private extension MainView {
     /// restored. Terminal placement comes from the Host's shared layout, while
     /// the snapshot's `fileTabs` remain empty (`fileBrowser: nil`).
     func seedRemoteLayoutIfNeeded() {
-        guard let remote = selectedRemoteSession else { return }
+        guard isLayoutStoreReady, let remote = selectedRemoteSession else { return }
         let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
         guard !seededRemoteSessions.contains(key) else { return }
 

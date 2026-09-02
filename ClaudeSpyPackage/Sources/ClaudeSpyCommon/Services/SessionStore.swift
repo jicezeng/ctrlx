@@ -186,6 +186,19 @@ final public class SessionStore {
         hostsSupportingSharedTerminalLayouts.contains(hostId)
     }
 
+    /// Whether the Host has established an authoritative layout for this exact
+    /// session. Host-level feature support alone is insufficient: immediately
+    /// after a Host restart the optional dictionary can be present but the
+    /// session entry can still be waiting on persistence hydration. A Viewer
+    /// must not turn that temporary absence into an unsplit write.
+    public func hasAuthoritativeSharedTerminalLayout(
+        for hostId: String,
+        sessionName: String
+    ) -> Bool {
+        hostsSupportingSharedTerminalLayouts.contains(hostId)
+            && sharedTerminalLayoutsByHost[hostId]?[sessionName] != nil
+    }
+
     /// Check if a host has any sessions or panes
     public func hasSessions(for hostId: String) -> Bool {
         paneStates.keys.contains { $0.pairId == hostId }

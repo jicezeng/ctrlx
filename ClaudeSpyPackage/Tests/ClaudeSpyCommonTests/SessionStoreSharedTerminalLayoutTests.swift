@@ -44,6 +44,38 @@ struct SessionStoreSharedTerminalLayoutTests {
         #expect(!store.supportsSharedTerminalLayouts(for: "host-1"))
     }
 
+    @Test("Feature support does not authorize writes before this session has a Host layout")
+    func waitsForPerSessionAuthority() {
+        let store = SessionStore()
+        store.handleStateUpdate(SessionStateMessage(
+            pairId: "host-1",
+            paneStates: [:],
+            sharedTerminalLayouts: [:]
+        ))
+
+        #expect(store.supportsSharedTerminalLayouts(for: "host-1"))
+        #expect(!store.hasAuthoritativeSharedTerminalLayout(
+            for: "host-1",
+            sessionName: "background"
+        ))
+
+        store.handleStateUpdate(SessionStateMessage(
+            pairId: "host-1",
+            paneStates: [:],
+            sharedTerminalLayouts: [
+                "background": SharedTerminalLayout(
+                    leftWindowId: "@1",
+                    revision: 1
+                ),
+            ]
+        ))
+
+        #expect(store.hasAuthoritativeSharedTerminalLayout(
+            for: "host-1",
+            sessionName: "background"
+        ))
+    }
+
     @Test("A stale snapshot cannot roll back a Host revision")
     func rejectsRevisionRollback() {
         let store = SessionStore()

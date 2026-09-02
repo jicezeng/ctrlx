@@ -2,17 +2,19 @@
     import ClaudeSpyCommon
     import ClaudeSpyNetworking
     import Dependencies
+    import Foundation
     import Testing
     @testable import ClaudeSpyServerFeature
 
     @MainActor
     @Suite("Host shared terminal layout store")
     struct SharedTerminalLayoutManagerTests {
-        private func makeManager() -> MirrorWindowManager {
+        private func makeManager(layoutStore: LayoutStore = .inMemory()) -> MirrorWindowManager {
             withDependencies {
                 $0[PreferencesService.self] = .inMemory()
                 $0[ProcessRunner.self] = .previewValue
                 $0[LoginItemService.self] = .previewValue
+                $0[LayoutStore.self] = layoutStore
             } operation: {
                 let tmux = TmuxService()
                 let control = TmuxControlClientManager()
@@ -28,19 +30,27 @@
             }
         }
 
-        private func pane(id: String, windowId: String, windowIndex: Int) -> PaneInfo {
+        private func pane(
+            id: String,
+            windowId: String,
+            windowIndex: Int,
+            sessionName: String = "coding",
+            currentPath: String = "/tmp",
+            isWindowActive: Bool = false
+        ) -> PaneInfo {
             PaneInfo(
                 paneId: id,
-                target: "coding:\(windowIndex).0",
-                sessionName: "coding",
+                target: "\(sessionName):\(windowIndex).0",
+                sessionName: sessionName,
                 windowIndex: windowIndex,
                 tmuxWindowId: windowId,
                 paneIndex: 0,
                 command: "zsh",
-                currentPath: "/tmp",
+                currentPath: currentPath,
                 width: 80,
                 height: 24,
-                isActive: true
+                isActive: true,
+                isWindowActive: isWindowActive
             )
         }
 
@@ -130,6 +140,114 @@
             manager.updatePaneStates(from: [])
 
             #expect(manager.sharedTerminalLayouts.isEmpty)
+        }
+
+        @Test("Cold start initializes saved background splits and explicit unsplit sessions")
+        func initializesEveryLiveSession() async {
+            let savedBackgroundLayout = SavedFolderLayout(
+                tabOrder: [.window(index: 0), .window(index: 1)],
+                rightSide: [.window(index: 1)],
+                selectedRight: .window(index: 1),
+                splitRatio: 0.64
+            )
+            let store = LayoutStore.inMemory([
+                SavedFolderRecord(
+                    host: SavedFolderRecord.localHost,
+                    folder: "/background",
+                    lastActive: Date(),
+                    layout: savedBackgroundLayout
+                ),
+            ])
+            let manager = makeManager(layoutStore: store)
+            manager.updatePaneStates(from: [
+                pane(
+                    id: "%1",
+                    windowId: "@1",
+                    windowIndex: 0,
+                    sessionName: "foreground",
+                    currentPath: "/foreground",
+                    isWindowActive: true
+                ),
+                pane(
+                    id: "%2",
+                    windowId: "@2",
+                    windowIndex: 0,
+                    sessionName: "background",
+                    currentPath: "/background",
+                    isWindowActive: true
+                ),
+                pane(
+                    id: "%3",
+                    windowId: "@3",
+                    windowIndex: 1,
+                    sessionName: "background",
+                    currentPath: "/background"
+                ),
+            ])
+
+            manager.initializeSharedTerminalLayoutsIfNeeded()
+            for _ in 0..<1_000 where manager.sharedTerminalLayouts.count < 2 {
+                await Task.yield()
+            }
+
+            #expect(manager.sharedTerminalLayouts["foreground"] == SharedTerminalLayout(
+                leftWindowId: "@1",
+                rightWindowIds: [],
+                selectedRightWindowId: nil,
+                splitRatio: 0.5,
+                revision: 1
+            ))
+            #expect(manager.sharedTerminalLayouts["background"] == SharedTerminalLayout(
+                leftWindowId: "@2",
+                rightWindowIds: ["@3"],
+                selectedRightWindowId: "@3",
+                splitRatio: 0.64,
+                revision: 1
+            ))
+        }
+
+        @Test("A layout changed after hydration starts wins over the late disk read")
+        func liveLayoutWinsHydrationRace() async {
+            let store = LayoutStore.inMemory([
+                SavedFolderRecord(
+                    host: SavedFolderRecord.localHost,
+                    folder: "/race",
+                    lastActive: Date(),
+                    layout: SavedFolderLayout(
+                        rightSide: [.window(index: 1)],
+                        selectedRight: .window(index: 1)
+                    )
+                ),
+            ])
+            let manager = makeManager(layoutStore: store)
+            manager.updatePaneStates(from: [
+                pane(
+                    id: "%1",
+                    windowId: "@1",
+                    windowIndex: 0,
+                    currentPath: "/race",
+                    isWindowActive: true
+                ),
+                pane(id: "%2", windowId: "@2", windowIndex: 1, currentPath: "/race"),
+            ])
+
+            manager.initializeSharedTerminalLayoutsIfNeeded()
+            #expect(manager.setSharedTerminalLayout(
+                sessionName: "coding",
+                leftWindowId: "@2",
+                rightWindowIds: [],
+                selectedRightWindowId: nil,
+                splitRatio: 0.4
+            ))
+            for _ in 0..<100 { await Task.yield() }
+
+            #expect(manager.sharedTerminalLayouts["coding"] == SharedTerminalLayout(
+                leftWindowId: "@2",
+                rightWindowIds: [],
+                selectedRightWindowId: nil,
+                splitRatio: 0.4,
+                revision: 1
+            ))
         }
     }
 #endif

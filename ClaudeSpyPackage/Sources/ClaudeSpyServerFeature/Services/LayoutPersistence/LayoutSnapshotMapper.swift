@@ -1,4 +1,5 @@
 #if os(macOS)
+    import ClaudeSpyNetworking
     import Foundation
 
     /// Translates between the live, in-memory `SessionFileTabsState` (+ its
@@ -11,6 +12,82 @@
     /// unit-testable). Browser tabs are rebuilt through an injected factory so the
     /// mapper never touches `WKWebView`.
     enum LayoutSnapshotMapper {
+        /// Minimal live-window input used when restoring the Host-owned terminal
+        /// layout. Keeping this separate from the UI's `LocalTmuxWindow` lets the
+        /// Host initialize layouts for background sessions directly from its
+        /// pane-state snapshot, without materializing private file/browser tabs.
+        struct TerminalWindow: Sendable, Equatable {
+            let index: Int
+            let stableId: String
+            let isActive: Bool
+
+            init(index: Int, stableId: String, isActive: Bool = false) {
+                self.index = index
+                self.stableId = stableId
+                self.isActive = isActive
+            }
+        }
+
+        /// Rebuilds the terminal-only portion of a persisted workbench as an
+        /// explicit Host layout. A missing persisted record intentionally
+        /// produces an explicit unsplit layout; on the wire, a missing session
+        /// entry means "Host has not initialized this session yet", not
+        /// "unsplit".
+        static func sharedTerminalLayoutRequest(
+            from layout: SavedFolderLayout?,
+            sessionName: String,
+            windows: [TerminalWindow],
+            preferredLeftWindowId: String? = nil
+        ) -> SetSharedTerminalLayout? {
+            let orderedWindows = windows.sorted { lhs, rhs in
+                if lhs.index != rhs.index { return lhs.index < rhs.index }
+                return lhs.stableId < rhs.stableId
+            }
+            guard !sessionName.isEmpty, !orderedWindows.isEmpty else { return nil }
+
+            let liveIds = Set(orderedWindows.map(\.stableId))
+            let rightIndices = Set((layout?.rightSide ?? []).compactMap { ref -> Int? in
+                guard case let .window(index) = ref else { return nil }
+                return index
+            })
+            var rightWindowIds = orderedWindows
+                .filter { rightIndices.contains($0.index) }
+                .map(\.stableId)
+
+            let preferredLeft = preferredLeftWindowId.flatMap { id in
+                liveIds.contains(id) && !rightWindowIds.contains(id) ? id : nil
+            }
+            let leftWindowId = preferredLeft
+                ?? orderedWindows.first(where: { $0.isActive && !rightWindowIds.contains($0.stableId) })?.stableId
+                ?? orderedWindows.first(where: { !rightWindowIds.contains($0.stableId) })?.stableId
+                ?? orderedWindows.first(where: \.isActive)?.stableId
+                ?? orderedWindows[0].stableId
+
+            // The shared protocol always names one terminal on the left. A
+            // malformed/legacy snapshot that parked every terminal on the right
+            // is normalized by moving the chosen left terminal out of that set.
+            rightWindowIds.removeAll { $0 == leftWindowId }
+
+            let savedSelectedRightId: String? = if
+                let selectedRight = layout?.selectedRight,
+                case let .window(index) = selectedRight {
+                orderedWindows.first(where: { $0.index == index })?.stableId
+            } else {
+                nil
+            }
+            let selectedRightWindowId = savedSelectedRightId.flatMap { id in
+                rightWindowIds.contains(id) ? id : nil
+            } ?? rightWindowIds.first
+
+            return SetSharedTerminalLayout(
+                sessionName: sessionName,
+                leftWindowId: leftWindowId,
+                rightWindowIds: rightWindowIds,
+                selectedRightWindowId: selectedRightWindowId,
+                splitRatio: Double(layout?.splitRatio ?? 0.5)
+            )
+        }
+
         // MARK: - Capture
 
         /// Snapshot the live workbench into a serializable layout.

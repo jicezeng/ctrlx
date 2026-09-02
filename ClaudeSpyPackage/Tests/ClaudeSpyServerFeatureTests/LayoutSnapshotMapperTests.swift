@@ -226,6 +226,57 @@
             #expect(tabs.selectedRight == .browser(browserId))
         }
 
+        // MARK: - Host terminal-layout authority
+
+        @Test("A background session restores its persisted terminal split without opening private tabs")
+        func restoresBackgroundTerminalSplit() {
+            let browserId = UUID()
+            let saved = SavedFolderLayout(
+                browserTabs: [SavedBrowserTab(
+                    id: browserId,
+                    url: URL(string: "https://example.com")!
+                )],
+                tabOrder: [.window(index: 0), .window(index: 1), .browser(id: browserId)],
+                rightSide: [.window(index: 1), .browser(id: browserId)],
+                selectedRight: .window(index: 1),
+                splitRatio: 0.62
+            )
+
+            let request = LayoutSnapshotMapper.sharedTerminalLayoutRequest(
+                from: saved,
+                sessionName: "background",
+                windows: [
+                    .init(index: 0, stableId: "@10", isActive: true),
+                    .init(index: 1, stableId: "@11"),
+                ]
+            )
+
+            #expect(request == SetSharedTerminalLayout(
+                sessionName: "background",
+                leftWindowId: "@10",
+                rightWindowIds: ["@11"],
+                selectedRightWindowId: "@11",
+                splitRatio: 0.62
+            ))
+        }
+
+        @Test("No persisted split still produces an explicit unsplit Host layout")
+        func createsExplicitUnsplitLayout() {
+            let request = LayoutSnapshotMapper.sharedTerminalLayoutRequest(
+                from: nil,
+                sessionName: "fresh",
+                windows: [
+                    .init(index: 0, stableId: "@20"),
+                    .init(index: 1, stableId: "@21", isActive: true),
+                ]
+            )
+
+            #expect(request == SetSharedTerminalLayout(
+                sessionName: "fresh",
+                leftWindowId: "@21"
+            ))
+        }
+
         // MARK: - Codable
 
         @Test("SavedFolderLayout survives a JSON round trip")

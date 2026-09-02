@@ -16,6 +16,13 @@ final public class MirrorWindowManager {
     /// Layout revisions are assigned here on the Host; the Relay is stateless.
     public private(set) var sharedTerminalLayouts: [String: SharedTerminalLayout] = [:]
 
+    /// One cold-start persistence read per live session. Until that read
+    /// finishes, the session is deliberately absent from
+    /// `sharedTerminalLayouts`: absence means "unknown", while an explicit
+    /// entry with an empty right side means "authoritatively unsplit".
+    @ObservationIgnored
+    private var sharedTerminalLayoutInitializationTasks: [String: Task<Void, Never>] = [:]
+
     /// Task for periodic session validation
     private var sessionValidationTask: Task<Void, Never>?
 
@@ -47,6 +54,11 @@ final public class MirrorWindowManager {
     /// classification. The coordinator updates sleep prevention and viewers.
     public var onAgentProcessReconciliationChanged: (@MainActor @Sendable () async -> Void)?
 
+    /// Called when cold-start/background-session hydration establishes a new
+    /// authoritative terminal layout, so connected Viewers receive it without
+    /// waiting for another tmux change.
+    public var onSharedTerminalLayoutInitialized: (@MainActor @Sendable () async -> Void)?
+
     /// Interval between session validation checks (in seconds)
     private let validationInterval: TimeInterval = 5
 
@@ -57,6 +69,9 @@ final public class MirrorWindowManager {
 
     @ObservationIgnored
     @Dependency(ProcessRunner.self) private var processRunner
+
+    @ObservationIgnored
+    @Dependency(LayoutStore.self) private var layoutStore
 
     private let logger = Logger(label: "com.jicezeng.ctrlx.mirrorwindowmanager")
     private let settings: AppSettings
@@ -231,6 +246,118 @@ final public class MirrorWindowManager {
             revision: revision
         )
         return true
+    }
+
+    /// Establishes an explicit authoritative terminal layout for every live
+    /// session, including sessions that are not selected in the Host UI.
+    ///
+    /// Persistence reads are single-flight per session. This method is cheap to
+    /// call after every pane refresh; existing canonical layouts are never
+    /// overwritten, so a layout changed by either peer always wins over a late
+    /// disk read.
+    public func initializeSharedTerminalLayoutsIfNeeded() {
+        let windowsBySession = Dictionary(
+            grouping: TmuxWindow.groupPanes(
+                paneStates.values.filter { !$0.sessionName.isEmpty }
+            ),
+            by: \.sessionName
+        )
+        let liveSessionNames = Set(windowsBySession.keys)
+
+        let staleTaskSessionNames = sharedTerminalLayoutInitializationTasks.keys.filter {
+            !liveSessionNames.contains($0)
+        }
+        for sessionName in staleTaskSessionNames {
+            sharedTerminalLayoutInitializationTasks.removeValue(forKey: sessionName)?.cancel()
+        }
+
+        for (sessionName, windows) in windowsBySession {
+            guard
+                sharedTerminalLayouts[sessionName] == nil,
+                sharedTerminalLayoutInitializationTasks[sessionName] == nil
+            else { continue }
+
+            guard let folder = layoutFolder(in: windows) else {
+                // tmux normally supplies a current path. If it temporarily
+                // cannot, there is no persistence key to read, but the Host can
+                // still remove ambiguity by publishing an explicit unsplit
+                // layout for the live windows.
+                if
+                    let request = LayoutSnapshotMapper.sharedTerminalLayoutRequest(
+                        from: nil,
+                        sessionName: sessionName,
+                        windows: terminalWindows(from: windows)
+                    ),
+                    setSharedTerminalLayout(
+                        sessionName: request.sessionName,
+                        leftWindowId: request.leftWindowId,
+                        rightWindowIds: request.rightWindowIds,
+                        selectedRightWindowId: request.selectedRightWindowId,
+                        splitRatio: request.splitRatio
+                    ) {
+                    Task { await onSharedTerminalLayoutInitialized?() }
+                }
+                continue
+            }
+
+            let key = SavedFolderRecord.Key(host: SavedFolderRecord.localHost, folder: folder)
+            sharedTerminalLayoutInitializationTasks[sessionName] = Task { [weak self] in
+                guard let self else { return }
+                let savedLayout = await layoutStore.record(key)?.layout
+                guard !Task.isCancelled else { return }
+
+                // Re-resolve from the current pane snapshot after the await. A
+                // session can disappear, be renamed, or gain/lose windows while
+                // the layout store is loading.
+                let currentWindows = TmuxWindow.groupPanes(
+                    paneStates.values.filter { $0.sessionName == sessionName }
+                )
+                defer { sharedTerminalLayoutInitializationTasks.removeValue(forKey: sessionName) }
+                guard
+                    !currentWindows.isEmpty,
+                    sharedTerminalLayouts[sessionName] == nil,
+                    layoutFolder(in: currentWindows) == folder
+                else { return }
+
+                let request = LayoutSnapshotMapper.sharedTerminalLayoutRequest(
+                    from: savedLayout,
+                    sessionName: sessionName,
+                    windows: terminalWindows(from: currentWindows)
+                )
+                guard
+                    let request,
+                    setSharedTerminalLayout(
+                        sessionName: request.sessionName,
+                        leftWindowId: request.leftWindowId,
+                        rightWindowIds: request.rightWindowIds,
+                        selectedRightWindowId: request.selectedRightWindowId,
+                        splitRatio: request.splitRatio
+                    )
+                else { return }
+
+                await onSharedTerminalLayoutInitialized?()
+            }
+        }
+    }
+
+    private func terminalWindows(from windows: [TmuxWindow]) -> [LayoutSnapshotMapper.TerminalWindow] {
+        windows.map {
+            LayoutSnapshotMapper.TerminalWindow(
+                index: $0.windowIndex,
+                stableId: $0.stableId,
+                isActive: $0.isWindowActive
+            )
+        }
+    }
+
+    private func layoutFolder(in windows: [TmuxWindow]) -> String? {
+        guard
+            let active = windows.first(where: \.isWindowActive) ?? windows.first,
+            let pane = active.activePane
+        else { return nil }
+        return LayoutFolderKey.canonicalize(
+            pane.agentSession?.detectedProjectPath ?? pane.currentPath
+        )
     }
 
     // MARK: - Periodic Session Validation
