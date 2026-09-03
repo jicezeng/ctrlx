@@ -2,13 +2,13 @@
 
 This document details how SwiftTerm calculates terminal cell dimensions, view sizing, and internal padding. Understanding these calculations is critical for properly sizing mirror windows in ClaudeSpy.
 
-> **SwiftTerm Version**: Commit [`0b8d99b`](https://github.com/migueldeicaza/SwiftTerm/tree/0b8d99bd19b694df44e1ccaa3891309719d34330)
+> **SwiftTerm Version**: Commit [`6b61f16`](https://github.com/jicezeng/SwiftTerm/tree/6b61f169f1edb31d0beb14b2df5847e757737c12)
 
 ## Cell Size Calculation
 
 SwiftTerm calculates character cell dimensions in the `computeFontDimensions()` method.
 
-**File**: [`AppleTerminalView.swift` (lines 142-167)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Apple/AppleTerminalView.swift#L142-L167)
+**File**: [`AppleTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Apple/AppleTerminalView.swift)
 
 ```swift
 func computeFontDimensions() -> CellDimension {
@@ -21,7 +21,10 @@ func computeFontDimensions() -> CellDimension {
     let glyph = fontSet.normal.glyph(withName: "W")
     let cellWidth = fontSet.normal.advancement(forGlyph: glyph).width
 
-    return CellDimension(width: max(1, cellWidth), height: max(1, cellHeight))
+    let scale = backingScaleFactor()
+    let snappedWidth = (cellWidth * scale).rounded() / scale
+    let snappedHeight = ceil(cellHeight * scale) / scale
+    return CellDimension(width: max(1, snappedWidth), height: max(1, snappedHeight))
 }
 ```
 
@@ -29,7 +32,7 @@ func computeFontDimensions() -> CellDimension {
 
 | Dimension | Calculation | Notes |
 |-----------|-------------|-------|
-| **Width** | `font.advancement(forGlyph: "W").width` | Uses "W" glyph specifically |
+| **Width** | `round(advance × scale) / scale` | Uses the "W" glyph and snaps to the nearest device pixel |
 | **Height** | `ceil(ascent + descent + leading)` | Includes all font metrics, rounded up |
 
 Both values are clamped to a minimum of 1 pixel.
@@ -38,13 +41,13 @@ Both values are clamped to a minimum of 1 pixel.
 
 Our `FontMetrics.calculateCellSize()` exactly mirrors this calculation:
 
-**File**: [`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Utilities/FontMetrics.swift`](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Utilities/FontMetrics.swift)
+**File**: [`ClaudeSpyPackage/Sources/ClaudeSpyCommon/Utilities/FontMetrics.swift`](../ClaudeSpyPackage/Sources/ClaudeSpyCommon/Utilities/FontMetrics.swift)
 
 ## Terminal View Sizing
 
 When the TerminalView's frame changes, SwiftTerm recalculates how many columns and rows fit.
 
-**File**: [`AppleTerminalView.swift` (lines 73-89)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Apple/AppleTerminalView.swift#L73-L89)
+**File**: [`AppleTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Apple/AppleTerminalView.swift)
 
 ```swift
 func processSizeChange(newSize: CGSize) -> Bool {
@@ -66,7 +69,7 @@ SwiftTerm's macOS implementation (`MacTerminalView`) includes an internal `NSScr
 
 ### Effective Width Calculation
 
-**File**: [`MacTerminalView.swift` (lines 348-351)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Mac/MacTerminalView.swift#L348-L351)
+**File**: [`MacTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Mac/MacTerminalView.swift)
 
 ```swift
 func getEffectiveWidth(size: CGSize) -> CGFloat {
@@ -76,7 +79,7 @@ func getEffectiveWidth(size: CGSize) -> CGFloat {
 
 Compare with iOS which has no scroller:
 
-**File**: [`iOSTerminalView.swift` (lines 908-911)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/iOS/iOSTerminalView.swift#L908-L911)
+**File**: [`iOSTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/iOS/iOSTerminalView.swift)
 
 ```swift
 func getEffectiveWidth(size: CGSize) -> CGFloat {
@@ -86,11 +89,11 @@ func getEffectiveWidth(size: CGSize) -> CGFloat {
 
 ### Scroller Setup
 
-**File**: [`MacTerminalView.swift` (lines 304-320)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Mac/MacTerminalView.swift#L304-L320)
+**File**: [`MacTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Mac/MacTerminalView.swift)
 
 ```swift
 func setupScroller() {
-    let style: NSScroller.Style = .legacy
+    let style: NSScroller.Style = .overlay
     let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: style)
     let scrollerFrame = NSRect(
         x: bounds.maxX - scrollerWidth,
@@ -102,7 +105,8 @@ func setupScroller() {
 }
 ```
 
-The legacy scroller style is approximately **15-16 pixels** wide on modern macOS.
+SwiftTerm currently defaults to an overlay scroller. Its configured width is still
+included in `getOptimalFrameSize()` while the scroller is visible.
 
 ## Why ClaudeSpy Needs a Horizontal Buffer
 
@@ -147,9 +151,9 @@ let contentWidth = CGFloat(paneInfo.width) * cellSize.width + horizontalBuffer
 
 | Component | Pixels | Notes |
 |-----------|--------|-------|
-| NSScroller (legacy) | ~15px | `NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)` |
-| Rounding buffer | ~5px | Accounts for font metric rounding differences |
-| **Total** | **20px** | Current working value |
+| NSScroller (overlay) | system-defined | `NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)` |
+| Layout safety margin | 4px | Covers fractional container sizing at grid boundaries |
+| **Total** | **Scroller width + 4px** | Calculated at runtime |
 
 ## Alternative Approaches
 
@@ -158,7 +162,7 @@ let contentWidth = CGFloat(paneInfo.width) * cellSize.width + horizontalBuffer
 Instead of hardcoding 20px, calculate dynamically:
 
 ```swift
-let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)
 let horizontalBuffer = scrollerWidth + 4 // rounding buffer
 ```
 
@@ -210,13 +214,13 @@ We investigated whether ClaudeSpy could remove its `NSScrollView` wrapper and us
 
 SwiftTerm's drawing code explicitly calculates Y coordinates from the bottom:
 
-**File**: [`AppleTerminalView.swift` (line 603-604)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Apple/AppleTerminalView.swift#L603-L604)
+**File**: [`AppleTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Apple/AppleTerminalView.swift)
 
 ```swift
 let lineOrigin = CGPoint(x: 0, y: frame.height - lineOffset)
 ```
 
-**File**: [`MacTerminalView.swift` (line 895)](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Mac/MacTerminalView.swift#L895) (mouse hit calculation)
+**File**: [`MacTerminalView.swift`](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Mac/MacTerminalView.swift) (mouse hit calculation)
 
 ```swift
 let row = Int((frame.height - point.y) / cellDimension.height) + terminal.buffer.yDisp
@@ -230,7 +234,7 @@ There is **no configuration option** to change this behavior. It would require m
 
 SwiftTerm's `MacTerminalView` always creates and reserves space for its internal `NSScroller`:
 
-- Scroller uses `.legacy` style (~15-16px wide)
+- Scroller uses `.overlay` style with a system-defined width
 - `getEffectiveWidth()` always subtracts scroller width
 - No API to disable or hide the scroller
 
@@ -288,12 +292,12 @@ The window adds **110px vertical padding** for:
 
 ### SwiftTerm Source Files
 
-- [AppleTerminalView.swift](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Apple/AppleTerminalView.swift) - Shared Apple platform code
-- [MacTerminalView.swift](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/Mac/MacTerminalView.swift) - macOS-specific implementation
-- [iOSTerminalView.swift](https://github.com/migueldeicaza/SwiftTerm/blob/0b8d99bd19b694df44e1ccaa3891309719d34330/Sources/SwiftTerm/iOS/iOSTerminalView.swift) - iOS implementation (for comparison)
+- [AppleTerminalView.swift](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Apple/AppleTerminalView.swift) - Shared Apple platform code
+- [MacTerminalView.swift](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Mac/MacTerminalView.swift) - macOS-specific implementation
+- [iOSTerminalView.swift](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/iOS/iOSTerminalView.swift) - iOS implementation (for comparison)
 
 ### ClaudeSpy Source Files
 
-- [FontMetrics.swift](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Utilities/FontMetrics.swift) - Cell size calculation
+- [FontMetrics.swift](../ClaudeSpyPackage/Sources/ClaudeSpyCommon/Utilities/FontMetrics.swift) - Cell size calculation
 - [TerminalContainerView.swift](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TerminalContainerView.swift) - Terminal view wrapper
 - [MirrorWindowManager.swift](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift) - Window sizing logic

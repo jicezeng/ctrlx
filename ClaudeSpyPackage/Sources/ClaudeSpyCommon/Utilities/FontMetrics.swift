@@ -34,8 +34,8 @@ public enum FontMetrics {
 
     /// Calculates the cell size for an existing font.
     ///
-    /// This exactly matches SwiftTerm's `computeFontDimensions()` method, with additional
-    /// width pixel-grid snapping to avoid sub-pixel seams between columns.
+    /// This exactly matches SwiftTerm's `computeFontDimensions()` method, including
+    /// its nearest-device-pixel width snapping.
     /// Use this overload when you already have a font reference (e.g., from `TerminalView.font`).
     ///
     /// - Parameter font: The monospace font to measure (NSFont on macOS, UIFont on iOS)
@@ -60,9 +60,11 @@ public enum FontMetrics {
             let cellWidth = "W".size(withAttributes: fontAttributes).width
         #endif
 
-        // Snap width to pixel grid to avoid sub-pixel seams between columns
+        // Keep this in lockstep with SwiftTerm's computeFontDimensions(). Using
+        // ceil here looks harmless for one cell, but a 0.5pt difference repeated
+        // across 100+ columns leaves a large blank strip beside the terminal.
         let scale = screenScaleFactor
-        let snappedWidth = ceil(cellWidth * scale) / scale
+        let snappedWidth = (cellWidth * scale).rounded() / scale
 
         // Height cap of 8192 matches SwiftTerm's computeFontDimensions() safety limit
         // (see AppleTerminalView.swift in SwiftTerm). cellHeight is already ceil()'d above,
@@ -72,13 +74,14 @@ public enum FontMetrics {
 
     /// Returns the width of SwiftTerm's internal scroller.
     ///
-    /// On macOS, SwiftTerm's MacTerminalView uses a legacy-style NSScroller that reserves horizontal space.
+    /// On macOS, SwiftTerm's MacTerminalView uses an overlay-style NSScroller and
+    /// includes its configured width in `getOptimalFrameSize()` while it is visible.
     /// On iOS, SwiftTerm uses UIScrollView which overlays the content (no reserved space).
     ///
     /// - Returns: The scroller width in points (macOS) or 0 (iOS)
     public static var swiftTermScrollerWidth: CGFloat {
         #if canImport(AppKit) && !targetEnvironment(macCatalyst)
-            return NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+            return NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)
         #else
             return 0
         #endif
@@ -86,8 +89,9 @@ public enum FontMetrics {
 
     /// Buffer to add to terminal width to compensate for SwiftTerm's internal scroller.
     ///
-    /// This includes the scroller width plus a small rounding buffer for font metric differences.
-    /// On iOS, this is just the rounding buffer since iOS uses overlay scrollers.
+    /// This includes the scroller width plus a small safety margin for fractional
+    /// container sizing at terminal-grid boundaries.
+    /// On iOS, this is just the safety margin since iOS uses overlay scrollers.
     public static var horizontalBuffer: CGFloat {
         swiftTermScrollerWidth + 4
     }
