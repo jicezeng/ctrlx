@@ -1897,9 +1897,7 @@ public struct MainView: View {
                     .help("Open session in terminal app")
                 }
 
-                resizeVisibleTerminalsButton(
-                    isDisabled: tmuxService.attachedSessionNames.contains(window.sessionName)
-                )
+                resizeVisibleTerminalsButton
 
                 Button {
                     requestCloseSession(window.sessionName)
@@ -1938,7 +1936,7 @@ public struct MainView: View {
                     )
                 }
 
-                resizeVisibleTerminalsButton(isDisabled: false)
+                resizeVisibleTerminalsButton
 
                 Button {
                     requestCloseRemoteSession(remote.sessionName, hostId: remote.hostId)
@@ -2094,18 +2092,14 @@ public struct MainView: View {
         )
     }
 
-    private func resizeVisibleTerminalsButton(isDisabled: Bool) -> some View {
-        let attachedHelp = "Cannot resize: session is attached to a terminal"
-        let resizeHelp = "Resize visible terminals to fit this Mac; affects the Host and all Viewers"
-
-        return Button(action: resizeVisibleTerminalsToFit) {
+    private var resizeVisibleTerminalsButton: some View {
+        Button(action: resizeVisibleTerminalsToFit) {
             Symbols.arrowUpLeftAndArrowDownRight.image
         }
         // macOS 26 auto-labels icon-only toolbar Buttons by SF Symbol and can
         // drop `.help()` from the AX tree, so keep an explicit stable label.
         .accessibilityLabel("Resize visible terminals to fit this Mac")
-        .help(isDisabled ? attachedHelp : resizeHelp)
-        .disabled(isDisabled)
+        .help("Resize visible terminals to fit this Mac; affects the Host and all Viewers")
     }
 
     /// Immutable plan captured by a direct button click. Calculating every
@@ -2130,11 +2124,7 @@ public struct MainView: View {
             return
         }
 
-        guard let sessionName = selectedWindow?.sessionName else { return }
-        guard !tmuxService.attachedSessionNames.contains(sessionName) else {
-            attachError = "Cannot resize: session is attached to a terminal"
-            return
-        }
+        guard selectedWindow != nil else { return }
         let requests = visibleLocalResizeRequests()
         Task {
             await performLocalResize(requests)
