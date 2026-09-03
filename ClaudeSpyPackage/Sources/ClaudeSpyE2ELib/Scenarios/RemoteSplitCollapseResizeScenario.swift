@@ -1,10 +1,11 @@
 import Foundation
 
-/// E2E scenario for the Host-owned shared terminal layout.
+/// E2E scenario for Host-owned shared terminal layout and dimensions.
 ///
 /// The app-level left/right arrangement must converge on every Mac without a
-/// Viewer resizing the Host's tmux windows. Native tmux pane layout is outside
-/// this protocol and remains synchronized by the existing `PaneState` path.
+/// Viewer mutating tmux directly. The active Viewer requests dimensions for its
+/// own viewport; the Host executes them and republishes the resulting state.
+/// Native tmux pane layout remains synchronized by the existing `PaneState` path.
 public enum RemoteSplitCollapseResizeScenario {
     public static let scenario = ClaudeSpyE2ELib.scenario(
         "Remote Shared Terminal Layout",
@@ -19,11 +20,17 @@ public enum RemoteSplitCollapseResizeScenario {
         TestStep.tmuxCommand(arguments: ["select-window", "-t", "rslayout:winLeft"])
 
         Shortcut.openPanesWindow()
-        TestStep.macResizeWindow(width: 1_300, height: 700)
+        TestStep.macResizeWindow(width: 1_000, height: 700)
         TestStep.macWaitForElement(titled: "rslayout", timeout: 15)
         TestStep.macClickButton(titled: "rslayout")
         TestStep.macWaitForElement(titled: "winLeft", timeout: 10)
         TestStep.macWaitForElement(titled: "winRight", timeout: 10)
+        TestStep.wait(seconds: 1)
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winLeft",
+            widthKey: "hostFullWidth",
+            heightKey: "hostFullHeight"
+        )
 
         Shortcut.openPanesWindow(instance: 1)
         TestStep.macResizeWindow(width: 1_300, height: 700, instance: 1)
@@ -31,6 +38,27 @@ public enum RemoteSplitCollapseResizeScenario {
         TestStep.macClickButton(titled: "rslayout", instance: 1)
         TestStep.macWaitForElement(titled: "winLeft", timeout: 10, instance: 1)
         TestStep.macWaitForElement(titled: "winRight", timeout: 10, instance: 1)
+        // Selecting the wider Viewer must resize the Host tmux window even
+        // though the logical terminal layout did not change.
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "rslayout:winLeft",
+            format: "#{pane_width}",
+            notEqualTo: "${hostFullWidth}",
+            timeout: 10
+        )
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winLeft",
+            widthKey: "viewerFullWidth",
+            heightKey: "viewerFullHeight"
+        )
+        TestStep.assertStoredNotEqual(key: "viewerFullWidth", otherKey: "hostFullWidth")
+        TestStep.wait(seconds: 2)
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winLeft",
+            widthKey: "settledViewerFullWidth",
+            heightKey: "settledViewerFullHeight"
+        )
+        TestStep.assertStoredEqual(key: "settledViewerFullWidth", otherKey: "viewerFullWidth")
 
         // Host opens the right terminal. The Viewer must render the same
         // logical arrangement after the canonical SessionState push.
@@ -41,6 +69,52 @@ public enum RemoteSplitCollapseResizeScenario {
             titled: "Move terminal to left: winRight",
             timeout: 10,
             instance: 1
+        )
+        // Activate the Viewer, then reproduce the reported asymmetric layout.
+        // The left tmux window must grow beyond the right's 80-column floor;
+        // without Viewer-driven sizing both remain 80 columns and the left side
+        // renders a large blank strip.
+        TestStep.macClickButton(titled: "winLeft", instance: 1)
+        TestStep.wait(seconds: 1)
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winLeft",
+            widthKey: "equalSplitLeftWidth",
+            heightKey: "equalSplitLeftHeight"
+        )
+        TestStep.macDrag(fromX: 785, fromY: 300, toX: 1_050, toY: 300, instance: 1)
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "rslayout:winLeft",
+            format: "#{pane_width}",
+            notEqualTo: "${equalSplitLeftWidth}",
+            timeout: 10
+        )
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winLeft",
+            widthKey: "wideSplitLeftWidth",
+            heightKey: "wideSplitLeftHeight"
+        )
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winRight",
+            widthKey: "narrowSplitRightWidth",
+            heightKey: "narrowSplitRightHeight"
+        )
+        TestStep.assertStoredNotEqual(key: "wideSplitLeftWidth", otherKey: "narrowSplitRightWidth")
+        TestStep.wait(seconds: 2)
+        TestStep.tmuxStorePaneDimensions(
+            target: "rslayout:winLeft",
+            widthKey: "settledWideSplitLeftWidth",
+            heightKey: "settledWideSplitLeftHeight"
+        )
+        TestStep.assertStoredEqual(key: "settledWideSplitLeftWidth", otherKey: "wideSplitLeftWidth")
+
+        // A Viewer-only window resize carries no logical layout update, so this
+        // assertion specifically guards the geometry-to-ResizeTmuxPane path.
+        TestStep.macResizeWindow(width: 1_100, height: 700, instance: 1)
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "rslayout:winLeft",
+            format: "#{pane_width}",
+            notEqualTo: "${wideSplitLeftWidth}",
+            timeout: 10
         )
         TestStep.macScreenshot(label: "shared-layout-host-split")
         TestStep.macScreenshot(label: "shared-layout-viewer-converged", instance: 1)

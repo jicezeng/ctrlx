@@ -3293,6 +3293,21 @@
                     return response
                 }
 
+                // A Viewer resize is executed only by the Host. Publish from
+                // the refreshed tmux snapshot before acknowledging so the
+                // requesting Viewer receives matching PaneState + stream
+                // dimensions and can safely keep its SwiftTerm grid locked.
+                if case .resizeTmuxPane = command.command {
+                    let response = await executor.execute(command)
+                    if response.success {
+                        let allPanes = tmux.panes
+                        winManager.updatePaneStates(from: allPanes)
+                        await paneStreaming.updateMonitoring(panes: allPanes)
+                        await connectionManager?.pushSessionStateToAll()
+                    }
+                    return response
+                }
+
                 // Handle create window (new window in existing session)
                 if case let .createTmuxWindow(spec) = command.command {
                     return await Self.handleCreateWindow(

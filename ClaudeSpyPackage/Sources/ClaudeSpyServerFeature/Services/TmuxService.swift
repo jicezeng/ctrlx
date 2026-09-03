@@ -2087,6 +2087,11 @@ final public class TmuxService {
         guard result.isSuccess else {
             throw TmuxError.commandFailed(message: result.stderrString)
         }
+
+        // Publish the authoritative dimensions immediately. This drives both
+        // the Host UI and SessionState broadcast after a remote Viewer requests
+        // a fit, instead of waiting for the next periodic pane refresh.
+        await refreshPanes()
     }
 
     /// Splits a tmux pane in the given direction

@@ -47,7 +47,8 @@ Approved. No unresolved Critical, High, Medium or Low findings remain.
 - The Relay remains a stateless E2EE frame forwarder.
 - Pixel geometry, focus, scroll, keyboard and browser/file tabs remain local.
 - Native tmux pane topology continues through the existing pane-state path.
-- Remote Viewer geometry no longer resizes Host tmux dimensions.
+- Remote Viewer geometry never mutates tmux locally; the active Viewer requests
+  a fit and the Host executes and republishes the authoritative dimensions.
 
 This is the smallest protocol that fixes the observed defect without creating
 a second general-purpose workspace synchronization system.

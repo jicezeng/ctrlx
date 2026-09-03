@@ -751,6 +751,14 @@
                 )
             }
 
+            // `%layout-change` is the low-latency path, but control-mode events
+            // can be missed during reconnect. The periodic tmux snapshot is the
+            // authority, so reconcile every existing reader as well as newly
+            // created ones and forward any correction to live subscribers.
+            for pane in panes {
+                updateDimensions(paneId: pane.paneId, width: pane.width, height: pane.height)
+            }
+
             // `rename-session` preserves pane IDs and live pipe-pane readers,
             // but every textual target changes. Update the reader context so
             // capture, mouse-mode and teardown commands stop using the old target.
