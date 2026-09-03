@@ -18,12 +18,10 @@ import Foundation
 /// presses. The symmetric restore leaves the *persisted* font size untouched
 /// so later scenarios' baselines are unaffected.
 ///
-/// The font phase runs with auto-resize enabled and asserts the *tmux-side*
-/// pane dimensions shrink when the font grows (and return on restore): a
-/// font-size change alters how many cells fit the same pixel area, so
-/// auto-resize must re-fit the tmux pane or agents in it keep rendering at a
-/// stale size. This pins the fix for font changes (hotkeys or the Settings
-/// slider) not triggering auto-resize.
+/// The font phase asserts that font changes alone leave tmux untouched, then
+/// uses the explicit fit button to apply the new cell geometry. Restoring the
+/// font similarly requires another click and returns to the original rows and
+/// columns.
 ///
 /// The font-demo session (`hkalpha`) is deliberately filled with many lines of
 /// text so a font-size change moves a large fraction of the on-screen pixels.
@@ -114,15 +112,10 @@ public enum SessionAndFontHotkeysScenario {
         )
 
         // ── ⌘+ / ⌘- change the terminal font size ────────────────────
-        // Auto-resize is enabled for the font phase: a font-size change
-        // alters how many cells fit the same pixel area, so with auto-resize
-        // on the app must resize the tmux pane too (bigger font → fewer
-        // columns/rows) or agents in the pane keep rendering at a stale size.
-        // The tmux-side dimensions are asserted below to pin that behavior.
-        TestStep.log("Enable auto-resize on hkalpha for the font phase")
-        TestStep.macClickButton(titled: "Auto-resize terminal when mirror view changes size")
-        // Enabling the toggle performs an immediate resize to fit the mirror
-        // view; let it land before recording the 12 pt reference dimensions.
+        // Font changes are presentation-only until the explicit fit button is
+        // clicked. This pins the same manual-only contract as window geometry.
+        TestStep.log("Fit hkalpha at the default font")
+        TestStep.macClickButton(titled: "Resize visible terminals to fit this Mac")
         TestStep.wait(seconds: 1)
         TestStep.tmuxStorePaneDimensions(
             target: "hkalpha:0",
@@ -138,15 +131,28 @@ public enum SessionAndFontHotkeysScenario {
         for _ in 0..<6 {
             TestStep.macPressKey(.character("="), modifiers: [.command, .shift])
         }
-        // Cover the 200 ms auto-resize debounce plus the tmux round-trip.
         TestStep.wait(seconds: 1)
+        TestStep.tmuxStorePaneDimensions(
+            target: "hkalpha:0",
+            widthKey: "beforeIncreasedFontFitWidth",
+            heightKey: "beforeIncreasedFontFitHeight"
+        )
+        TestStep.assertStoredEqual(key: "beforeIncreasedFontFitWidth", otherKey: "fontDefaultWidth")
+        TestStep.assertStoredEqual(key: "beforeIncreasedFontFitHeight", otherKey: "fontDefaultHeight")
+
+        TestStep.macClickButton(titled: "Resize visible terminals to fit this Mac")
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "hkalpha:0",
+            format: "#{pane_width}",
+            notEqualTo: "${fontDefaultWidth}",
+            timeout: 10
+        )
         TestStep.tmuxStorePaneDimensions(
             target: "hkalpha:0",
             widthKey: "fontIncreasedWidth",
             heightKey: "fontIncreasedHeight"
         )
         TestStep.log("Dimensions at increased font: ${fontIncreasedWidth}x${fontIncreasedHeight}")
-        // The larger font must shrink the tmux pane in BOTH axes.
         TestStep.assertStoredNotEqual(key: "fontIncreasedWidth", otherKey: "fontDefaultWidth")
         TestStep.assertStoredNotEqual(key: "fontIncreasedHeight", otherKey: "fontDefaultHeight")
         TestStep.macWaitForElement(titled: "${fontIncreasedWidth}x${fontIncreasedHeight}", timeout: 5)
@@ -159,11 +165,25 @@ public enum SessionAndFontHotkeysScenario {
         TestStep.wait(seconds: 1)
         TestStep.tmuxStorePaneDimensions(
             target: "hkalpha:0",
+            widthKey: "beforeRestoredFontFitWidth",
+            heightKey: "beforeRestoredFontFitHeight"
+        )
+        TestStep.assertStoredEqual(key: "beforeRestoredFontFitWidth", otherKey: "fontIncreasedWidth")
+        TestStep.assertStoredEqual(key: "beforeRestoredFontFitHeight", otherKey: "fontIncreasedHeight")
+
+        TestStep.macClickButton(titled: "Resize visible terminals to fit this Mac")
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "hkalpha:0",
+            format: "#{pane_width}",
+            notEqualTo: "${fontIncreasedWidth}",
+            timeout: 10
+        )
+        TestStep.tmuxStorePaneDimensions(
+            target: "hkalpha:0",
             widthKey: "fontRestoredWidth",
             heightKey: "fontRestoredHeight"
         )
         TestStep.log("Dimensions after restore: ${fontRestoredWidth}x${fontRestoredHeight}")
-        // Symmetric restore → the pane returns to its 12 pt dimensions.
         TestStep.assertStoredEqual(key: "fontRestoredWidth", otherKey: "fontDefaultWidth")
         TestStep.assertStoredEqual(key: "fontRestoredHeight", otherKey: "fontDefaultHeight")
         TestStep.macScreenshot(label: "mac-hotkeys-font-restored")

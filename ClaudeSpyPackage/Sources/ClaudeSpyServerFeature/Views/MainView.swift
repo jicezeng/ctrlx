@@ -52,20 +52,6 @@ public struct MainView: View {
     @State private var remoteHostDragSourceID: String?
     @State private var remoteHostDropTargetID: String?
 
-    /// Per-session auto-resize state keyed by pane ID. Remote keys include the
-    /// Host ID so identical tmux pane IDs on different Hosts cannot collide.
-    /// A Viewer may request a size, but only the Host executes the tmux resize.
-    @State private var autoResizeEnabled: Set<String> = []
-    /// Per-session auto-resize opt-out when global setting is on
-    @State private var autoResizeDisabled: Set<String> = []
-    /// Last dimensions sent via auto-resize, keyed by pane target (local pane
-    /// id or `remote.resizeKey(paneId:)`). Used to skip redundant resize calls
-    /// during window drag — the cell-size rounding eliminates most spurious
-    /// updates, and the per-pane keying means a left+right split with two
-    /// different rendered widths is cached as two independent entries.
-    @State private var lastAutoResizeDimensions: [String: (columns: Int, rows: Int)] = [:]
-    /// Debounce task for auto-resize (cancelled on each new geometry change)
-    @State private var autoResizeTask: Task<Void, Never>?
     /// Debounces shared terminal-layout publication while the divider moves.
     @State private var sharedLayoutSyncTask: Task<Void, Never>?
 
@@ -161,8 +147,9 @@ public struct MainView: View {
                 .onGeometryChange(for: CGSize.self) { proxy in
                     proxy.size
                 } action: { newSize in
-                    detailPaneSize = newSize
-                    handleAutoResize()
+                    if detailPaneSize != newSize {
+                        detailPaneSize = newSize
+                    }
                 }
         }
         .navigationSplitViewStyle(.balanced)
@@ -473,33 +460,10 @@ public struct MainView: View {
                 pendingRemoteLayoutSaves.removeValue(forKey: key)
             }
         }
-        .modifier(AutoResizeObserversModifier(
-            alwaysAutoResize: settings.alwaysAutoResize,
+        .modifier(SharedTerminalLayoutSyncModifier(
             splitSignal: currentSessionSplitSignal,
-            fontName: settings.fontName,
-            fontSize: settings.fontSize,
-            onPreferenceChanged: {
-                // Global toggle flipped — drop per-session opt-outs and
-                // cached dimensions so the new state is re-evaluated from scratch.
-                autoResizeDisabled.removeAll()
-                lastAutoResizeDimensions.removeAll()
-                handleAutoResize()
-            },
             onSplitChanged: {
-                // Splitting/collapsing the detail area or dragging the divider
-                // changes the rendered width of any terminal in the split. The
-                // `onGeometryChange` on the detail pane doesn't fire for these
-                // because the overall pane size is unchanged — re-run the
-                // auto-resize so tmux knows about the new pane width.
-                handleAutoResize()
                 scheduleSharedTerminalLayoutSync()
-            },
-            onFontChanged: {
-                // A font change (⌘+ / ⌘- or the Settings pane) alters the cell
-                // size, so a different number of columns/rows now fits the same
-                // detail-pane pixels. Re-run auto-resize so tmux is re-fit and
-                // the agent in the pane re-renders at the new size.
-                handleAutoResize()
             }
         ))
         .modifier(SharedTerminalLayoutObserversModifier(
@@ -508,17 +472,11 @@ public struct MainView: View {
             onLocalChanged: applySelectedLocalSharedTerminalLayout,
             onRemoteChanged: applySelectedRemoteSharedTerminalLayout,
             onDisappear: {
-                autoResizeTask?.cancel()
                 sharedLayoutSyncTask?.cancel()
             }
         ))
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             markSelectedSessionsHandledIfActive()
-            // Becoming active is the ownership hand-off between Macs. Clear the
-            // cache so the terminal grid is fitted to this Mac even when another
-            // Host/Viewer changed it while this app was in the background.
-            lastAutoResizeDimensions.removeAll()
-            handleAutoResize()
         }
         .focusedSceneValue(\.closeCurrentTabAction, handleCloseCurrentTab)
         .focusedSceneValue(\.terminalWindowNavigationActions, terminalWindowNavigationActions)
@@ -819,7 +777,6 @@ public struct MainView: View {
             override: stateOverride,
             agentState: claudePane.flatMap { windowManager.paneStates[$0.paneId]?.agentSession?.state }
         )
-        let isSessionAttached = tmuxService.attachedSessionNames.contains(session.sessionName)
         let isSelected = selectedWindow.map { selected in session.windows.contains(where: { $0.id == selected.id }) } ?? false
         // Compute effective progress here (and not just inside the row) so we can expose
         // a sibling AX element OUTSIDE the Button label below — when the row
@@ -914,44 +871,6 @@ public struct MainView: View {
                     }
 
                     Divider()
-
-                    if !isAutoResizeActive(for: activePane.paneId) {
-                        Button {
-                            Task {
-                                await performResize(
-                                    localWindowTarget: activeWindow.stableId,
-                                    localPaneId: activePane.paneId,
-                                    widthOverride: effectiveTerminalWidth(for: activeWindow)
-                                )
-                            }
-                        } label: {
-                            Label("Resize to Fit", symbol: .arrowUpLeftAndArrowDownRight)
-                        }
-                        .disabled(isSessionAttached)
-                    }
-
-                    Toggle(isOn: Binding(
-                        get: { isAutoResizeActive(for: activePane.paneId) },
-                        set: { enabled in
-                            if enabled {
-                                autoResizeDisabled.remove(activePane.paneId)
-                                autoResizeEnabled.insert(activePane.paneId)
-                                Task {
-                                    await performResize(
-                                        localWindowTarget: activeWindow.stableId,
-                                        localPaneId: activePane.paneId,
-                                        widthOverride: effectiveTerminalWidth(for: activeWindow)
-                                    )
-                                }
-                            } else {
-                                autoResizeDisabled.insert(activePane.paneId)
-                                autoResizeEnabled.remove(activePane.paneId)
-                            }
-                        }
-                    )) {
-                        Label("Auto-resize", symbol: .arrowDownRightAndArrowUpLeft)
-                    }
-                    .disabled(isSessionAttached)
                 }
 
                 Divider()
@@ -1976,13 +1895,11 @@ public struct MainView: View {
                     }
                     .accessibilityLabel("Open session in terminal app")
                     .help("Open session in terminal app")
-
-                    resizeToolbarGroup(
-                        resizeKey: activePane.paneId,
-                        localWindow: window,
-                        isSessionAttached: tmuxService.attachedSessionNames.contains(window.sessionName)
-                    )
                 }
+
+                resizeVisibleTerminalsButton(
+                    isDisabled: tmuxService.attachedSessionNames.contains(window.sessionName)
+                )
 
                 Button {
                     requestCloseSession(window.sessionName)
@@ -2020,6 +1937,8 @@ public struct MainView: View {
                             : "Enable yolo mode to auto-approve permissions"
                     )
                 }
+
+                resizeVisibleTerminalsButton(isDisabled: false)
 
                 Button {
                     requestCloseRemoteSession(remote.sessionName, hostId: remote.hostId)
@@ -2175,203 +2094,157 @@ public struct MainView: View {
         )
     }
 
-    @ViewBuilder
-    private func resizeToolbarGroup(
-        resizeKey: String,
-        localWindow: LocalTmuxWindow,
-        isSessionAttached: Bool = false
-    ) -> some View {
+    private func resizeVisibleTerminalsButton(isDisabled: Bool) -> some View {
         let attachedHelp = "Cannot resize: session is attached to a terminal"
-        let autoResizeActive = isAutoResizeActive(for: resizeKey)
-        // For local windows, `resizeKey` is the bare paneId, so use it as the
-        // cache key in performResize. The resize command itself targets the
-        // window's stable tmux ID so an exiting active pane cannot invalidate it.
-        let widthOverride = effectiveTerminalWidth(for: localWindow)
+        let resizeHelp = "Resize visible terminals to fit this Mac; affects the Host and all Viewers"
 
-        // Hide manual resize button when auto-resize is active
-        if !autoResizeActive {
-            Button {
-                Task {
-                    await performResize(
-                        localWindowTarget: localWindow.stableId,
-                        localPaneId: resizeKey,
-                        widthOverride: widthOverride
-                    )
-                }
-            } label: {
-                Symbols.arrowUpLeftAndArrowDownRight.image
-            }
-            // macOS 26 auto-labels icon-only toolbar Buttons by SF Symbol
-            // (e.g. arrow.up.left.and.arrow.down.right → "Enter Full Screen")
-            // and drops `.help()` from the AX tree, so set the AX label
-            // explicitly to keep VoiceOver and e2e queries meaningful.
-            .accessibilityLabel(isSessionAttached ? attachedHelp : "Resize terminal to fit mirror view")
-            .help(isSessionAttached ? attachedHelp : "Resize terminal to fit mirror view")
-            .disabled(isSessionAttached)
+        return Button(action: resizeVisibleTerminalsToFit) {
+            Symbols.arrowUpLeftAndArrowDownRight.image
         }
-
-        Toggle(isOn: Binding(
-            get: { autoResizeActive },
-            set: { enabled in
-                if enabled {
-                    autoResizeDisabled.remove(resizeKey)
-                    autoResizeEnabled.insert(resizeKey)
-                    Task {
-                        await performResize(
-                            localWindowTarget: localWindow.stableId,
-                            localPaneId: resizeKey,
-                            widthOverride: widthOverride
-                        )
-                    }
-                } else {
-                    autoResizeDisabled.insert(resizeKey)
-                    autoResizeEnabled.remove(resizeKey)
-                }
-            }
-        )) {
-            Symbols.arrowDownRightAndArrowUpLeft.image
-        }
-        .toggleStyle(.button)
-        .help(isSessionAttached ? attachedHelp : "Auto-resize terminal when mirror view changes size")
-        .disabled(isSessionAttached)
+        // macOS 26 auto-labels icon-only toolbar Buttons by SF Symbol and can
+        // drop `.help()` from the AX tree, so keep an explicit stable label.
+        .accessibilityLabel("Resize visible terminals to fit this Mac")
+        .help(isDisabled ? attachedHelp : resizeHelp)
+        .disabled(isDisabled)
     }
 
-    /// Whether auto-resize is active for the given pane key (either via global preference or per-session toggle)
-    private func isAutoResizeActive(for key: String) -> Bool {
-        if settings.alwaysAutoResize {
-            return !autoResizeDisabled.contains(key)
-        }
-        return autoResizeEnabled.contains(key)
+    /// Immutable plan captured by a direct button click. Calculating every
+    /// target before the first await prevents an incoming pane snapshot from
+    /// changing which tmux windows the same click resizes halfway through.
+    private struct TerminalResizeRequest {
+        let windowTarget: String
+        let columns: Int
+        let rows: Int
     }
 
-    /// Common reaction for any of the three selection state changes
-    /// (`selectedWindow`, `selectedRemoteSession`, `selectedRemoteWindowId`):
-    /// flush cached dimensions, kick off auto-resize, and clear attention for
-    /// sessions the user is now looking at.
+    /// The sole UI entry point for changing tmux rows/columns. Layout geometry,
+    /// activation, selection and font changes only update local presentation.
+    private func resizeVisibleTerminalsToFit() {
+        attachError = nil
+
+        if let remote = selectedRemoteSession {
+            let requests = visibleRemoteResizeRequests(remote: remote)
+            Task {
+                await performRemoteResize(requests, hostId: remote.hostId)
+            }
+            return
+        }
+
+        guard let sessionName = selectedWindow?.sessionName else { return }
+        guard !tmuxService.attachedSessionNames.contains(sessionName) else {
+            attachError = "Cannot resize: session is attached to a terminal"
+            return
+        }
+        let requests = visibleLocalResizeRequests()
+        Task {
+            await performLocalResize(requests)
+        }
+    }
+
+    /// Common reaction for local and remote selection changes. Selection may
+    /// update attention, persistence and shared logical layout, but never tmux
+    /// dimensions.
     private func handleSelectionChanged() {
-        lastAutoResizeDimensions.removeAll()
-        handleAutoResize()
         markSelectedSessionsHandledIfActive()
         seedLayoutIfNeeded()
         seedRemoteLayoutIfNeeded()
         scheduleSharedTerminalLayoutSync()
     }
 
-    private func handleAutoResize() {
-        // Cancel any pending debounced resize
-        autoResizeTask?.cancel()
+    private func visibleLocalResizeRequests() -> [TerminalResizeRequest] {
+        guard let leftWindow = selectedWindow else { return [] }
+        var visibleWindows = [leftWindow]
+        if
+            let rightWindow = rightPaneTerminalWindow(),
+            rightWindow.stableId != leftWindow.stableId {
+            visibleWindows.append(rightWindow)
+        }
 
-        autoResizeTask = Task {
-            // Debounce: wait for layout to stabilize (especially during session switches)
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
+        let tabs = sessionFileTabsStates[leftWindow.sessionName]
+        return visibleWindows.map { window in
+            resizeRequest(
+                windowTarget: window.stableId,
+                width: effectiveTerminalWidth(tabs: tabs, windowId: window.stableId)
+            )
+        }
+    }
 
-            if let remote = selectedRemoteSession {
-                // A background Viewer must not reclaim the shared tmux grid when
-                // it merely receives Host state. The Mac the user most recently
-                // activated (or resized) becomes the last writer, while the Host
-                // remains the only process that mutates tmux.
-                guard
-                    NSApplication.shared.isActive,
-                    let leftWindow = selectedRemoteWindow,
-                    let leftPane = leftWindow.activePane
-                else { return }
+    private func visibleRemoteResizeRequests(
+        remote: RemoteSessionSelection
+    ) -> [TerminalResizeRequest] {
+        guard let leftWindow = selectedRemoteWindow else { return [] }
+        let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
+        let tabs = remoteSessionTabsStates[key]
+        var visibleWindows = [leftWindow]
+        if
+            let tabs,
+            tabs.isSplit,
+            case let .window(rightWindowId) = tabs.selectedRight,
+            rightWindowId != leftWindow.stableId,
+            let rightWindow = selectedRemoteSessionWindows.first(where: {
+                $0.stableId == rightWindowId
+            }) {
+            visibleWindows.append(rightWindow)
+        }
 
-                let leftWidth = effectiveTerminalWidth(forRemote: leftWindow, in: remote)
-                await resizeRemotePaneIfNeeded(
-                    remote: remote,
-                    paneId: leftPane.paneId,
-                    widthOverride: leftWidth
+        return visibleWindows.map { window in
+            resizeRequest(
+                windowTarget: window.stableId,
+                width: effectiveTerminalWidth(tabs: tabs, windowId: window.stableId)
+            )
+        }
+    }
+
+    private func resizeRequest(
+        windowTarget: String,
+        width: CGFloat?
+    ) -> TerminalResizeRequest {
+        let dimensions = calculateOptimalTerminalDimensions(widthOverride: width)
+        return TerminalResizeRequest(
+            windowTarget: windowTarget,
+            columns: dimensions.columns,
+            rows: dimensions.rows
+        )
+    }
+
+    private func performLocalResize(_ requests: [TerminalResizeRequest]) async {
+        for request in requests {
+            do {
+                try await tmuxService.resizePane(
+                    request.windowTarget,
+                    width: request.columns,
+                    height: request.rows
                 )
-
-                // Resolve the right pane after the first relay round trip. The
-                // selected session/layout may have changed while suspended.
-                guard !Task.isCancelled, selectedRemoteSession == remote else { return }
-                if
-                    let rightWindow = rightPaneRemoteTerminalWindow(remote: remote),
-                    let rightPane = rightWindow.activePane {
-                    await resizeRemotePaneIfNeeded(
-                        remote: remote,
-                        paneId: rightPane.paneId,
-                        widthOverride: effectiveTerminalWidth(forRemote: rightWindow, in: remote)
-                    )
-                }
+            } catch {
+                attachError = "Failed to resize: \(error.localizedDescription)"
                 return
-            }
-
-            guard
-                let selectedWindowId = selectedWindow?.stableId,
-                let window = tmuxService.windows.first(where: { $0.stableId == selectedWindowId }),
-                let activePane = window.activePane
-            else { return }
-
-            let widthOverride = effectiveTerminalWidth(for: window)
-            let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
-            let cached = lastAutoResizeDimensions[activePane.paneId]
-            if cached?.columns != dimensions.columns || cached?.rows != dimensions.rows {
-                if
-                    isAutoResizeActive(for: activePane.paneId),
-                    !tmuxService.attachedSessionNames.contains(window.sessionName) {
-                    await performResize(
-                        localWindowTarget: window.stableId,
-                        localPaneId: activePane.paneId,
-                        widthOverride: widthOverride,
-                        reportsFailure: false
-                    )
-                }
-            }
-
-            // Resolve the right pane after resizing the left: the selection can
-            // change while the tmux command is suspended.
-            if let rightWindow = rightPaneTerminalWindow(), let rightPane = rightWindow.activePane {
-                let rightWidth = effectiveTerminalWidth(for: rightWindow)
-                let rightDimensions = calculateOptimalTerminalDimensions(widthOverride: rightWidth)
-                let rightCached = lastAutoResizeDimensions[rightPane.paneId]
-                if rightCached?.columns != rightDimensions.columns || rightCached?.rows != rightDimensions.rows {
-                    if
-                        isAutoResizeActive(for: rightPane.paneId),
-                        !tmuxService.attachedSessionNames.contains(rightWindow.sessionName) {
-                        await performResize(
-                            localWindowTarget: rightWindow.stableId,
-                            localPaneId: rightPane.paneId,
-                            widthOverride: rightWidth,
-                            reportsFailure: false
-                        )
-                    }
-                }
             }
         }
     }
 
-    /// Sends a split-aware size request for one visible remote tmux window.
-    /// Geometry events are frequent, so compare rounded rows/columns first and
-    /// cache only successful Host acknowledgements.
-    private func resizeRemotePaneIfNeeded(
-        remote: RemoteSessionSelection,
-        paneId: String,
-        widthOverride: CGFloat?
+    private func performRemoteResize(
+        _ requests: [TerminalResizeRequest],
+        hostId: String
     ) async {
-        let resizeKey = remote.resizeKey(paneId: paneId)
-        guard isAutoResizeActive(for: resizeKey) else { return }
+        guard let manager = coordinator.viewerConnectionManager else {
+            attachError = "Failed to resize: Viewer is not connected"
+            return
+        }
 
-        let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
-        let cached = lastAutoResizeDimensions[resizeKey]
-        guard cached?.columns != dimensions.columns || cached?.rows != dimensions.rows else { return }
-        guard let manager = coordinator.viewerConnectionManager else { return }
-
-        let result = await manager.sendCommand(
-            ResizeTmuxPane(width: dimensions.columns, height: dimensions.rows),
-            paneId: paneId,
-            hostId: remote.hostId
-        )
-        switch result {
-        case .success:
-            lastAutoResizeDimensions[resizeKey] = dimensions
-        case .failure:
-            // Auto-resize is opportunistic. Connection failures already surface
-            // in the global connection state and will retry on activation,
-            // selection, split/font change, or the next geometry change.
-            break
+        for request in requests {
+            let result = await manager.sendCommand(
+                ResizeTmuxPane(
+                    width: request.columns,
+                    height: request.rows,
+                    userInitiated: true
+                ),
+                paneId: request.windowTarget,
+                hostId: hostId
+            )
+            if case let .failure(error) = result {
+                attachError = "Failed to resize: \(error.localizedDescription)"
+                return
+            }
         }
     }
 
@@ -2389,24 +2262,6 @@ public struct MainView: View {
         }
         return tmuxService.windows.first {
             $0.sessionName == sessionName && $0.stableId == rightWindowId
-        }
-    }
-
-    private func performResize(
-        localWindowTarget: String,
-        localPaneId: String,
-        widthOverride: CGFloat? = nil,
-        reportsFailure: Bool = true
-    ) async {
-        let dimensions = calculateOptimalTerminalDimensions(widthOverride: widthOverride)
-
-        do {
-            try await tmuxService.resizePane(localWindowTarget, width: dimensions.columns, height: dimensions.rows)
-            lastAutoResizeDimensions[localPaneId] = dimensions
-        } catch {
-            if reportsFailure {
-                attachError = "Failed to resize: \(error.localizedDescription)"
-            }
         }
     }
 
@@ -4531,32 +4386,8 @@ public struct MainView: View {
         return (columns, rows)
     }
 
-    /// Returns the rendered width of the terminal area for the given window,
-    /// accounting for the split-view layout (issue #498). When the window's
-    /// session has a split active, the terminal occupies only the side of the
-    /// split it lives on — `nil` falls back to the full `detailPaneSize.width`
-    /// so non-split sessions keep the original behavior.
-    private func effectiveTerminalWidth(for window: LocalTmuxWindow) -> CGFloat? {
-        effectiveTerminalWidth(
-            tabs: sessionFileTabsStates[window.sessionName],
-            windowId: window.stableId
-        )
-    }
-
-    /// Remote counterpart to `effectiveTerminalWidth(for:)`. Shared layout
-    /// synchronizes the split ratio, while this Viewer contributes its actual
-    /// pixel width to derive the rows/columns it asks the Host to apply.
-    private func effectiveTerminalWidth(
-        forRemote window: TmuxWindow,
-        in remote: RemoteSessionSelection
-    ) -> CGFloat? {
-        let key = remoteTabsKey(hostId: remote.hostId, sessionName: remote.sessionName)
-        return effectiveTerminalWidth(
-            tabs: remoteSessionTabsStates[key],
-            windowId: window.stableId
-        )
-    }
-
+    /// Returns the rendered width for a visible terminal in the current CtrlX
+    /// layout. `nil` means the terminal owns the full detail width.
     private func effectiveTerminalWidth(
         tabs: SessionFileTabsState?,
         windowId: String
@@ -4567,28 +4398,9 @@ public struct MainView: View {
         return max(0, detailPaneSize.width * ratio - SplitLayout.dividerWidth / 2)
     }
 
-    /// The remote tmux window currently rendered on the right. Resolving from
-    /// the Host snapshot avoids using stale local selection captured before an
-    /// awaited resize command.
-    private func rightPaneRemoteTerminalWindow(remote: RemoteSessionSelection) -> TmuxWindow? {
-        guard
-            let sessionStore = coordinator.remoteSessionStore,
-            let tabs = remoteSessionTabsStates[remoteTabsKey(
-                hostId: remote.hostId,
-                sessionName: remote.sessionName
-            )],
-            tabs.isSplit,
-            case let .window(rightWindowId) = tabs.selectedRight
-        else {
-            return nil
-        }
-        return sessionStore.windows(for: remote.hostId)
-            .first { $0.sessionName == remote.sessionName && $0.stableId == rightWindowId }
-    }
-
     /// Equatable snapshot of the currently selected session's split layout,
-    /// used as the source for `.onChange(of:)` so local auto-resize and shared
-    /// layout publication fire for every split membership/selection change.
+    /// used as the source for `.onChange(of:)` so shared layout publication
+    /// fires for every split membership/selection change.
     /// Returns `nil` when nothing is selected so `.onChange` still fires on
     /// the first non-nil transition.
     private var currentSessionSplitSignal: SplitSignal? {
@@ -4705,26 +4517,11 @@ public struct MainView: View {
                     return
                 }
                 guard let manager = coordinator.viewerConnectionManager else { return }
-                switch await manager.sendCommand(request, paneId: "", hostId: hostId) {
-                case .success:
-                    // The Host applies the shared split before acknowledging and
-                    // may auto-fit it to its own pixels. Re-claim dimensions only
-                    // after that authoritative layout round trip, so the active
-                    // Viewer's fit is deterministically the final write.
-                    if
-                        let remote = selectedRemoteSession,
-                        remote.hostId == hostId,
-                        remote.sessionName == request.sessionName {
-                        for window in selectedRemoteSessionWindows {
-                            for pane in window.panes {
-                                lastAutoResizeDimensions.removeValue(
-                                    forKey: remote.resizeKey(paneId: pane.paneId)
-                                )
-                            }
-                        }
-                        handleAutoResize()
-                    }
-                case let .failure(error):
+                if case let .failure(error) = await manager.sendCommand(
+                    request,
+                    paneId: "",
+                    hostId: hostId
+                ) {
                     attachError = "Failed to update shared layout: \(error.localizedDescription)"
                 }
             }

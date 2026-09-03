@@ -44,7 +44,19 @@ public actor TmuxCommandExecutor {
                 try await tmuxService.sendInterrupt(command.paneId)
 
             case let .resizeTmuxPane(spec):
-                try await tmuxService.resizePane(command.paneId, width: spec.width, height: spec.height)
+                // A tmux window has one global grid. Only a direct user action
+                // may change it; legacy automatic requests omit this marker.
+                guard spec.userInitiated == true else {
+                    return .failure(
+                        for: command.id,
+                        error: "Terminal resize requires explicit user action"
+                    )
+                }
+                try await tmuxService.resizePane(
+                    command.paneId,
+                    width: spec.width,
+                    height: spec.height
+                )
 
             case let .splitTmuxPane(spec):
                 let newPaneId = try await tmuxService.splitPane(

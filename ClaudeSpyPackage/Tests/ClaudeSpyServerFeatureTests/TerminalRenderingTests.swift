@@ -2059,7 +2059,7 @@
             #expect(blanksBetween == 0, "Expected no blank rows between content rows even when SwiftTerm cols (\(mirrorCols)) < rebuild width (\(rebuildWidth)), got \(blanksBetween) blank rows")
         }
 
-        @Test("Issue #429 — pad-to-width must not produce blanks after auto-resize narrower")
+        @Test("Issue #429 — pad-to-width must not produce blanks after resize-to-fit narrower")
         @MainActor
         func issue429NoBlankRowsAfterReflowNarrower() throws {
             // Reproduces the ACTUAL production path for issue #429:
@@ -2068,7 +2068,7 @@
             //      mirror window can fit).
             //   2. SwiftTerm is sized to cols=200 to match.
             //   3. processCapturePaneForStreaming runs with width=200.
-            //   4. Auto-resize fires → tmux pane is shrunk to fit the mirror
+            //   4. Resize-to-fit runs → tmux pane is shrunk to fit the mirror
             //      window (e.g., 79 cols). Layout-change event arrives →
             //      SwiftTerm.resize(cols: 79) runs reflowNarrower.
             //   5. A row whose trimmedLength reaches the full width wraps on
@@ -2106,7 +2106,7 @@
             let (terminal, _) = makeTerminal(cols: rebuildWidth, rows: height)
             terminal.feed(text: str)
 
-            // Now simulate the auto-resize event: tmux pane shrinks to fit the
+            // Now simulate resize-to-fit: tmux pane shrinks to fit the
             // mirror, SwiftTerm gets resize(cols: postResizeCols, rows: same).
             terminal.resize(cols: postResizeCols, rows: height)
 
@@ -2262,7 +2262,7 @@
             let (terminal, _) = makeTerminal(cols: rebuildWidth, rows: height)
             terminal.feed(byteArray: Array(data))
 
-            // Auto-resize narrower — the production reflow path.
+            // Resize-to-fit narrower — the production reflow path.
             terminal.resize(cols: postResizeCols, rows: height)
 
             var rowKinds: [(row: Int, isBlank: Bool, text: String)] = []

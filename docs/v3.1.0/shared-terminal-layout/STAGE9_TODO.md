@@ -12,7 +12,7 @@
 - [x] Add the wire model, snapshot field and Viewer request command.
 - [x] Add Host canonical storage, validation and revision assignment.
 - [x] Reconcile Mac Host/Viewer UI and debounce outbound changes.
-- [x] Remove Viewer ownership of tmux terminal dimensions.
+- [x] Make terminal resizing manual-only on both Host and Viewer.
 - [x] Add unit/integration regression coverage and complete review.
 
 ## Verification

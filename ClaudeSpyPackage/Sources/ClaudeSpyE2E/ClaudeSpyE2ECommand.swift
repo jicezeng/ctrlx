@@ -296,7 +296,6 @@ struct ClaudeSpyE2ECommand: AsyncParsableCommand {
         MultiPaneIOSScenario.scenario,
         KittyKeyboardProtocolScenario.scenario,
         FooterRenderingScenario.scenario,
-        AlwaysAutoResizeScenario.scenario,
         MultiWindowTabsScenario.scenario,
         MultiWindowTabsIOSScenario.scenario,
         MultiWindowTabsMacViewerScenario.scenario,

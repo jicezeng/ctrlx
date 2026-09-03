@@ -269,11 +269,6 @@ final public class AppSettings {
         didSet { preferences.setBool(autoCopyOnSelect, Keys.autoCopyOnSelect) }
     }
 
-    /// When true, all terminal panes are always resized to fit the mirror view when the window size changes
-    public var alwaysAutoResize: Bool = Defaults.alwaysAutoResize {
-        didSet { preferences.setBool(alwaysAutoResize, Keys.alwaysAutoResize) }
-    }
-
     /// Whether clicking a file:// link in the terminal opens the file in a new tab
     /// instead of forwarding the URL to the system (which would open it in the browser).
     public var openClickedFileInNewTab: Bool = Defaults.openClickedFileInNewTab {
@@ -460,7 +455,6 @@ final public class AppSettings {
         self.autoReconnect = preferences.optionalBool(Keys.autoReconnect) ?? Defaults.autoReconnect
         self.preventSleepDuringSessions = preferences.optionalBool(Keys.preventSleepDuringSessions) ?? Defaults.preventSleepDuringSessions
         self.autoCopyOnSelect = preferences.optionalBool(Keys.autoCopyOnSelect) ?? Defaults.autoCopyOnSelect
-        self.alwaysAutoResize = preferences.optionalBool(Keys.alwaysAutoResize) ?? Defaults.alwaysAutoResize
         self.openClickedFileInNewTab = preferences.optionalBool(Keys.openClickedFileInNewTab) ?? Defaults.openClickedFileInNewTab
         self.alwaysOpenFilesInSplit = preferences.optionalBool(Keys.alwaysOpenFilesInSplit) ?? Defaults.alwaysOpenFilesInSplit
         self.browserLinkBehavior = BrowserLinkBehavior(
@@ -567,7 +561,6 @@ final public class AppSettings {
         case autoReconnect
         case preventSleepDuringSessions
         case autoCopyOnSelect
-        case alwaysAutoResize
         case openClickedFileInNewTab
         case alwaysOpenFilesInSplit
         case browserLinkBehavior
@@ -615,7 +608,6 @@ final public class AppSettings {
         static let autoReconnect = true
         static let preventSleepDuringSessions = true
         static let autoCopyOnSelect = true
-        static let alwaysAutoResize = true
         static let openClickedFileInNewTab = true
         static let alwaysOpenFilesInSplit = false
         static let browserLinkBehavior = BrowserLinkBehavior.ask

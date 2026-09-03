@@ -3099,6 +3099,21 @@
                     return .success(for: command.id)
                 }
 
+                // A Viewer may resize only through its explicit toolbar action.
+                // The executor rejects unmarked legacy automatic requests. On
+                // success, publish the dimensions refreshed by `resizePane` so
+                // the Host and every Viewer converge on the new shared grid.
+                if case .resizeTmuxPane = command.command {
+                    let response = await executor.execute(command)
+                    if response.success {
+                        let allPanes = tmux.panes
+                        winManager.updatePaneStates(from: allPanes)
+                        await paneStreaming.updateMonitoring(panes: allPanes)
+                        await connectionManager?.pushSessionStateToAll()
+                    }
+                    return response
+                }
+
                 // Handle create session command
                 if case let .createTmuxSession(spec) = command.command {
                     // Resolve the launch command from the owning plugin core when
@@ -3289,21 +3304,6 @@
                     if response.success {
                         let allPanes = await tmux.refreshPanes()
                         winManager.updatePaneStates(from: allPanes)
-                    }
-                    return response
-                }
-
-                // A Viewer resize is executed only by the Host. Publish from
-                // the refreshed tmux snapshot before acknowledging so the
-                // requesting Viewer receives matching PaneState + stream
-                // dimensions and can safely keep its SwiftTerm grid locked.
-                if case .resizeTmuxPane = command.command {
-                    let response = await executor.execute(command)
-                    if response.success {
-                        let allPanes = tmux.panes
-                        winManager.updatePaneStates(from: allPanes)
-                        await paneStreaming.updateMonitoring(panes: allPanes)
-                        await connectionManager?.pushSessionStateToAll()
                     }
                     return response
                 }

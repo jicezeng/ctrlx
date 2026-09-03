@@ -462,7 +462,11 @@ public struct StopTerminalStream: CommandSpec, Equatable {
     }
 }
 
-/// Resize a tmux pane to new dimensions. Returns success/failure.
+/// Explicitly resizes a Host tmux window to dimensions chosen by a Viewer.
+///
+/// A tmux window has one shared rows/columns grid, so current Hosts accept this
+/// command only when `userInitiated` is `true`. The optional marker preserves
+/// decoding compatibility while letting Hosts reject legacy automatic requests.
 public struct ResizeTmuxPane: CommandSpec, Equatable {
     public typealias Response = CommandResponseMessage
 
@@ -472,9 +476,14 @@ public struct ResizeTmuxPane: CommandSpec, Equatable {
     /// Terminal height in rows
     public let height: Int
 
-    public init(width: Int, height: Int) {
+    /// `true` only for a direct click on the Viewer's resize-to-fit button.
+    /// Missing and `false` values are rejected by current Hosts.
+    public let userInitiated: Bool?
+
+    public init(width: Int, height: Int, userInitiated: Bool? = nil) {
         self.width = width
         self.height = height
+        self.userInitiated = userInitiated
     }
 
     public var commandType: CommandType {
@@ -1076,9 +1085,17 @@ public enum CommandType: Codable, Sendable, Equatable {
         .stopTerminalStream(StopTerminalStream())
     }
 
-    /// Create a resizeTmuxPane command
-    public static func resizeTmuxPane(width: Int, height: Int) -> CommandType {
-        .resizeTmuxPane(ResizeTmuxPane(width: width, height: height))
+    /// Create a resizeTmuxPane command.
+    public static func resizeTmuxPane(
+        width: Int,
+        height: Int,
+        userInitiated: Bool? = nil
+    ) -> CommandType {
+        .resizeTmuxPane(ResizeTmuxPane(
+            width: width,
+            height: height,
+            userInitiated: userInitiated
+        ))
     }
 
     /// Create a createTmuxSession command

@@ -1,149 +1,121 @@
 import Foundation
 
-/// E2E test for manual resize, auto-resize, per-session independence,
-/// and auto-resize on pane switch (macOS-only, no server/iOS/pairing).
+/// E2E coverage for the manual-only terminal sizing policy.
+///
+/// Window geometry and session selection must leave tmux untouched. A direct
+/// click on "Resize visible terminals to fit this Mac" is the only resize
+/// trigger and affects only the session currently visible in CtrlX.
 public enum ResizePaneScenario {
     public static let scenario = ClaudeSpyE2ELib.scenario(
-        "Resize Pane",
+        "Manual Terminal Resize",
         tags: ["resize", "macos-only"]
     ) {
-        // ── Setup ──────────────────────────────────────────────────
-
         TestStep.log("Creating tmux sessions on test socket")
         TestStep.tmuxCreateSession(name: "resize-test-1", width: 80, height: 24)
         TestStep.tmuxCreateSession(name: "resize-test-2", width: 80, height: 24)
 
         Shortcut.macOnlySetup
-
-        // Select first pane by clicking the sidebar row
         TestStep.macClickButton(titled: "resize-test-1")
         TestStep.wait(seconds: 1)
+        TestStep.macWaitForElement(
+            titled: "Resize visible terminals to fit this Mac",
+            timeout: 5
+        )
 
-        // ── Phase 1: Manual Resize ─────────────────────────────────
-
-        TestStep.log("Phase 1: Manual Resize")
-
-        // Type into the app to test keyboard input path (app → SwiftTerm → tmux)
-        TestStep.macType(text: "printf '|%9d' $(seq 10 10 190) | tr ' ' -", pressReturn: true)
-        TestStep.macWaitForElement(titled: "80x24", timeout: 1)
-        TestStep.macScreenshot(label: "mac-resize-initial-state")
-
-        // Record initial pane dimensions (should be ~80x24)
         TestStep.tmuxStorePaneDimensions(
             target: "resize-test-1:0",
             widthKey: "initialWidth",
             heightKey: "initialHeight"
         )
-        TestStep.log("Initial dimensions: ${initialWidth}x${initialHeight}")
 
-        // Resize window to large
+        // Geometry alone is presentation-only.
         TestStep.macResizeWindow(width: 1_400, height: 900)
-        TestStep.wait(seconds: 0.5)
-
-        // Click manual resize button
-        TestStep.macClickButton(titled: "Resize terminal to fit mirror view")
         TestStep.wait(seconds: 1)
-
-        // Record dimensions after manual resize
         TestStep.tmuxStorePaneDimensions(
             target: "resize-test-1:0",
-            widthKey: "phase1Width",
-            heightKey: "phase1Height"
+            widthKey: "afterWindowResizeWidth",
+            heightKey: "afterWindowResizeHeight"
         )
-        TestStep.log("Phase 1 dimensions: ${phase1Width}x${phase1Height}")
-        TestStep.macWaitForElement(titled: "${phase1Width}x${phase1Height}", timeout: 2)
-        TestStep.macScreenshot(label: "mac-resize-after-manual")
+        TestStep.assertStoredEqual(key: "afterWindowResizeWidth", otherKey: "initialWidth")
+        TestStep.assertStoredEqual(key: "afterWindowResizeHeight", otherKey: "initialHeight")
 
-        // Assert: pane width changed from initial
-        TestStep.assertStoredNotEqual(key: "phase1Width", otherKey: "initialWidth")
-        TestStep.macScreenshot(label: "mac-resize-manual-resize")
+        // The explicit button applies the current Mac's viewport.
+        TestStep.macClickButton(titled: "Resize visible terminals to fit this Mac")
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "resize-test-1:0",
+            format: "#{pane_width}",
+            notEqualTo: "${initialWidth}",
+            timeout: 10
+        )
+        TestStep.tmuxStorePaneDimensions(
+            target: "resize-test-1:0",
+            widthKey: "firstManualWidth",
+            heightKey: "firstManualHeight"
+        )
 
-        // ── Phase 2: Auto-Resize ───────────────────────────────────
-
-        TestStep.log("Phase 2: Auto-Resize")
-
-        // Enable auto-resize toggle
-        TestStep.macClickButton(titled: "Auto-resize terminal when mirror view changes size")
-        TestStep.wait(seconds: 0.5)
-
-        // Resize window smaller
+        // A second geometry change remains inert until another click.
         TestStep.macResizeWindow(width: 900, height: 600)
-        // Wait for 200ms debounce + margin
         TestStep.wait(seconds: 1)
-
-        // Record dimensions after auto-resize
         TestStep.tmuxStorePaneDimensions(
             target: "resize-test-1:0",
-            widthKey: "phase2Width",
-            heightKey: "phase2Height"
+            widthKey: "afterSecondWindowResizeWidth",
+            heightKey: "afterSecondWindowResizeHeight"
         )
-        TestStep.log("Phase 2 dimensions: ${phase2Width}x${phase2Height}")
-        TestStep.macWaitForElement(titled: "${phase2Width}x${phase2Height}", timeout: 2)
-        TestStep.macScreenshot(label: "mac-resize-window-smaller")
+        TestStep.assertStoredEqual(key: "afterSecondWindowResizeWidth", otherKey: "firstManualWidth")
+        TestStep.assertStoredEqual(key: "afterSecondWindowResizeHeight", otherKey: "firstManualHeight")
 
-        // Assert: pane width changed from Phase 1
-        TestStep.assertStoredNotEqual(key: "phase2Width", otherKey: "phase1Width")
-        TestStep.macScreenshot(label: "mac-resize-auto-resize")
-
-        // ── Phase 3: Per-Session Independence ──────────────────────
-
-        TestStep.log("Phase 3: Per-Session Independence")
-
-        // Select second pane
+        // Switching sessions must not implicitly resize either session.
         TestStep.macClickButton(titled: "resize-test-2")
-        TestStep.macWaitForElement(titled: "80x24", timeout: 1)
-        TestStep.macType(text: "printf '|%9d' $(seq 10 10 190) | tr ' ' -", pressReturn: true)
         TestStep.wait(seconds: 1)
-        TestStep.macScreenshot(label: "mac-resize-second-pane")
-
-        // Record pane 2 dimensions (should still be 80x53)
         TestStep.tmuxStorePaneDimensions(
             target: "resize-test-2:0",
-            widthKey: "pane2BeforeWidth",
-            heightKey: "pane2BeforeHeight"
+            widthKey: "secondInitialWidth",
+            heightKey: "secondInitialHeight"
         )
-        TestStep.log("Pane 2 before resize: ${pane2BeforeWidth}x${pane2BeforeHeight}")
+        TestStep.storeValue(key: "standardWidth", value: "80")
+        TestStep.storeValue(key: "standardHeight", value: "24")
+        TestStep.assertStoredEqual(key: "secondInitialWidth", otherKey: "standardWidth")
+        TestStep.assertStoredEqual(key: "secondInitialHeight", otherKey: "standardHeight")
 
-        // Resize window
         TestStep.macResizeWindow(width: 1_200, height: 800)
-        // Wait for debounce
         TestStep.wait(seconds: 1)
-
-        // Record pane 2 dimensions again
         TestStep.tmuxStorePaneDimensions(
             target: "resize-test-2:0",
-            widthKey: "pane2AfterWidth",
-            heightKey: "pane2AfterHeight"
+            widthKey: "secondBeforeManualWidth",
+            heightKey: "secondBeforeManualHeight"
         )
-        TestStep.log("Pane 2 after resize: ${pane2AfterWidth}x${pane2AfterHeight}")
-        TestStep.macWaitForElement(titled: "80x24", timeout: 1)
+        TestStep.assertStoredEqual(key: "secondBeforeManualWidth", otherKey: "secondInitialWidth")
+        TestStep.assertStoredEqual(key: "secondBeforeManualHeight", otherKey: "secondInitialHeight")
 
-        // Assert: pane 2 width did NOT change (no auto-resize on this pane)
-        TestStep.assertStoredEqual(key: "pane2AfterWidth", otherKey: "pane2BeforeWidth")
-        TestStep.macScreenshot(label: "mac-resize-per-session-independence")
+        TestStep.macClickButton(titled: "Resize visible terminals to fit this Mac")
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "resize-test-2:0",
+            format: "#{pane_width}",
+            notEqualTo: "${secondInitialWidth}",
+            timeout: 10
+        )
 
-        // ── Phase 4: Auto-Resize on Pane Switch ────────────────────
-
-        TestStep.log("Phase 4: Auto-Resize on Pane Switch")
-
-        // Select first pane again (should trigger auto-resize from our fix)
         TestStep.macClickButton(titled: "resize-test-1")
-        // Wait for debounce
         TestStep.wait(seconds: 1)
-
-        // Record pane 1 dimensions
         TestStep.tmuxStorePaneDimensions(
             target: "resize-test-1:0",
-            widthKey: "phase4Width",
-            heightKey: "phase4Height"
+            widthKey: "firstAfterSwitchWidth",
+            heightKey: "firstAfterSwitchHeight"
         )
-        TestStep.log("Phase 4 dimensions: ${phase4Width}x${phase4Height}")
-        TestStep.macWaitForElement(titled: "${phase4Width}x${phase4Height}", timeout: 2)
-        TestStep.macType(text: "printf '|%9d' $(seq 10 10 190) | tr ' ' -", pressReturn: true)
+        TestStep.assertStoredEqual(key: "firstAfterSwitchWidth", otherKey: "firstManualWidth")
+        TestStep.assertStoredEqual(key: "firstAfterSwitchHeight", otherKey: "firstManualHeight")
 
-        // Assert: pane 1 width changed from Phase 2 (auto-resized to current window size)
-        TestStep.assertStoredNotEqual(key: "phase4Width", otherKey: "phase2Width")
-        TestStep.wait(seconds: 1)
-        TestStep.macScreenshot(label: "mac-resize-pane-switch-auto-resize")
+        TestStep.macClickButton(titled: "Resize visible terminals to fit this Mac")
+        TestStep.waitForTmuxDisplayMessageNotEqual(
+            target: "resize-test-1:0",
+            format: "#{pane_width}",
+            notEqualTo: "${firstManualWidth}",
+            timeout: 10
+        )
+        TestStep.macScreenshot(label: "mac-manual-resize-only")
+
+        TestStep.tmuxCommand(arguments: ["kill-session", "-t", "resize-test-1"])
+        TestStep.tmuxCommand(arguments: ["kill-session", "-t", "resize-test-2"])
+        TestStep.wait(seconds: 2)
     }
 }

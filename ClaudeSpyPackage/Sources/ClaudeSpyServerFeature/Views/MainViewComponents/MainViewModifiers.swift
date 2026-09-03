@@ -37,40 +37,18 @@ struct MenuCommandsModifier: ViewModifier {
     }
 }
 
-/// Re-runs `MainView.handleAutoResize` whenever the global auto-resize
-/// preference flips, the currently-viewed session's split-view layout
-/// changes (split toggled, divider dragged, right-pane terminal swapped),
-/// or the terminal font changes (⌘+ / ⌘- or the Settings pane).
-///
-/// None of these move the detail-pane bounds, so the `onGeometryChange` that
-/// already triggers auto-resize misses them — this modifier fills that gap.
-/// A font change alters the cell size, so a different number of columns/rows
-/// fits the same pixel area and the tmux pane must be re-fit or the agent in
-/// it keeps rendering at a stale size. Extracting these into a separate
-/// modifier keeps the main `body` chain inside SwiftUI's type-checker budget.
-struct AutoResizeObserversModifier<Signal: Equatable>: ViewModifier {
-    let alwaysAutoResize: Bool
+/// Publishes a logical terminal layout when the split is toggled, its divider
+/// moves, or the selected right-side terminal changes. Terminal dimensions are
+/// deliberately absent: only the explicit resize-to-fit button may change them.
+/// Kept outside `MainView.body` to stay inside SwiftUI's type-checker budget.
+struct SharedTerminalLayoutSyncModifier<Signal: Equatable>: ViewModifier {
     let splitSignal: Signal?
-    let fontName: String
-    let fontSize: Double
-    let onPreferenceChanged: () -> Void
     let onSplitChanged: () -> Void
-    let onFontChanged: () -> Void
 
     func body(content: Content) -> some View {
-        content
-            .onChange(of: alwaysAutoResize) { _, _ in
-                onPreferenceChanged()
-            }
-            .onChange(of: splitSignal) { _, _ in
-                onSplitChanged()
-            }
-            .onChange(of: fontName) { _, _ in
-                onFontChanged()
-            }
-            .onChange(of: fontSize) { _, _ in
-                onFontChanged()
-            }
+        content.onChange(of: splitSignal) { _, _ in
+            onSplitChanged()
+        }
     }
 }
 
