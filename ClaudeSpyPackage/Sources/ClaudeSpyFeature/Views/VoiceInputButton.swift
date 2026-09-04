@@ -127,6 +127,7 @@ extension View {
         @ObservationIgnored private var activeRecognitionID: UUID?
         @ObservationIgnored private var modernSession: AnyObject?
         @ObservationIgnored private var recognitionContext: String?
+        @ObservationIgnored private var correctionSelection: VoiceCorrectionSelection?
 
         var isRecording: Bool {
             phase == .recording
@@ -145,10 +146,14 @@ extension View {
             }
         }
 
-        func beginPress(context: String?) {
+        func beginPress(
+            context: String?,
+            correctionSelection: VoiceCorrectionSelection?
+        ) {
             guard !isPressActive, phase == .idle else { return }
             isPressActive = true
             recognitionContext = VoiceInputContext.terminalExcerpt(context)
+            self.correctionSelection = correctionSelection
             transcript = ""
             phase = .requestingPermission
 
@@ -197,11 +202,17 @@ extension View {
             }
         }
 
-        func toggleForAccessibility(context: String?) {
+        func toggleForAccessibility(
+            context: String?,
+            correctionSelection: VoiceCorrectionSelection?
+        ) {
             if isPressActive || phase == .recording {
                 endPress()
             } else {
-                beginPress(context: context)
+                beginPress(
+                    context: context,
+                    correctionSelection: correctionSelection
+                )
             }
         }
 
@@ -212,6 +223,7 @@ extension View {
             cancelModernSession()
             stopAudio(cancelRecognition: true)
             recognitionContext = nil
+            correctionSelection = nil
             phase = .idle
         }
 
@@ -220,6 +232,7 @@ extension View {
             cancelModernSession()
             stopAudio(cancelRecognition: true)
             recognitionContext = nil
+            correctionSelection = nil
             phase = .idle
             errorMessage = message
         }
@@ -326,7 +339,8 @@ extension View {
             phase = .finalizing
             finalizationTask?.cancel()
             let terminalContext = recognitionContext
-            finalizationTask = Task { [weak self, session, terminalContext] in
+            let correctionSelection = correctionSelection
+            finalizationTask = Task { [weak self, session, terminalContext, correctionSelection] in
                 do {
                     let recognition = try await session.finish()
                     guard !Task.isCancelled, let self else { return }
@@ -334,7 +348,8 @@ extension View {
                     let correctedTranscript = await VoiceTranscriptCorrector.correct(
                         recognition,
                         contextualTerms: VoiceInputVocabulary.terms,
-                        terminalContext: terminalContext
+                        terminalContext: terminalContext,
+                        providerSelection: correctionSelection
                     )
                     guard !Task.isCancelled else { return }
                     completeModernRecognition(correctedTranscript)
@@ -350,7 +365,8 @@ extension View {
                         let correctedTranscript = await VoiceTranscriptCorrector.correct(
                             fallbackTranscript,
                             contextualTerms: VoiceInputVocabulary.terms,
-                            terminalContext: terminalContext
+                            terminalContext: terminalContext,
+                            providerSelection: correctionSelection
                         )
                         guard !Task.isCancelled else { return }
                         completeModernRecognition(correctedTranscript)
@@ -362,6 +378,7 @@ extension View {
         private func completeModernRecognition(_ completedTranscript: String) {
             finalizationTask = nil
             recognitionContext = nil
+            correctionSelection = nil
             transcript = completedTranscript
             phase = .idle
         }
@@ -419,18 +436,22 @@ extension View {
         private func completeRecognition(cancelRecognition: Bool) {
             let completedTranscript = transcript
             let terminalContext = recognitionContext
+            let correctionSelection = correctionSelection
             stopAudio(cancelRecognition: cancelRecognition)
             phase = .finalizing
-            finalizationTask = Task { [weak self, completedTranscript, terminalContext] in
+            finalizationTask = Task {
+                [weak self, completedTranscript, terminalContext, correctionSelection] in
                 guard let self else { return }
                 let correctedTranscript = await VoiceTranscriptCorrector.correct(
                     completedTranscript,
                     contextualTerms: VoiceInputVocabulary.terms,
-                    terminalContext: terminalContext
+                    terminalContext: terminalContext,
+                    providerSelection: correctionSelection
                 )
                 guard !Task.isCancelled else { return }
                 finalizationTask = nil
                 recognitionContext = nil
+                self.correctionSelection = nil
                 transcript = correctedTranscript
                 phase = .idle
             }
@@ -516,6 +537,8 @@ extension View {
     }
 
     struct VoiceInputButton: View {
+        @Environment(IOSSettings.self) private var settings
+
         @Binding var text: String
         let isDisabled: Bool
         var showsLabel = false
@@ -541,7 +564,10 @@ extension View {
                     if controller.phase == .idle {
                         prepareInput()
                     }
-                    controller.toggleForAccessibility(context: contextProvider())
+                    controller.toggleForAccessibility(
+                        context: contextProvider(),
+                        correctionSelection: settings.voiceCorrectionSelection
+                    )
                 }
                 .sensoryFeedback(.impact(weight: .light), trigger: controller.isRecording)
                 .onChange(of: controller.transcript, updateText)
@@ -608,7 +634,10 @@ extension View {
                     guard !isGestureActive, controller.phase == .idle else { return }
                     isGestureActive = true
                     prepareInput()
-                    controller.beginPress(context: contextProvider())
+                    controller.beginPress(
+                        context: contextProvider(),
+                        correctionSelection: settings.voiceCorrectionSelection
+                    )
                 }
                 .onEnded { _ in
                     endGesture()

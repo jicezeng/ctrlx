@@ -818,7 +818,7 @@
 
             var sections: [String] = []
             if let terminalText = voiceInputContextProviders[activePaneId]?(),
-               let excerpt = VoiceInputContext.terminalExcerpt(terminalText, maximumCount: 1_200)
+               let excerpt = VoiceInputContext.terminalExcerpt(terminalText)
             {
                 sections.append("Recent terminal text:\n\(excerpt)")
             }

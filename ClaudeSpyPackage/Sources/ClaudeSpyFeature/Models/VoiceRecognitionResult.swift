@@ -106,7 +106,7 @@ struct VoiceRecognitionCandidateAccumulator {
 }
 
 enum VoiceInputContext {
-    static let maximumTerminalCharacterCount = 800
+    static let maximumTerminalCharacterCount = 1_600
 
     static func terminalExcerpt(
         _ text: String?,

@@ -60,6 +60,11 @@
             .environment(agentBackgroundMonitoring)
             .preferredColorScheme(settings.appearanceMode.colorScheme)
             .task {
+                #if DEBUG
+                    await VoiceCorrectionBenchmarkRunner.shared.runIfRequested(
+                        selectedModelID: settings.voiceCorrectionModelID
+                    )
+                #endif
                 agentBackgroundMonitoring.noteSceneActive(scenePhase == .active)
                 agentBackgroundMonitoring.prepare()
                 await initializeConnectionManager()
@@ -502,6 +507,10 @@
         /// field loses focus, so we only reconnect when something differs.
         @State private var lastCommittedDeviceName = ""
 
+        /// Owns transient API-key and model benchmark state.
+        /// Keys remain in Keychain; saved winning model lists live in settings.
+        @State private var voiceCorrection = VoiceCorrectionSettingsModel()
+
         /// Tracks focus on the device-name field so we can also commit when
         /// the user dismisses the keyboard by tapping elsewhere — `onSubmit`
         /// alone would silently discard the draft.
@@ -692,6 +701,11 @@
                     )
                 }
 
+                VoiceCorrectionSettingsSection(
+                    settings: settings,
+                    model: voiceCorrection
+                )
+
                 // New Session Section
                 Section {
                     @Bindable var settings = settings
@@ -789,6 +803,9 @@
             .onAppear {
                 deviceNameDraft = settings.customDeviceName ?? ""
                 lastCommittedDeviceName = deviceNameDraft
+            }
+            .task(id: settings.voiceCorrectionProvider) {
+                await voiceCorrection.prepare(settings: settings)
             }
             .onDisappear {
                 // SwiftUI tears down the view (and `@FocusState`) when the

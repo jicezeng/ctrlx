@@ -70,6 +70,9 @@
             case showTerminalKeyboardOnEntry
             case agentQuickInputEnabled
             case agentBackgroundMonitoringEnabled
+            case voiceCorrectionProvider
+            case voiceCorrectionModelID
+            case voiceCorrectionTestedModelIDsByProvider
             case newSessionName
             case newSessionWidth
             case newSessionHeight
@@ -163,6 +166,30 @@
             }
         }
 
+        /// BYOK provider used when on-device final transcript correction is unavailable.
+        /// Only Ark is exposed today; keeping the provider explicit makes adding another
+        /// fixed provider later a settings migration rather than an API-key migration.
+        public var voiceCorrectionProvider: VoiceCorrectionProvider = .volcengineArk {
+            didSet {
+                preferences.setString(
+                    voiceCorrectionProvider.rawValue,
+                    Keys.voiceCorrectionProvider
+                )
+            }
+        }
+
+        /// Identifier selected from the provider's curated model list.
+        /// There is deliberately no custom model field.
+        public var voiceCorrectionModelID = "" {
+            didSet {
+                preferences.setString(voiceCorrectionModelID, Keys.voiceCorrectionModelID)
+            }
+        }
+
+        /// User-saved benchmark winners keyed by provider. A missing provider
+        /// entry means its built-in recommended models remain active.
+        private var voiceCorrectionTestedModelIDsByProvider: [String: [String]] = [:]
+
         /// Base name for new tmux sessions created from iOS
         public var newSessionName = "claude" {
             didSet { preferences.setString(newSessionName, Keys.newSessionName) }
@@ -201,6 +228,49 @@
             return systemDeviceName
         }
 
+        var voiceCorrectionSelection: VoiceCorrectionSelection? {
+            VoiceCorrectionSelection(
+                provider: voiceCorrectionProvider,
+                modelID: voiceCorrectionModelID
+            )
+        }
+
+        func voiceCorrectionModelIDs(for provider: VoiceCorrectionProvider) -> [String] {
+            guard let tested = voiceCorrectionTestedModelIDsByProvider[provider.rawValue],
+                  !tested.isEmpty
+            else {
+                return provider.recommendedModelIDs
+            }
+            return tested
+        }
+
+        func hasTestedVoiceCorrectionModels(for provider: VoiceCorrectionProvider) -> Bool {
+            voiceCorrectionTestedModelIDsByProvider[provider.rawValue]?.isEmpty == false
+        }
+
+        func saveTestedVoiceCorrectionModelIDs(
+            _ modelIDs: [String],
+            for provider: VoiceCorrectionProvider
+        ) {
+            var seen = Set<String>()
+            let normalized = modelIDs.compactMap { modelID -> String? in
+                let trimmed = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty, seen.insert(trimmed).inserted else { return nil }
+                return trimmed
+            }
+            guard !normalized.isEmpty else {
+                resetTestedVoiceCorrectionModelIDs(for: provider)
+                return
+            }
+            voiceCorrectionTestedModelIDsByProvider[provider.rawValue] = normalized
+            persistTestedVoiceCorrectionModels()
+        }
+
+        func resetTestedVoiceCorrectionModelIDs(for provider: VoiceCorrectionProvider) {
+            voiceCorrectionTestedModelIDsByProvider.removeValue(forKey: provider.rawValue)
+            persistTestedVoiceCorrectionModels()
+        }
+
         // MARK: - Initialization
 
         /// Create a single instance at the app root and propagate via `.environment()`.
@@ -236,6 +306,18 @@
             self.agentBackgroundMonitoringEnabled = preferences.optionalBool(
                 Keys.agentBackgroundMonitoringEnabled
             ) ?? false
+            self.voiceCorrectionProvider = VoiceCorrectionProvider(
+                rawValue: preferences.string(Keys.voiceCorrectionProvider) ?? ""
+            ) ?? .volcengineArk
+            self.voiceCorrectionModelID = preferences.string(Keys.voiceCorrectionModelID) ?? ""
+            if let data = preferences.data(Keys.voiceCorrectionTestedModelIDsByProvider),
+               let decoded = try? JSONDecoder().decode(
+                   [String: [String]].self,
+                   from: data
+               )
+            {
+                self.voiceCorrectionTestedModelIDsByProvider = decoded
+            }
 
             // New session settings
             self.newSessionName = preferences.string(Keys.newSessionName) ?? "claude"
@@ -251,6 +333,11 @@
             // notifications even if the user hasn't changed pairings since
             // upgrading.
             mirrorHostNamesToAppGroup()
+        }
+
+        private func persistTestedVoiceCorrectionModels() {
+            let data = try? JSONEncoder().encode(voiceCorrectionTestedModelIDsByProvider)
+            preferences.setData(data, Keys.voiceCorrectionTestedModelIDsByProvider)
         }
 
         // MARK: - Paired Hosts Storage

@@ -40,13 +40,19 @@ enum VoiceInputDiagnostics {
         )
     }
 
+    static func correctionProvider(provider: String, model: String, id: String) {
+        logger.notice(
+            "[\(shortID(id), privacy: .public)] corrector=BYOK provider=\(provider, privacy: .public) model=\(model, privacy: .public)"
+        )
+    }
+
     static func correctionFinished(
         original: String,
         corrected: String,
         elapsed: Duration,
         id: String
     ) {
-        logger.debug(
+        logger.notice(
             "[\(shortID(id), privacy: .public)] correction finished changed=\(corrected != original, privacy: .public) elapsed=\(elapsed.description, privacy: .public) original=\(original, privacy: .private) corrected=\(corrected, privacy: .private)"
         )
     }

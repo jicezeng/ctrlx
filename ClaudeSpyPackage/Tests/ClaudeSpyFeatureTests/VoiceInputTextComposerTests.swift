@@ -176,11 +176,16 @@ struct VoiceTranscriptCorrectionPromptTests {
             contextualTerms: ["CtrlX"]
         )
 
-        #expect(instructions.contains("not a closed list"))
-        #expect(instructions.contains("corrected word is absent from the candidates"))
+        #expect(instructions.contains("all fallible phonetic evidence"))
+        #expect(instructions.contains("absent from every candidate"))
+        #expect(instructions.contains("语音书为"))
+        #expect(instructions.contains("语音输入"))
+        #expect(instructions.contains("正在开。的这个项目"))
+        #expect(instructions.contains("正在开发的这个项目"))
         #expect(instructions.contains("这些相信的词"))
         #expect(instructions.contains("这些相近的词"))
-        #expect(!instructions.contains("otherwise preserve the primary transcript"))
+        #expect(instructions.contains("do not merely copy the primary draft"))
+        #expect(!instructions.contains("Fix only clear recognition errors"))
     }
 
     @Test("Corrects English speech while protecting only explicit code")
@@ -190,28 +195,33 @@ struct VoiceTranscriptCorrectionPromptTests {
             contextualTerms: ["CtrlX", "Claude Code", "iPhone Air"]
         )
 
-        #expect(instructions.contains("An English-looking span is not automatically code"))
-        #expect(instructions.contains("安装到 iPhoner"))
-        #expect(instructions.contains("安装到 iPhone Air"))
-        #expect(instructions.contains("启动 class code"))
-        #expect(instructions.contains("启动 Claude Code"))
+        #expect(instructions.contains("English-looking span as an approximate sound"))
+        #expect(instructions.contains("Known terms are canonical spellings"))
+        #expect(instructions.contains("CtrlX, Claude Code, iPhone Air"))
+        #expect(instructions.contains("correct \"Wise button\" to \"Voice button\""))
         #expect(instructions.contains("explicitly code-shaped"))
         #expect(instructions.contains("`--verbose`"))
-        #expect(!instructions.contains("Preserve commands, paths, code, flags, identifiers"))
     }
 
-    @Test("Keeps terminal context short and labels it as weak evidence")
-    func weakTerminalContext() {
-        let context = String(repeating: "x", count: 300) + "Current path: /tmp/ctrlx"
+    @Test("Keeps recent pane context bounded for semantic correction")
+    func recentPaneContext() {
+        let context = String(repeating: "x", count: 1_800) + "Current path: /tmp/ctrlx"
         let excerpt = VoiceTranscriptCorrectionPrompt.terminalContextExcerpt(context)
         let prompt = VoiceTranscriptCorrectionPrompt.make(
             recognition: VoiceRecognitionResult(primaryTranscript: "修复这个问题"),
             terminalContext: excerpt
         )
 
-        #expect(excerpt == "…" + context.suffix(240))
-        #expect(prompt.contains("Weak terminal vocabulary context"))
-        #expect(!prompt.contains(String(repeating: "x", count: 300)))
+        #expect(excerpt == "…" + context.suffix(VoiceInputContext.maximumTerminalCharacterCount))
+        #expect(prompt.contains("Recent pane context"))
+        #expect(!prompt.contains(String(repeating: "x", count: 1_800)))
+
+        let instructions = VoiceTranscriptCorrectionPrompt.instructions(
+            localeIdentifier: "zh-Hans-CN",
+            contextualTerms: []
+        )
+        #expect(instructions.contains("topic and spelling evidence"))
+        #expect(!instructions.contains("Ignore it when judging the semantics"))
     }
 
     @Test("Presents alternatives and live text as phonetic hints")
