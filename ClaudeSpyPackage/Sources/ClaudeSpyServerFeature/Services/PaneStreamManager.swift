@@ -4,6 +4,35 @@
     import Foundation
     import Logging
 
+    /// Orders a new subscriber's bootstrap as one terminal byte stream:
+    /// authoritative snapshot first, then every increment observed while that
+    /// snapshot was being captured. Nothing reaches `onData` until `finish`
+    /// makes the subscription live.
+    struct PaneSubscriptionBootstrap {
+        private var bufferedData = Data()
+        private(set) var isCollecting = true
+
+        /// Returns data only after the bootstrap has finished. While collecting,
+        /// the bytes are retained for the initial payload instead.
+        mutating func route(_ data: Data) -> Data? {
+            guard !data.isEmpty else { return nil }
+            guard !isCollecting else {
+                bufferedData.append(data)
+                return nil
+            }
+            return data
+        }
+
+        /// Completes the bootstrap and returns the only valid initial ordering.
+        mutating func finish(with snapshot: Data) -> Data {
+            var result = snapshot
+            result.append(bufferedData)
+            bufferedData.removeAll(keepingCapacity: false)
+            isCollecting = false
+            return result
+        }
+    }
+
     /// Coalesces concurrent attempts to start the same pane reader.
     ///
     /// Pane discovery and a newly-created terminal view can observe an unknown
@@ -82,6 +111,7 @@
             let onNotification: (@MainActor (TerminalStreamMessage.TerminalNotification) -> Void)?
             let onClipboard: (@MainActor (String) -> Void)?
             let onResync: (@MainActor (Result<SubscriptionResult, Error>) -> Void)?
+            var bootstrap = PaneSubscriptionBootstrap()
         }
 
         /// Per-pane state owned by the manager.
@@ -292,11 +322,11 @@
 
         /// Subscribe to a pane stream.
         ///
-        /// On the first subscriber for a pane, the reader is switched into
-        /// buffering mode, a `capture-pane` snapshot is taken, then the reader
-        /// is flushed into live mode — so live bytes that arrive during the
-        /// snapshot aren't dropped. On subsequent subscribers, the existing
-        /// live reader is reused and only a fresh snapshot is captured.
+        /// Every subscriber is registered behind a private bootstrap gate before
+        /// capture begins. Its initial result is one ordered stream containing
+        /// the authoritative snapshot followed by all capture-time increments;
+        /// only then does its `onData` callback become live. Existing subscribers
+        /// continue receiving output while a later subscriber bootstraps.
         ///
         /// - Parameters:
         ///   - paneId: The pane ID (e.g., "%1")
@@ -358,146 +388,122 @@
             }
 
             let isFirstSubscriber = context.subscriberIds.isEmpty
-            let initialContent: Data
-            let width: Int
-            let height: Int
+
+            // Register every subscriber before the first suspension point. Its
+            // bootstrap gate buffers only that subscriber's data, while existing
+            // live subscribers continue receiving output normally. This removes
+            // both historical races:
+            // - first subscriber: live bytes used to arrive before its snapshot;
+            // - later subscriber: bytes between capture and registration vanished.
+            context.subscriberIds.insert(subscriptionId)
+            readers[paneId] = context
+            subscriptions[subscriptionId] = subscription
 
             if isFirstSubscriber {
-                // Claim the slot synchronously before any await. Two concurrent
-                // subscribes for the same fresh pane could otherwise both observe
-                // `subscriberIds.isEmpty` here (the await chain below yields the
-                // main actor) and both take the first-subscriber path — the
-                // second's `setBuffering(true)` would clear the first's buffer.
-                //
-                // Safe to insert before `flushBuffer`: the reader transitions
-                // scanOnly → buffering during this path, so no data bytes flow
-                // to subscribers until the explicit `flushBuffer()` at the end.
-                // OSC events (title/notification/clipboard/progress) bypass
-                // `subscriberIds` for `forwardNotification`/global handlers, so
-                // they're unaffected by an early insert.
-                context.subscriberIds.insert(subscriptionId)
-                readers[paneId] = context
-                subscriptions[subscriptionId] = subscription
-
-                // 1. Retain live bytes during the snapshot so we don't drop any
-                //    between "buffering on" and "snapshot taken". Some bytes may
-                //    also be represented by the captured screen state; terminal
-                //    output is not generally idempotent, so remote viewers stage
-                //    this bootstrap offscreen instead of presenting intermediate
-                //    redraws. Exact scrollback de-duplication remains issue #476.
+                // The persistent reader is scan-only without subscribers. Retain
+                // its bytes until the initial capture completes; flushBuffer then
+                // routes them into the per-subscription bootstrap gate above.
                 await context.reader.setBuffering(true)
+            }
 
-                // 2. Refresh dimensions from tmux. capture-pane uses these to
-                //    size the visible region; if we trust a stale value the
-                //    snapshot can clip or pad incorrectly.
-                if let dims = try? await tmuxService.getPaneDimensions(target) {
-                    context.width = dims.width
-                    context.height = dims.height
-                }
+            // Refresh dimensions for every bootstrap. A pane may have changed
+            // since discovery even when another subscriber is already live.
+            if let dims = try? await tmuxService.getPaneDimensions(target),
+               var refreshed = readers[paneId],
+               refreshed.reader === context.reader {
+                refreshed.width = dims.width
+                refreshed.height = dims.height
+                readers[paneId] = refreshed
+            }
 
-                // 3. Register dimension tracking once per reader so future
-                //    layout-change events flow into `updateDimensions`.
-                if !context.hasRegisteredDimensions {
-                    do {
-                        try await controlClientManager.registerPaneDimensions(
-                            paneId: paneId,
-                            sessionName: sessionName,
-                            dimensions: (width: context.width, height: context.height)
-                        )
-                        context.hasRegisteredDimensions = true
-                    } catch {
-                        logger.warning("Failed to register pane dimensions", metadata: [
-                            "paneId": "\(paneId)",
-                            "error": "\(error)",
-                        ])
-                    }
-                }
+            guard var captureContext = readers[paneId],
+                  captureContext.reader === context.reader,
+                  captureContext.subscriberIds.contains(subscriptionId) else {
+                await rollbackBootstrap(
+                    subscriptionId: subscriptionId,
+                    paneId: paneId,
+                    reader: context.reader,
+                    flushRetainedData: isFirstSubscriber
+                )
+                throw TmuxError.invalidPane(target: target)
+            }
 
-                // 4. Take the snapshot. capture-pane is the only source of
-                //    historical content; pipe-pane only delivers future bytes.
+            // Register dimension tracking once per reader so later layout
+            // changes flow into the shared context.
+            if !captureContext.hasRegisteredDimensions {
                 do {
-                    initialContent = try await tmuxService.capturePaneViaControlMode(
+                    try await controlClientManager.registerPaneDimensions(
                         paneId: paneId,
-                        width: context.width,
-                        height: context.height,
-                        controlClientManager: controlClientManager,
-                        sessionName: sessionName,
-                        scrollbackLineLimit: snapshotScrollbackLineLimit
+                        sessionName: captureContext.sessionName,
+                        dimensions: (width: captureContext.width, height: captureContext.height)
                     )
-                } catch {
-                    // Roll back our claim. The reader stays alive in scan-only
-                    // mode so retries don't pay the start cost.
-                    await context.reader.setBuffering(false)
-                    if var rolled = readers[paneId] {
-                        rolled.subscriberIds.remove(subscriptionId)
-                        readers[paneId] = rolled
+                    if var refreshed = readers[paneId], refreshed.reader === context.reader {
+                        refreshed.hasRegisteredDimensions = true
+                        readers[paneId] = refreshed
+                        captureContext = refreshed
                     }
-                    subscriptions.removeValue(forKey: subscriptionId)
-                    throw error
-                }
-
-                readers[paneId] = context
-                width = context.width
-                height = context.height
-
-                // 5. Drain the queue into live delivery. Flushed bytes flow
-                //    through the delegate (this manager) → forwardData →
-                //    subscriber's onData callback.
-                await context.reader.flushBuffer()
-
-                // Send the seeded title (if any) to the first subscriber.
-                if let title = context.terminalTitle, let cb = onTitleChange {
-                    cb(title)
-                }
-
-                logger.info("First subscriber on pane reader", metadata: [
-                    "paneId": "\(paneId)",
-                    "target": "\(target)",
-                    "subscriptionId": "\(subscriptionId)",
-                ])
-            } else {
-                // Existing live reader — capture a fresh snapshot for this new
-                // viewer FIRST, then insert into `subscriberIds`. Inserting
-                // before the snapshot would let `forwardData` deliver live
-                // bytes to this subscriber's `onData` before the caller has
-                // received `initialContent` and seeded its terminal, which
-                // produces out-of-order rendering.
-                do {
-                    initialContent = try await tmuxService.capturePaneWithScrollbackForStreaming(
-                        target,
-                        scrollbackLineLimit: snapshotScrollbackLineLimit
-                    )
                 } catch {
-                    logger.warning("Failed to capture initial content for new subscriber", metadata: [
+                    logger.warning("Failed to register pane dimensions", metadata: [
                         "paneId": "\(paneId)",
                         "error": "\(error)",
                     ])
-                    initialContent = Data()
                 }
-
-                // Re-fetch the context — a concurrent unsubscribe or pane
-                // teardown could have mutated it during the await above.
-                guard var refreshed = readers[paneId] else {
-                    throw TmuxError.invalidPane(target: target)
-                }
-
-                width = refreshed.width
-                height = refreshed.height
-
-                refreshed.subscriberIds.insert(subscriptionId)
-                readers[paneId] = refreshed
-                subscriptions[subscriptionId] = subscription
-
-                if let title = refreshed.terminalTitle, let cb = onTitleChange {
-                    cb(title)
-                }
-
-                logger.info("Added subscriber to existing pane reader", metadata: [
-                    "paneId": "\(paneId)",
-                    "subscriptionId": "\(subscriptionId)",
-                    "totalSubscribers": "\(refreshed.subscriberIds.count)",
-                ])
             }
+
+            let snapshot: Data
+            do {
+                snapshot = try await tmuxService.capturePaneViaControlMode(
+                    paneId: paneId,
+                    width: captureContext.width,
+                    height: captureContext.height,
+                    controlClientManager: controlClientManager,
+                    sessionName: captureContext.sessionName,
+                    scrollbackLineLimit: snapshotScrollbackLineLimit
+                )
+            } catch {
+                await rollbackBootstrap(
+                    subscriptionId: subscriptionId,
+                    paneId: paneId,
+                    reader: context.reader,
+                    flushRetainedData: isFirstSubscriber
+                )
+                throw error
+            }
+
+            if isFirstSubscriber {
+                await context.reader.flushBuffer()
+            }
+
+            // No await after this transition: MainActor cannot deliver another
+            // pipe event between making the subscription live and returning its
+            // complete initial byte stream to the caller.
+            guard var readySubscription = subscriptions[subscriptionId],
+                  let readyContext = readers[paneId],
+                  readyContext.reader === context.reader,
+                  readyContext.subscriberIds.contains(subscriptionId) else {
+                await rollbackBootstrap(
+                    subscriptionId: subscriptionId,
+                    paneId: paneId,
+                    reader: context.reader,
+                    flushRetainedData: false
+                )
+                throw TmuxError.invalidPane(target: target)
+            }
+            let initialContent = readySubscription.bootstrap.finish(with: snapshot)
+            subscriptions[subscriptionId] = readySubscription
+            let width = readyContext.width
+            let height = readyContext.height
+
+            if let title = readyContext.terminalTitle, let cb = onTitleChange {
+                cb(title)
+            }
+
+            logger.info("Subscriber ready on pane reader", metadata: [
+                "paneId": "\(paneId)",
+                "target": "\(target)",
+                "subscriptionId": "\(subscriptionId)",
+                "totalSubscribers": "\(readyContext.subscriberIds.count)",
+            ])
 
             return SubscriptionResult(
                 subscriptionId: subscriptionId,
@@ -972,9 +978,34 @@
             guard let context = readers[paneId] else { return }
 
             for subscriberId in context.subscriberIds {
-                if let subscription = subscriptions[subscriberId] {
-                    subscription.onData(data)
+                guard var subscription = subscriptions[subscriberId] else { continue }
+                let liveData = subscription.bootstrap.route(data)
+                subscriptions[subscriberId] = subscription
+                if let liveData {
+                    subscription.onData(liveData)
                 }
+            }
+        }
+
+        /// Removes a failed bootstrap without disturbing subscribers that were
+        /// already live. If this subscriber activated a scan-only reader, either
+        /// return it to scan-only or release its retained bytes to a concurrent
+        /// subscriber that joined while capture was suspended.
+        private func rollbackBootstrap(
+            subscriptionId: UUID,
+            paneId: String,
+            reader: PipePaneReader,
+            flushRetainedData: Bool
+        ) async {
+            subscriptions.removeValue(forKey: subscriptionId)
+            guard var context = readers[paneId], context.reader === reader else { return }
+            context.subscriberIds.remove(subscriptionId)
+            readers[paneId] = context
+
+            if context.subscriberIds.isEmpty {
+                await reader.setBuffering(false)
+            } else if flushRetainedData {
+                await reader.flushBuffer()
             }
         }
 
@@ -1090,7 +1121,9 @@
                     let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
                     await context.reader.setBuffering(false)
                     for subscriptionId in targets {
-                        subscriptions[subscriptionId]?.onResync?(.failure(error))
+                        guard let subscription = subscriptions[subscriptionId],
+                              !subscription.bootstrap.isCollecting else { continue }
+                        subscription.onResync?(.failure(error))
                     }
                     logger.error("Failed to resynchronize pane stream", metadata: [
                         "paneId": "\(paneId)",
@@ -1108,7 +1141,8 @@
                 let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
                 TerminalTransportMetrics.shared.recordResync()
                 for subscriptionId in targets {
-                    guard let subscription = subscriptions[subscriptionId] else { continue }
+                    guard let subscription = subscriptions[subscriptionId],
+                          !subscription.bootstrap.isCollecting else { continue }
                     subscription.onResync?(.success(SubscriptionResult(
                         subscriptionId: subscriptionId,
                         initialContent: captured,
@@ -1134,6 +1168,7 @@
             for subscriberId in context.subscriberIds {
                 if
                     let subscription = subscriptions[subscriberId],
+                    !subscription.bootstrap.isCollecting,
                     let callback = subscription.onDimensionChange {
                     callback(width, height)
                 }
