@@ -27,6 +27,17 @@ enum VoiceTranscriptCorrectionPolicy {
     }
 }
 
+enum VoiceTranscriptCorrectionRoute: Equatable {
+    case provider
+    case onDevice
+}
+
+enum VoiceTranscriptCorrectionRouting {
+    static func routes(hasProviderSelection: Bool) -> [VoiceTranscriptCorrectionRoute] {
+        hasProviderSelection ? [.provider, .onDevice] : [.onDevice]
+    }
+}
+
 enum VoiceTranscriptCorrectionPrompt {
     static func instructions(
         localeIdentifier: String,
@@ -114,28 +125,38 @@ enum VoiceTranscriptCorrector {
             hasTerminalContext: terminalContext != nil
         )
 
-        #if os(iOS) && canImport(FoundationModels)
-            if #available(iOS 26.0, *) {
-                if let corrected = await correctOnDevice(
-                    recognition,
-                    contextualTerms: contextualTerms,
-                    terminalContext: terminalContext
-                ) {
-                    return corrected
-                }
-            }
-        #endif
+        for route in VoiceTranscriptCorrectionRouting.routes(
+            hasProviderSelection: providerSelection != nil
+        ) {
+            switch route {
+            case .provider:
+                #if os(iOS)
+                    if let providerSelection,
+                       let corrected = await correctWithProvider(
+                           recognition,
+                           contextualTerms: contextualTerms,
+                           terminalContext: terminalContext,
+                           selection: providerSelection
+                       )
+                    {
+                        return corrected
+                    }
+                #endif
 
-        #if os(iOS)
-            if let providerSelection {
-                return await correctWithProvider(
-                    recognition,
-                    contextualTerms: contextualTerms,
-                    terminalContext: terminalContext,
-                    selection: providerSelection
-                )
+            case .onDevice:
+                #if os(iOS) && canImport(FoundationModels)
+                    if #available(iOS 26.0, *) {
+                        if let corrected = await correctOnDevice(
+                            recognition,
+                            contextualTerms: contextualTerms,
+                            terminalContext: terminalContext
+                        ) {
+                            return corrected
+                        }
+                    }
+                #endif
             }
-        #endif
+        }
 
         #if !(os(iOS) && canImport(FoundationModels))
             VoiceInputDiagnostics.correctionSkipped(
@@ -143,10 +164,12 @@ enum VoiceTranscriptCorrector {
                 id: recognition.diagnosticID
             )
         #endif
-        VoiceInputDiagnostics.correctionSkipped(
-            reason: "no BYOK provider model is configured",
-            id: recognition.diagnosticID
-        )
+        if providerSelection == nil {
+            VoiceInputDiagnostics.correctionSkipped(
+                reason: "no BYOK provider model is configured",
+                id: recognition.diagnosticID
+            )
+        }
         return original
     }
 
@@ -156,7 +179,7 @@ enum VoiceTranscriptCorrector {
             contextualTerms: [String],
             terminalContext: String?,
             selection: VoiceCorrectionSelection
-        ) async -> String {
+        ) async -> String? {
             let original = recognition.bestAvailableTranscript
             @Dependency(SecretsService.self) var secrets
             let account = VoiceCorrectionCredentials.apiKeyAccount(for: selection.provider)
@@ -167,7 +190,7 @@ enum VoiceTranscriptCorrector {
                         reason: "the BYOK API key is missing",
                         id: recognition.diagnosticID
                     )
-                    return original
+                    return nil
                 }
 
                 let localeIdentifier = Locale.preferredLanguages.first ?? Locale.current.identifier
@@ -202,7 +225,7 @@ enum VoiceTranscriptCorrector {
                     error: error,
                     id: recognition.diagnosticID
                 )
-                return original
+                return nil
             }
         }
     #endif

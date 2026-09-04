@@ -190,6 +190,18 @@ struct VoiceInputContextTests {
 
 @Suite("Voice transcript correction prompt")
 struct VoiceTranscriptCorrectionPromptTests {
+    @Test("Uses a configured provider before the on-device fallback")
+    func providerFirstRouting() {
+        #expect(
+            VoiceTranscriptCorrectionRouting.routes(hasProviderSelection: true)
+                == [.provider, .onDevice]
+        )
+        #expect(
+            VoiceTranscriptCorrectionRouting.routes(hasProviderSelection: false)
+                == [.onDevice]
+        )
+    }
+
     @Test("Allows whole-sentence semantics to fix a homophone outside the candidates")
     func semanticHomophoneGuidance() {
         let instructions = VoiceTranscriptCorrectionPrompt.instructions(
