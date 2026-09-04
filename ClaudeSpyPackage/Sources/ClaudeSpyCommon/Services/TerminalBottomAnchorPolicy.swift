@@ -5,27 +5,33 @@ import Foundation
 package struct TerminalBottomAnchorPolicy: Equatable, Sendable {
     package static let tolerance = 1.0
 
-    private var previousMaximumOffset: Double?
+    /// Follow the live terminal tail until the user explicitly takes ownership
+    /// of the viewport by dragging it. Layout transitions are not user intent:
+    /// safe-area, keyboard, and Auto Layout passes may all expose temporary
+    /// offsets while the final viewport is still settling.
+    private var followsBottom = true
 
     package init() { }
 
-    /// Returns the new bottom offset when the viewport should remain anchored.
-    /// A nil result means the user is away from the bottom and their position
-    /// must be preserved.
-    package mutating func targetOffset(
+    /// Returns the current bottom while the viewport follows live output.
+    /// A nil result means the user owns the scroll position.
+    package func targetOffset(maximumOffset: Double) -> Double? {
+        followsBottom ? maximumOffset : nil
+    }
+
+    package mutating func userWillBeginScrolling() {
+        followsBottom = false
+    }
+
+    /// Resume following only when the user deliberately returns to the tail.
+    package mutating func userDidEndScrolling(
         currentOffset: Double,
-        maximumOffset: Double,
-        force: Bool = false
-    ) -> Double? {
-        let maximumOffset = max(0, maximumOffset)
-        defer { previousMaximumOffset = maximumOffset }
+        maximumOffset: Double
+    ) {
+        followsBottom = abs(currentOffset - maximumOffset) <= Self.tolerance
+    }
 
-        guard !force, let previousMaximumOffset else {
-            return maximumOffset
-        }
-
-        let wasAtPreviousBottom = abs(currentOffset - previousMaximumOffset) <= Self.tolerance
-        let isAtCurrentBottom = abs(currentOffset - maximumOffset) <= Self.tolerance
-        return wasAtPreviousBottom || isAtCurrentBottom ? maximumOffset : nil
+    package mutating func requestScrollToBottom() {
+        followsBottom = true
     }
 }

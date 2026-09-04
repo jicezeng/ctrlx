@@ -1256,6 +1256,7 @@
 
             func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
                 dragInitialOffsetY = scrollView.contentOffset.y
+                (scrollView as? BottomAnchoredTerminalScrollView)?.userWillBeginScrolling()
             }
 
             func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -1270,35 +1271,32 @@
 
             func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
                 dragInitialOffsetY = nil
+                (scrollView as? BottomAnchoredTerminalScrollView)?.userDidEndScrolling()
             }
 
             func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-                if !decelerate { dragInitialOffsetY = nil }
+                if !decelerate {
+                    dragInitialOffsetY = nil
+                    (scrollView as? BottomAnchoredTerminalScrollView)?.userDidEndScrolling()
+                }
             }
         }
     }
 
     /// UIScrollView does not preserve a bottom content offset when its viewport
-    /// height changes. Track the previous layout boundary so startup, safe-area,
-    /// keyboard, and rotation layouts keep showing the prompt while a user who
-    /// scrolled into history remains undisturbed.
+    /// height changes. Follow the terminal tail across every automatic layout
+    /// until a real user drag takes ownership of the viewport.
     private final class BottomAnchoredTerminalScrollView: UIScrollView {
         private var anchorPolicy = TerminalBottomAnchorPolicy()
-        private var forcesBottomOnNextLayout = true
 
         override func layoutSubviews() {
-            let offsetBeforeLayout = contentOffset.y
             super.layoutSubviews()
 
-            let maximumOffset = max(0, contentSize.height - bounds.height)
-            let targetOffset = anchorPolicy.targetOffset(
-                currentOffset: Double(offsetBeforeLayout),
-                maximumOffset: Double(maximumOffset),
-                force: forcesBottomOnNextLayout
-            )
-            forcesBottomOnNextLayout = false
-
-            guard let targetOffset else { return }
+            guard let targetOffset = anchorPolicy.targetOffset(
+                maximumOffset: Double(bottomOffset)
+            ) else {
+                return
+            }
             let targetY = CGFloat(targetOffset)
             guard abs(contentOffset.y - targetY) > CGFloat(TerminalBottomAnchorPolicy.tolerance) else {
                 return
@@ -1307,9 +1305,30 @@
         }
 
         func requestScrollToBottom() {
-            forcesBottomOnNextLayout = true
+            anchorPolicy.requestScrollToBottom()
             setNeedsLayout()
             layoutIfNeeded()
+        }
+
+        func userWillBeginScrolling() {
+            anchorPolicy.userWillBeginScrolling()
+        }
+
+        func userDidEndScrolling() {
+            anchorPolicy.userDidEndScrolling(
+                currentOffset: Double(contentOffset.y),
+                maximumOffset: Double(bottomOffset)
+            )
+        }
+
+        /// UIScrollView offsets include automatically adjusted safe-area and
+        /// keyboard insets. Ignoring them leaves the last terminal rows hidden
+        /// even when the raw content-size calculation appears to be at bottom.
+        private var bottomOffset: CGFloat {
+            max(
+                -adjustedContentInset.top,
+                contentSize.height - bounds.height + adjustedContentInset.bottom
+            )
         }
     }
 

@@ -5,49 +5,62 @@ import Testing
 struct TerminalBottomAnchorPolicyTests {
     @Test("Initial layout starts at the bottom")
     func initialLayoutAnchors() {
-        var policy = TerminalBottomAnchorPolicy()
+        let policy = TerminalBottomAnchorPolicy()
 
-        #expect(policy.targetOffset(currentOffset: 0, maximumOffset: 120) == 120)
+        #expect(policy.targetOffset(maximumOffset: 120) == 120)
     }
 
-    @Test("A bottom viewport follows later layout changes")
-    func bottomViewportFollowsLayout() {
-        var policy = TerminalBottomAnchorPolicy()
-        _ = policy.targetOffset(currentOffset: 0, maximumOffset: 120)
+    @Test("Automatic intermediate offsets cannot break startup anchoring")
+    func intermediateLayoutOffsetsKeepFollowing() {
+        let policy = TerminalBottomAnchorPolicy()
 
-        #expect(policy.targetOffset(currentOffset: 120, maximumOffset: 180) == 180)
+        #expect(policy.targetOffset(maximumOffset: 120) == 120)
+        // UIKit may temporarily place the viewport between its old and new
+        // bottom while safe-area and representable layouts settle. The policy
+        // no longer infers user intent from that transient offset.
+        #expect(policy.targetOffset(maximumOffset: 180) == 180)
     }
 
     @Test("Manual scrolling is preserved")
     func manualScrollIsPreserved() {
         var policy = TerminalBottomAnchorPolicy()
-        _ = policy.targetOffset(currentOffset: 0, maximumOffset: 120)
+        policy.userWillBeginScrolling()
+        policy.userDidEndScrolling(currentOffset: 60, maximumOffset: 180)
 
-        #expect(policy.targetOffset(currentOffset: 60, maximumOffset: 180) == nil)
+        #expect(policy.targetOffset(maximumOffset: 220) == nil)
     }
 
     @Test("Returning to the bottom resumes anchoring")
     func returningToBottomResumesAnchoring() {
         var policy = TerminalBottomAnchorPolicy()
-        _ = policy.targetOffset(currentOffset: 0, maximumOffset: 120)
-        _ = policy.targetOffset(currentOffset: 60, maximumOffset: 180)
+        policy.userWillBeginScrolling()
+        policy.userDidEndScrolling(currentOffset: 180, maximumOffset: 180)
 
-        #expect(policy.targetOffset(currentOffset: 180, maximumOffset: 220) == 220)
+        #expect(policy.targetOffset(maximumOffset: 220) == 220)
     }
 
-    @Test("UIKit clamping to a smaller bottom remains anchored")
-    func clampedOffsetRemainsAnchored() {
+    @Test("A drag pauses anchoring until it finishes")
+    func activeDragPausesAnchoring() {
         var policy = TerminalBottomAnchorPolicy()
-        _ = policy.targetOffset(currentOffset: 0, maximumOffset: 180)
+        policy.userWillBeginScrolling()
 
-        #expect(policy.targetOffset(currentOffset: 120, maximumOffset: 120) == 120)
+        #expect(policy.targetOffset(maximumOffset: 180) == nil)
     }
 
     @Test("Explicit bottom requests override manual scrolling")
     func forcedAnchorOverridesManualScroll() {
         var policy = TerminalBottomAnchorPolicy()
-        _ = policy.targetOffset(currentOffset: 0, maximumOffset: 120)
+        policy.userWillBeginScrolling()
+        policy.userDidEndScrolling(currentOffset: 40, maximumOffset: 180)
+        policy.requestScrollToBottom()
 
-        #expect(policy.targetOffset(currentOffset: 40, maximumOffset: 180, force: true) == 180)
+        #expect(policy.targetOffset(maximumOffset: 180) == 180)
+    }
+
+    @Test("Inset-adjusted negative bottom offsets are preserved")
+    func negativeBottomOffsetIsPreserved() {
+        let policy = TerminalBottomAnchorPolicy()
+
+        #expect(policy.targetOffset(maximumOffset: -12) == -12)
     }
 }
