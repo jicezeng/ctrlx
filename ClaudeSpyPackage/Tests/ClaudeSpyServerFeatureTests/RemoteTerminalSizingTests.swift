@@ -5,6 +5,26 @@
 
     @MainActor
     struct RemoteTerminalSizingTests {
+        @Test("Height-only pane changes are not deduplicated")
+        func heightOnlyChangeIsObserved() {
+            var tracker = TerminalDimensionChangeTracker()
+            let initialChange = tracker.record(width: 225, height: 24)
+            let heightChange = tracker.record(width: 225, height: 66)
+
+            #expect(initialChange)
+            #expect(heightChange)
+        }
+
+        @Test("Identical pane dimensions are deduplicated")
+        func identicalDimensionsAreIgnored() {
+            var tracker = TerminalDimensionChangeTracker()
+            let initialChange = tracker.record(width: 225, height: 66)
+            let duplicateChange = tracker.record(width: 225, height: 66)
+
+            #expect(initialChange)
+            #expect(!duplicateChange)
+        }
+
         @Test("Locked host dimensions survive viewer layout changes")
         func hostDimensionsRemainLocked() {
             let view = InteractiveTerminalView(

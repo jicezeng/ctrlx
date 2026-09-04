@@ -16,6 +16,20 @@ typealias TerminalTitleChangeHandler = @MainActor (String) -> Void
 /// callback handled the URL, `false` to fall back to `NSWorkspace.shared.open`.
 typealias TerminalOpenURLHandler = @MainActor (URL) -> Bool
 
+/// Tracks the last pane dimensions delivered by SwiftUI so width-only and
+/// height-only layout changes are both observed exactly once.
+struct TerminalDimensionChangeTracker {
+    private var width: Int?
+    private var height: Int?
+
+    mutating func record(width newWidth: Int, height newHeight: Int) -> Bool {
+        guard width != newWidth || height != newHeight else { return false }
+        width = newWidth
+        height = newHeight
+        return true
+    }
+}
+
 // MARK: - Terminal Container View
 
 /// A self-contained SwiftUI view that mirrors a tmux pane.
@@ -138,7 +152,7 @@ struct TerminalContainerView: NSViewRepresentable {
         private var streamState: StreamState = .disconnected
         private var columns = 80
         private var rows = 24
-        private var lastExternalWidth = 0
+        private var externalDimensionTracker = TerminalDimensionChangeTracker()
         /// When connected, rows are locked to the tmux pane height so that
         /// absolute cursor positioning in live `%output` maps correctly.
         private var rowsLockedToTmux = false
@@ -244,7 +258,7 @@ struct TerminalContainerView: NSViewRepresentable {
             self.tmuxService = tmuxService
             self.onStateChange = onStateChange
             self.onTitleChange = onTitleChange
-            lastExternalWidth = paneState.width
+            _ = externalDimensionTracker.record(width: paneState.width, height: paneState.height)
 
             terminalView.terminalAccessibilityIdentifier = "terminal-\(paneState.paneId)"
 
@@ -458,7 +472,7 @@ struct TerminalContainerView: NSViewRepresentable {
                         self?.handleData(data)
                     },
                     onDimensionChange: { [weak self] newWidth, newHeight in
-                        self?.updateTerminalDimensions(cols: newWidth, rows: newHeight)
+                        self?.handleStreamDimensionChange(width: newWidth, height: newHeight)
                     },
                     onResync: { [weak self] result in
                         self?.handleResync(result)
@@ -618,7 +632,8 @@ struct TerminalContainerView: NSViewRepresentable {
         /// Updates terminal dimensions from tmux pane size.
         /// Rows are locked to the tmux pane height so that absolute cursor
         /// positioning in live `%output` events maps correctly to mirror rows.
-        func updateTerminalDimensions(cols newColumns: Int, rows newRows: Int) {
+        @discardableResult
+        func updateTerminalDimensions(cols newColumns: Int, rows newRows: Int) -> Bool {
             let changed = newColumns != columns || newRows != rows
             columns = newColumns
             rows = newRows
@@ -632,6 +647,7 @@ struct TerminalContainerView: NSViewRepresentable {
                 reapplyDimensionsIfNeeded()
                 notifyStateChange()
             }
+            return changed
         }
 
         func scrollToBottom() {
@@ -678,18 +694,33 @@ struct TerminalContainerView: NSViewRepresentable {
         // MARK: External Dimension Changes
 
         func handleExternalDimensionChange(width: Int, height: Int) {
-            guard width != lastExternalWidth else { return }
-            lastExternalWidth = width
+            guard externalDimensionTracker.record(width: width, height: height) else { return }
 
             // Resize terminal immediately to avoid cursor misposition.
             // Without this, the shell's prompt redraw (via pipe-pane) arrives
-            // while the terminal still has the old column count, then the async
-            // dimension callback reflows content that was already correct,
-            // placing the cursor at the end of the line instead of after the prompt.
-            updateTerminalDimensions(cols: width, rows: height)
+            // while the terminal still has the old grid, then absolute cursor
+            // positions can land outside the visible mirror.
+            let changed = updateTerminalDimensions(cols: width, rows: height)
 
             // Also update the stream so other subscribers (e.g., iOS relay) get notified
             paneStreamManager?.updateDimensions(paneId: paneState?.paneId ?? "", width: width, height: height)
+
+            // A resize cannot repair bytes that SwiftTerm already interpreted
+            // against the old grid. Replace the mirror with one authoritative
+            // tmux snapshot before buffered live output resumes.
+            if changed {
+                requestAuthoritativeResync()
+            }
+        }
+
+        private func handleStreamDimensionChange(width: Int, height: Int) {
+            guard updateTerminalDimensions(cols: width, rows: height) else { return }
+            requestAuthoritativeResync()
+        }
+
+        private func requestAuthoritativeResync() {
+            guard let subscriptionId else { return }
+            paneStreamManager?.requestResync(subscriptionId: subscriptionId)
         }
 
         // MARK: Private Helpers
