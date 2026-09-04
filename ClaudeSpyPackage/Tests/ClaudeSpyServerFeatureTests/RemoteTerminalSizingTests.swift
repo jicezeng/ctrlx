@@ -25,6 +25,52 @@
             #expect(!duplicateChange)
         }
 
+        @Test("A height-only change creates one shared resync boundary")
+        func heightChangeCreatesSharedResyncBoundary() throws {
+            let first = UUID()
+            let second = UUID()
+            let boundary = try #require(PaneDimensionResyncBoundary(
+                currentWidth: 225,
+                currentHeight: 61,
+                newWidth: 225,
+                newHeight: 66,
+                subscriptionIds: [first, second]
+            ))
+
+            #expect(boundary.width == 225)
+            #expect(boundary.height == 66)
+            #expect(boundary.subscriptionIds == [first, second])
+        }
+
+        @Test("An identical pane size creates no resync boundary")
+        func duplicateSizeCreatesNoResyncBoundary() {
+            let boundary = PaneDimensionResyncBoundary(
+                currentWidth: 225,
+                currentHeight: 66,
+                newWidth: 225,
+                newHeight: 66,
+                subscriptionIds: [UUID()]
+            )
+
+            #expect(boundary == nil)
+        }
+
+        @Test("A request arriving during capture is retained for the next round")
+        func requestDuringCaptureStartsAnotherRound() {
+            let subscriber = UUID()
+            var requests = PaneResyncRequestQueue()
+
+            requests.request(paneId: "%6", subscriptionIds: [subscriber])
+            #expect(requests.take(paneId: "%6") == [subscriber])
+
+            // The first round is now capturing. The same ID must not merge
+            // backward into the already-consumed round.
+            requests.request(paneId: "%6", subscriptionIds: [subscriber])
+            #expect(requests.hasRequests(paneId: "%6"))
+            #expect(requests.take(paneId: "%6") == [subscriber])
+            #expect(!requests.hasRequests(paneId: "%6"))
+        }
+
         @Test("Locked host dimensions survive viewer layout changes")
         func hostDimensionsRemainLocked() {
             let view = InteractiveTerminalView(

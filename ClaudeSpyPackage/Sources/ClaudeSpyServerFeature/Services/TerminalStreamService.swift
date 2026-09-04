@@ -324,12 +324,6 @@ final public class TerminalStreamService {
                         self.requestResync(for: context, paneId: paneId)
                     }
                 },
-                onDimensionChange: { [weak self] (newWidth: Int, newHeight: Int) in
-                    guard let self else { return }
-                    Task {
-                        await self.handleDimensionChange(paneId: paneId, width: newWidth, height: newHeight)
-                    }
-                },
                 onTitleChange: { [weak self] (title: String) in
                     guard let self else { return }
                     Task {
@@ -867,20 +861,6 @@ final public class TerminalStreamService {
             scrollbackLineLimit: snapshot.scrollbackLineLimit,
             recipients: context.ownership.subscribers
         )
-    }
-
-    /// Handle dimension change from PaneStreamManager
-    private func handleDimensionChange(paneId: String, width: Int, height: Int) async {
-        guard let context = activeStreams[paneId] else { return }
-        guard let streamSender else { return }
-
-        logger.info("Sending dimension change", metadata: [
-            "paneId": "\(paneId)",
-            "dimensions": "\(width)x\(height)",
-        ])
-
-        let message = TerminalStreamMessage.dimensionChange(paneId: paneId, width: width, height: height)
-        await streamSender.sendTerminalStream(message, to: context.readyViewers)
     }
 
     /// Handle title change reported by a subscriber's SwiftTerm instance

@@ -33,6 +33,64 @@
         }
     }
 
+    /// Describes the single authoritative snapshot boundary created by a real
+    /// pane-size change. Keeping this decision beside the shared reader makes
+    /// every consumer (local Mac mirrors and relay viewers) cross the same
+    /// boundary instead of repairing its own SwiftTerm instance independently.
+    struct PaneDimensionResyncBoundary: Equatable {
+        let width: Int
+        let height: Int
+        let subscriptionIds: Set<UUID>
+
+        init?(
+            currentWidth: Int,
+            currentHeight: Int,
+            newWidth: Int,
+            newHeight: Int,
+            subscriptionIds: Set<UUID>
+        ) {
+            guard currentWidth != newWidth || currentHeight != newHeight else { return nil }
+            self.width = newWidth
+            self.height = newHeight
+            self.subscriptionIds = subscriptionIds
+        }
+    }
+
+    /// Pending pane-wide snapshot requests. `take` removes the current round
+    /// before capture starts, so an identical subscriber requesting another
+    /// resync during that capture is retained for the next round.
+    struct PaneResyncRequestQueue {
+        private var subscriptionIdsByPane: [String: Set<UUID>] = [:]
+
+        mutating func request(paneId: String, subscriptionIds: Set<UUID>) {
+            guard !subscriptionIds.isEmpty else { return }
+            subscriptionIdsByPane[paneId, default: []].formUnion(subscriptionIds)
+        }
+
+        mutating func remove(subscriptionId: UUID, paneId: String) {
+            subscriptionIdsByPane[paneId]?.remove(subscriptionId)
+            if subscriptionIdsByPane[paneId]?.isEmpty == true {
+                subscriptionIdsByPane.removeValue(forKey: paneId)
+            }
+        }
+
+        mutating func take(paneId: String) -> Set<UUID> {
+            subscriptionIdsByPane.removeValue(forKey: paneId) ?? []
+        }
+
+        func hasRequests(paneId: String) -> Bool {
+            subscriptionIdsByPane[paneId]?.isEmpty == false
+        }
+
+        mutating func discard(paneId: String) {
+            subscriptionIdsByPane.removeValue(forKey: paneId)
+        }
+
+        mutating func removeAll() {
+            subscriptionIdsByPane.removeAll()
+        }
+    }
+
     /// Coalesces concurrent attempts to start the same pane reader.
     ///
     /// Pane discovery and a newly-created terminal view can observe an unknown
@@ -172,7 +230,7 @@
         /// Overload recovery is coalesced per pane. While a snapshot is being
         /// captured, incremental callbacks are suppressed and the reader buffers
         /// the post-snapshot boundary for an ordered flush.
-        private var pendingResyncSubscribers: [String: Set<UUID>] = [:]
+        private var pendingResyncRequests = PaneResyncRequestQueue()
         private var resyncTasks: [String: Task<Void, Never>] = [:]
         private var resyncingPaneIds: Set<String> = []
 
@@ -528,7 +586,7 @@
             }
 
             let paneId = subscription.paneId
-            pendingResyncSubscribers[paneId]?.remove(subscriptionId)
+            pendingResyncRequests.remove(subscriptionId: subscriptionId, paneId: paneId)
 
             guard var context = readers[paneId] else {
                 logger.warning("Reader not found for pane: \(paneId)")
@@ -554,14 +612,27 @@
 
         /// Update dimensions for a pane (called when tmux refreshes pane info).
         ///
-        /// Stored on the reader context and forwarded to all subscribers.
+        /// A real size change is an authoritative snapshot boundary. Subscribers
+        /// first adopt the new geometry, then one pane-wide resync replaces every
+        /// mirror before buffered live bytes resume.
         public func updateDimensions(paneId: String, width: Int, height: Int) {
             guard var context = readers[paneId] else { return }
-            guard width != context.width || height != context.height else { return }
-            context.width = width
-            context.height = height
+            guard let boundary = PaneDimensionResyncBoundary(
+                currentWidth: context.width,
+                currentHeight: context.height,
+                newWidth: width,
+                newHeight: height,
+                subscriptionIds: context.subscriberIds
+            ) else { return }
+            context.width = boundary.width
+            context.height = boundary.height
             readers[paneId] = context
-            forwardDimensionChange(paneId: paneId, width: width, height: height)
+            forwardDimensionChange(
+                paneId: paneId,
+                width: boundary.width,
+                height: boundary.height
+            )
+            requestResync(paneId: paneId, subscriptionIds: boundary.subscriptionIds)
         }
 
         /// Report a terminal title change detected by a subscriber's SwiftTerm instance.
@@ -615,20 +686,26 @@
             return (content, context.width, context.height, viewerScrollbackLineLimit)
         }
 
-        /// Requests an authoritative snapshot for one subscription after its
-        /// downstream queue crossed the high-water mark. Concurrent requests for
-        /// the same pane share one capture and are notified before buffered live
-        /// bytes are flushed.
+        /// Requests an authoritative snapshot for one subscription. Concurrent
+        /// requests for the same pane share one capture and are notified before
+        /// buffered live bytes are flushed.
         func requestResync(subscriptionId: UUID) {
             guard
                 let subscription = subscriptions[subscriptionId],
                 let context = readers[subscription.paneId]
             else { return }
-            let paneId = subscription.paneId
             // Buffering and forward suppression are pane-wide. Every existing
             // subscriber therefore crosses the same snapshot boundary, even
-            // when only one downstream queue reported overload.
-            pendingResyncSubscribers[paneId, default: []].formUnion(context.subscriberIds)
+            // when only one downstream queue requested recovery.
+            requestResync(
+                paneId: subscription.paneId,
+                subscriptionIds: context.subscriberIds
+            )
+        }
+
+        private func requestResync(paneId: String, subscriptionIds: Set<UUID>) {
+            guard !subscriptionIds.isEmpty else { return }
+            pendingResyncRequests.request(paneId: paneId, subscriptionIds: subscriptionIds)
             resyncingPaneIds.insert(paneId)
             startResyncTaskIfNeeded(paneId: paneId)
         }
@@ -692,7 +769,7 @@
                 await tearDownReader(paneId: paneId)
             }
             subscriptions.removeAll()
-            pendingResyncSubscribers.removeAll()
+            pendingResyncRequests.removeAll()
             resyncingPaneIds.removeAll()
             paneRefreshTask?.cancel()
             paneRefreshTask = nil
@@ -891,7 +968,7 @@
                 task.cancel()
                 _ = await task.value
             }
-            pendingResyncSubscribers.removeValue(forKey: paneId)
+            pendingResyncRequests.discard(paneId: paneId)
             resyncingPaneIds.remove(paneId)
 
             guard let context = readers.removeValue(forKey: paneId) else { return }
@@ -1025,7 +1102,7 @@
                 task.cancel()
                 _ = await task.value
             }
-            pendingResyncSubscribers.removeValue(forKey: paneId)
+            pendingResyncRequests.discard(paneId: paneId)
             resyncingPaneIds.insert(paneId)
 
             while !Task.isCancelled, !isShuttingDown {
@@ -1057,7 +1134,10 @@
                         return
                     }
 
-                    pendingResyncSubscribers[paneId, default: []].formUnion(refreshed.subscriberIds)
+                    pendingResyncRequests.request(
+                        paneId: paneId,
+                        subscriptionIds: refreshed.subscriberIds
+                    )
                     resyncingPaneIds.insert(paneId)
                     startResyncTaskIfNeeded(paneId: paneId, whileRecovering: true)
                     handedOffToResync = true
@@ -1080,9 +1160,12 @@
 
             while !Task.isCancelled {
                 guard
-                    pendingResyncSubscribers[paneId]?.isEmpty == false,
+                    pendingResyncRequests.hasRequests(paneId: paneId),
                     var context = readers[paneId]
                 else { return }
+                // Consume this round before suspending. A new request from the
+                // same subscriber must remain visible for a following capture.
+                let targets = pendingResyncRequests.take(paneId: paneId)
 
                 await context.reader.setBuffering(true)
                 if let dimensions = try? await tmuxService.getPaneDimensions(context.target) {
@@ -1118,9 +1201,9 @@
                         await context.reader.setBuffering(false)
                         return
                     }
-                    let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
+                    let failureTargets = targets.union(pendingResyncRequests.take(paneId: paneId))
                     await context.reader.setBuffering(false)
-                    for subscriptionId in targets {
+                    for subscriptionId in failureTargets {
                         guard let subscription = subscriptions[subscriptionId],
                               !subscription.bootstrap.isCollecting else { continue }
                         subscription.onResync?(.failure(error))
@@ -1137,8 +1220,6 @@
                     return
                 }
 
-                // Include requests that arrived while capture-pane was suspended.
-                let targets = pendingResyncSubscribers.removeValue(forKey: paneId) ?? []
                 TerminalTransportMetrics.shared.recordResync()
                 for subscriptionId in targets {
                     guard let subscription = subscriptions[subscriptionId],
@@ -1157,7 +1238,7 @@
                 resyncingPaneIds.remove(paneId)
                 await context.reader.flushBuffer()
 
-                guard pendingResyncSubscribers[paneId]?.isEmpty == false else { return }
+                guard pendingResyncRequests.hasRequests(paneId: paneId) else { return }
                 resyncingPaneIds.insert(paneId)
             }
         }

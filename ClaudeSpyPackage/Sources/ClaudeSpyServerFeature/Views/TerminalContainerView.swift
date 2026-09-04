@@ -700,27 +700,15 @@ struct TerminalContainerView: NSViewRepresentable {
             // Without this, the shell's prompt redraw (via pipe-pane) arrives
             // while the terminal still has the old grid, then absolute cursor
             // positions can land outside the visible mirror.
-            let changed = updateTerminalDimensions(cols: width, rows: height)
+            updateTerminalDimensions(cols: width, rows: height)
 
-            // Also update the stream so other subscribers (e.g., iOS relay) get notified
+            // The shared stream manager turns the size change into one
+            // authoritative reset for every local and remote subscriber.
             paneStreamManager?.updateDimensions(paneId: paneState?.paneId ?? "", width: width, height: height)
-
-            // A resize cannot repair bytes that SwiftTerm already interpreted
-            // against the old grid. Replace the mirror with one authoritative
-            // tmux snapshot before buffered live output resumes.
-            if changed {
-                requestAuthoritativeResync()
-            }
         }
 
         private func handleStreamDimensionChange(width: Int, height: Int) {
-            guard updateTerminalDimensions(cols: width, rows: height) else { return }
-            requestAuthoritativeResync()
-        }
-
-        private func requestAuthoritativeResync() {
-            guard let subscriptionId else { return }
-            paneStreamManager?.requestResync(subscriptionId: subscriptionId)
+            updateTerminalDimensions(cols: width, rows: height)
         }
 
         // MARK: Private Helpers
