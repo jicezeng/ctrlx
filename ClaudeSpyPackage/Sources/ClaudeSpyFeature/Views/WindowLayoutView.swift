@@ -816,27 +816,24 @@
         private func activeVoiceInputContext() -> String? {
             guard let activePaneId else { return nil }
 
-            var sections: [String] = []
-            if let terminalText = voiceInputContextProviders[activePaneId]?(),
-               let excerpt = VoiceInputContext.terminalExcerpt(terminalText)
-            {
-                sections.append("Recent terminal text:\n\(excerpt)")
-            }
-
+            var metadata: [String] = []
             if let pane = window?.panes.first(where: { $0.paneId == activePaneId }) {
-                sections.append("Session: \(sessionName)")
+                metadata.append("Session: \(sessionName)")
                 if !pane.windowName.isEmpty {
-                    sections.append("Window: \(pane.windowName)")
+                    metadata.append("Window: \(pane.windowName)")
                 }
                 if let command = pane.command, !command.isEmpty {
-                    sections.append("Running command: \(command)")
+                    metadata.append("Running command: \(command)")
                 }
                 if let currentPath = pane.currentPath, !currentPath.isEmpty {
-                    sections.append("Current path: \(currentPath)")
+                    metadata.append("Current path: \(currentPath)")
                 }
             }
 
-            return sections.isEmpty ? nil : sections.joined(separator: "\n")
+            return VoiceInputContext.makeTerminalContext(
+                terminalText: voiceInputContextProviders[activePaneId]?(),
+                metadata: metadata
+            )
         }
 
         // MARK: - Close Window/Session

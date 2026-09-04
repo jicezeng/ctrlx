@@ -340,7 +340,9 @@
         }
 
         private func terminalVoiceInputContext() -> String? {
-            coordinator.voiceInputContext()
+            VoiceInputContext.makeTerminalContext(
+                terminalText: coordinator.voiceInputContext()
+            )
         }
 
         private func restoreTerminalInputAfterCopy() {
@@ -623,9 +625,7 @@
         }
 
         func voiceInputContext() -> String? {
-            VoiceInputContext.terminalExcerpt(
-                terminalState?.makeTextSnapshot?()?.text
-            )
+            terminalState?.makeTextSnapshot?()?.text
         }
 
         func nextStartMode() -> TerminalStreamRecoveryPolicy.StartMode {

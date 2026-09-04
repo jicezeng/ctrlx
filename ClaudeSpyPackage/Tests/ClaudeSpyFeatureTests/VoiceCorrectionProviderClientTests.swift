@@ -20,6 +20,27 @@ struct VoiceCorrectionProviderClientTests {
         )
     }
 
+    @Test("Benchmarks realistic context without embedding the target sentence")
+    func benchmarkContexts() throws {
+        let contextualSamples = VoiceCorrectionBenchmark.samples.filter {
+            $0.terminalContext != nil
+        }
+
+        #expect(contextualSamples.count == 2)
+        for sample in contextualSamples {
+            let context = try #require(sample.terminalContext)
+            #expect(context.count >= 2_000)
+            #expect(context.count <= 4_000)
+            #expect(!context.contains("CtrlX 由曾计策开发，语音输入通过 Voice 按钮触发"))
+        }
+        #expect(
+            VoiceCorrectionBenchmark.samples.contains {
+                $0.id == "general-homophones-without-context"
+                    && $0.terminalContext == nil
+            }
+        )
+    }
+
     @Test("Ranks canonical term recovery and residual recognition errors")
     func benchmarkScoring() throws {
         let sample = try #require(

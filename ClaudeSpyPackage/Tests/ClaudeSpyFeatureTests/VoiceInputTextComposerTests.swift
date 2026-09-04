@@ -157,13 +157,34 @@ struct VoiceInputContextTests {
     func terminalSuffix() {
         #expect(
             VoiceInputContext.terminalExcerpt("0123456789", maximumCount: 4)
-                == "…6789"
+                == "…789"
         )
     }
 
     @Test("Ignores blank terminal context")
     func blankContext() {
         #expect(VoiceInputContext.terminalExcerpt(" \n ") == nil)
+    }
+
+    @Test("Builds one bounded context while preserving pane metadata")
+    func assembledContext() throws {
+        let context = try #require(
+            VoiceInputContext.makeTerminalContext(
+                terminalText: "oldest\n" + String(repeating: "x", count: 80) + "\nnewest",
+                metadata: [
+                    "Session: coding",
+                    "Window: editor",
+                    "Current path: /tmp/ctrlx",
+                ],
+                maximumCount: 100
+            )
+        )
+
+        #expect(context.count == 100)
+        #expect(context.hasPrefix("Session: coding\nWindow: editor\nCurrent path: /tmp/ctrlx"))
+        #expect(context.contains("Recent terminal text:\n…"))
+        #expect(context.hasSuffix("newest"))
+        #expect(!context.contains("oldest"))
     }
 }
 
@@ -205,16 +226,21 @@ struct VoiceTranscriptCorrectionPromptTests {
 
     @Test("Keeps recent pane context bounded for semantic correction")
     func recentPaneContext() {
-        let context = String(repeating: "x", count: 1_800) + "Current path: /tmp/ctrlx"
-        let excerpt = VoiceTranscriptCorrectionPrompt.terminalContextExcerpt(context)
+        let terminalText = String(repeating: "x", count: 13_000) + "latest output"
+        let context = VoiceInputContext.makeTerminalContext(
+            terminalText: terminalText,
+            metadata: ["Current path: /tmp/ctrlx"]
+        )
         let prompt = VoiceTranscriptCorrectionPrompt.make(
             recognition: VoiceRecognitionResult(primaryTranscript: "修复这个问题"),
-            terminalContext: excerpt
+            terminalContext: context
         )
 
-        #expect(excerpt == "…" + context.suffix(VoiceInputContext.maximumTerminalCharacterCount))
+        #expect(context?.count == VoiceInputContext.maximumTerminalCharacterCount)
+        #expect(context?.hasPrefix("Current path: /tmp/ctrlx") == true)
+        #expect(context?.hasSuffix("latest output") == true)
         #expect(prompt.contains("Recent pane context"))
-        #expect(!prompt.contains(String(repeating: "x", count: 1_800)))
+        #expect(!prompt.contains(String(repeating: "x", count: 13_000)))
 
         let instructions = VoiceTranscriptCorrectionPrompt.instructions(
             localeIdentifier: "zh-Hans-CN",

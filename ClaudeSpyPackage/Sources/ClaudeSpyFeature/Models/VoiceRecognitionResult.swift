@@ -106,7 +106,7 @@ struct VoiceRecognitionCandidateAccumulator {
 }
 
 enum VoiceInputContext {
-    static let maximumTerminalCharacterCount = 1_600
+    static let maximumTerminalCharacterCount = 12_000
 
     static func terminalExcerpt(
         _ text: String?,
@@ -116,6 +116,42 @@ enum VoiceInputContext {
         let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return nil }
         guard trimmed.count > maximumCount else { return trimmed }
-        return "…" + trimmed.suffix(maximumCount)
+        guard maximumCount > 1 else { return String(trimmed.suffix(maximumCount)) }
+        return "…" + trimmed.suffix(maximumCount - 1)
+    }
+
+    /// Formats the active pane metadata and recent terminal text under one
+    /// shared budget. Metadata remains intact while older terminal output is
+    /// discarded first.
+    static func makeTerminalContext(
+        terminalText: String?,
+        metadata: [String] = [],
+        maximumCount: Int = maximumTerminalCharacterCount
+    ) -> String? {
+        guard maximumCount > 0 else { return nil }
+
+        let metadataText = metadata
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        let terminalText = terminalText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard !terminalText.isEmpty else {
+            return terminalExcerpt(metadataText, maximumCount: maximumCount)
+        }
+
+        let terminalHeader = "Recent terminal text:\n"
+        let fixedText = metadataText.isEmpty
+            ? terminalHeader
+            : metadataText + "\n" + terminalHeader
+        guard fixedText.count < maximumCount else {
+            return terminalExcerpt(metadataText, maximumCount: maximumCount)
+        }
+
+        let terminalBudget = maximumCount - fixedText.count
+        guard let excerpt = terminalExcerpt(terminalText, maximumCount: terminalBudget) else {
+            return terminalExcerpt(metadataText, maximumCount: maximumCount)
+        }
+        return fixedText + excerpt
     }
 }

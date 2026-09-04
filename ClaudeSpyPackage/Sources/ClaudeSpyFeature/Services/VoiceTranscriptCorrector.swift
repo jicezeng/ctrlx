@@ -28,10 +28,6 @@ enum VoiceTranscriptCorrectionPolicy {
 }
 
 enum VoiceTranscriptCorrectionPrompt {
-    static func terminalContextExcerpt(_ context: String?) -> String? {
-        VoiceInputContext.terminalExcerpt(context)
-    }
-
     static func instructions(
         localeIdentifier: String,
         contextualTerms: [String]
@@ -113,12 +109,9 @@ enum VoiceTranscriptCorrector {
     ) async -> String {
         let original = recognition.bestAvailableTranscript
         guard !original.isEmpty else { return original }
-        let terminalExcerpt = VoiceTranscriptCorrectionPrompt.terminalContextExcerpt(
-            terminalContext
-        )
         VoiceInputDiagnostics.correctionStarted(
             result: recognition,
-            hasTerminalContext: terminalExcerpt != nil
+            hasTerminalContext: terminalContext != nil
         )
 
         #if os(iOS) && canImport(FoundationModels)
@@ -126,7 +119,7 @@ enum VoiceTranscriptCorrector {
                 if let corrected = await correctOnDevice(
                     recognition,
                     contextualTerms: contextualTerms,
-                    terminalContext: terminalExcerpt
+                    terminalContext: terminalContext
                 ) {
                     return corrected
                 }
@@ -138,7 +131,7 @@ enum VoiceTranscriptCorrector {
                 return await correctWithProvider(
                     recognition,
                     contextualTerms: contextualTerms,
-                    terminalContext: terminalExcerpt,
+                    terminalContext: terminalContext,
                     selection: providerSelection
                 )
             }

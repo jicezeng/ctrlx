@@ -152,7 +152,7 @@ extension View {
         ) {
             guard !isPressActive, phase == .idle else { return }
             isPressActive = true
-            recognitionContext = VoiceInputContext.terminalExcerpt(context)
+            recognitionContext = context
             self.correctionSelection = correctionSelection
             transcript = ""
             phase = .requestingPermission
