@@ -1,4 +1,4 @@
-# ClaudeSpy
+# CtrlX Repository Guide
 
 Distributed system for monitoring coding-agent sessions (Anthropic Claude Code and OpenAI Codex CLI, behind a shared `CodingAgent` abstraction in `ClaudeSpyNetworking`). Three components:
 1. **Mac App** - tmux pane mirroring, receives hooks from both agents, forwards to server
@@ -7,7 +7,7 @@ Distributed system for monitoring coding-agent sessions (Anthropic Claude Code a
 
 **Stack:** Swift 6.3+, SwiftUI (MV pattern), Swift Concurrency, SwiftTerm, Vapor, CryptoKit (E2EE)
 
-**Targets:** macOS 15.0+, iOS 17.0+
+**Targets:** macOS 15.0+, iOS 18.0+
 
 **Development by platform:**
 - macOS → `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/`
@@ -94,11 +94,83 @@ try await withDependencies {
 
 ## Building & Testing
 
-Use XcodeBuildTools skills. Scheme: `ClaudeSpyServer` (macOS), `ClaudeSpy` (iOS).
+Run build commands from the repository root and use `ClaudeSpy.xcworkspace`, not
+the `.xcodeproj`, so local packages and shared schemes resolve consistently.
+
+- macOS scheme: `ClaudeSpyServer`
+- iOS scheme: `ClaudeSpy`
+- Unit tests: `swift test --package-path ClaudeSpyPackage`
+
+### iOS build, package, and device install
+
+Keep personal signing data out of Git. Copy `Config/Local.xcconfig.example` to
+the ignored `Config/Local.xcconfig`, then set the development team and unique app
+and notification-extension bundle identifiers there. Never hard-code a personal
+team or provisioning profile in `project.pbxproj`.
+
+For a fast simulator compile check that does not require an iPhone or device
+provisioning:
+
+```bash
+xcodebuild \
+  -workspace ClaudeSpy.xcworkspace \
+  -scheme ClaudeSpy \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath .build-local/DerivedData/iOS-Simulator \
+  -skipMacroValidation \
+  build
+```
+
+For a signed local-device package, use the repository script rather than
+reimplementing its signing steps:
+
+```bash
+./scripts/package-local-ios.sh
+```
+
+The script must run in the primary worktree. It builds both the app and its
+notification extension, selects matching installed provisioning profiles,
+signs and verifies the result, and writes these artifacts:
+
+- Installable app: `.build-local/DerivedData/iOS/Build/Products/Debug-iphoneos/CtrlX.app`
+- IPA: `dist/CtrlX-<version>.ipa`
+- Integrity metadata: adjacent `.sha256` and `.manifest.json` files
+
+This is a local-development IPA. TestFlight/App Store upload remains deliberately
+blocked by `scripts/testflight.sh` pending the review documented in `RELEASE.md`.
+
+Both provisioning profiles must belong to the same team. The app bundle ID must
+also match the Relay's APNs configuration for background notifications to work.
+Do not try to install an intermediate app produced with
+`CODE_SIGNING_ALLOWED=NO`; install the script's final, verified `CtrlX.app`.
+
+Discover a connected, trusted, unlocked device and install the exact app that
+was just built:
+
+```bash
+xcrun devicectl list devices
+
+DEVICE_ID='<CoreDevice UUID>'
+APP_PATH='.build-local/DerivedData/iOS/Build/Products/Debug-iphoneos/CtrlX.app'
+APP_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+
+xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"
+xcrun devicectl device process launch \
+  --device "$DEVICE_ID" \
+  --terminate-existing \
+  "$APP_BUNDLE_ID"
+```
+
+Prefer the CoreDevice UUID from `devicectl list devices` over a device name.
+When discovery or installation fails, first verify that the phone is unlocked,
+trusted, in Developer Mode, and shown as available. For signing errors, verify
+`Config/Local.xcconfig`, the Apple Development certificate, and both installed
+provisioning profiles before changing build settings.
 
 **Killing Mac app:** Use `osascript -e 'quit app "CtrlX"'` — `pkill`/`killall` don't work reliably.
 
-**Opening a PR:** A `PostToolUse` hook (`.claude/hooks/pr-checklist.py`) fires on `gh pr create` and injects a checklist of post-PR chores (docs, CLAUDE.md, CLI/`ctrlx` skill, e2e scenarios). Work through it before stopping. See `docs/repo-hooks.md`.
+**Opening a PR:** A `PostToolUse` hook (`.claude/hooks/pr-checklist.py`) fires on `gh pr create` and injects a checklist of post-PR chores (docs, `AGENTS.md`, CLI/`ctrlx` skill, e2e scenarios). Work through it before stopping. See `docs/repo-hooks.md`.
 
 ## Reference Docs
 
@@ -113,7 +185,7 @@ Use XcodeBuildTools skills. Scheme: `ClaudeSpyServer` (macOS), `ClaudeSpy` (iOS)
 - **Stop-finality eval (#644):** `docs/stop-finality-eval.md` - Hill-climbing eval for the false-stop judge on Apple's Evaluations framework (macOS 27 beta Mac) + transcript-mining/labeling pipeline (`scripts/stop-finality-dataset.py`) + macOS 26 cross-check (`swift run StopFinalityEval`). Mined dataset lives in `~/.ctrlx/eval/`, never committed.
 - **Self-hosting:** `docs/self-hosting.md` - Zero-parameter Relay setup and configuration priority. `MinClientVersionGate` is controlled by `MIN_CLIENT_VERSION` and `MIN_CLIENT_VERSION_REJECT_UNKNOWN`; `PAIRING_PAUSED_MESSAGE` pauses new registrations. `/health`, `/ready`, `/version` and `/source` expose operational and corresponding-source state. Production secrets stay in the server's ignored `.env.production` and are never copied from the repository.
 - **Hosted-relay licensing (#392):** `docs/superpowers/specs/2026-07-13-hosted-relay-monetization-design.md` (trial-start/UI follow-on: `docs/superpowers/specs/2026-07-15-trial-status-badge-and-pairing-trial-start-design.md`) - Lemon Squeezy subscription gate for host Macs on the hosted relay: `LicensingService` actor (7-day trial keyed by host deviceId — **the trial clock starts when a viewer completes pairing** (`completePairing`→`startTrialIfNeeded`), NOT on register/first-touch; `checkEntitlement` is a pure gate with a `.preTrial` allowed state; license keys with cached verdicts; enforcement/gating at pairing register + host WS connect + daily sweep). Host WS connect *also* starts the trial for pre-existing **ACTIVE** pairs (gated on `getPair`≠nil, pending pairs excluded) — a one-time migration so pairings completed before licensing was enabled aren't grandfathered into permanent free access. UI: Mac License section in Remote Access settings **plus a trial/expired badge in the panes-window toolbar (left of Disconnect, shown only for paired hosts) opening a buy/activate popover** (`TrialStatusToolbarItem`), viewer "subscription expired" states. Entirely disabled unless `LEMONSQUEEZY_STORE_ID`/`LEMONSQUEEZY_PRODUCT_ID` are set — self-hosting needs no config. Enablement gates (LS dashboard setup, real `LicensingLinks` URLs replacing `CHECKOUT-VARIANT-UUID`, `VersionCompatibility` bump) live in the plan's Task 18 checklist (`docs/superpowers/plans/2026-07-13-hosted-relay-monetization.md`)
-- **Release and updates:** `RELEASE.md` - `scripts/release.sh` is zero-parameter, requires a clean tagged primary worktree, signs/notarizes `CtrlX-<version>.dmg`, and emits the appcast, SHA-256 and source manifest. `deploy2home.sh` publishes an already-built DMG through SSH to the home Mac's Nginx bind mount and verifies the public installer and artifact; never copy release files into a local `happy-nginx` checkout. Sparkle remains disabled until an owned feed and EdDSA key are configured.
+- **Release and updates:** `RELEASE.md` - `scripts/release.sh` is zero-parameter, requires a clean tagged primary worktree, signs/notarizes `CtrlX-<version>.dmg`, and emits the appcast, SHA-256 and source manifest. Production Relay and installer publishing run on Qcloud through an external maintainer runbook and script; the retired home-Mac path must not be used. Sparkle remains disabled until an owned feed and EdDSA key are configured.
 - **Staging relay:** `docs/staging-relay.md` - isolated data, secrets, APNs and hostname with the generic `caddy/ctrlx-staging.caddy`; no domain is hard-coded.
 - **Emoji search:** `docs/emoji-search.md` - internal `GallagerEmoji` module (keyword-aware emoji index shared by the Mac/iOS picker and the `ctrlx` CLI). Data is generated by `scripts/generate-emoji-data.py` from CLDR annotations into `EmojiData.swift`.
 - **Repo hooks:** `docs/repo-hooks.md` - Project-scoped Claude Code hooks (swiftformat, PR checklist)
