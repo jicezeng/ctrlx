@@ -52,7 +52,7 @@ COPY Tests ./Tests
 # The cache mount persists .build across builds but isn't included in the layer,
 # so we copy the binary to /tmp/ within the same RUN instruction
 RUN --mount=type=cache,id=ctrlx-relay-swiftpm,target=/build/.build \
-    swift build -c release --product CtrlxExternalServer \
+    swift build --jobs 1 -c release --product CtrlxExternalServer \
     -Xswiftc -cross-module-optimization && \
     cp .build/release/CtrlxExternalServer /tmp/
 
