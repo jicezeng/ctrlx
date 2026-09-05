@@ -11,7 +11,8 @@ struct TerminalStreamResyncTests {
             width: 120,
             height: 40,
             content: Data([0x1B, 0x5B, 0x32, 0x4A]),
-            scrollbackLineLimit: 10_000
+            scrollbackLineLimit: 10_000,
+            contentByteCount: 4
         )
 
         let data = try JSONEncoder().encode(original)
@@ -26,6 +27,7 @@ struct TerminalStreamResyncTests {
         #expect(snapshot.height == 40)
         #expect(snapshot.content == Data([0x1B, 0x5B, 0x32, 0x4A]))
         #expect(snapshot.scrollbackLineLimit == 10_000)
+        #expect(snapshot.contentByteCount == 4)
     }
 
     @Test("Older snapshots without a line limit remain decodable")
@@ -39,5 +41,6 @@ struct TerminalStreamResyncTests {
             return
         }
         #expect(snapshot.scrollbackLineLimit == nil)
+        #expect(snapshot.contentByteCount == nil)
     }
 }

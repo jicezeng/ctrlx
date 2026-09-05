@@ -76,11 +76,24 @@ public struct TerminalStreamMessage: Codable, Sendable, Identifiable {
         /// Optional so viewers remain compatible with older Hosts.
         public let scrollbackLineLimit: Int?
 
-        public init(width: Int, height: Int, content: Data, scrollbackLineLimit: Int? = nil) {
+        /// Total bytes in the snapshot payload, including any bytes carried in
+        /// `contentBase64`. Hosts send large snapshots as metadata followed by
+        /// bounded data chunks; viewers use this optional count to keep a reset
+        /// offscreen until its complete payload has arrived.
+        public let contentByteCount: Int?
+
+        public init(
+            width: Int,
+            height: Int,
+            content: Data,
+            scrollbackLineLimit: Int? = nil,
+            contentByteCount: Int? = nil
+        ) {
             self.width = width
             self.height = height
             self.contentBase64 = content.base64EncodedString()
             self.scrollbackLineLimit = scrollbackLineLimit
+            self.contentByteCount = contentByteCount
         }
 
         /// Decodes the content from Base64
@@ -162,7 +175,8 @@ public extension TerminalStreamMessage {
         width: Int,
         height: Int,
         content: Data,
-        scrollbackLineLimit: Int? = nil
+        scrollbackLineLimit: Int? = nil,
+        contentByteCount: Int? = nil
     ) -> TerminalStreamMessage {
         TerminalStreamMessage(
             paneId: paneId,
@@ -170,7 +184,8 @@ public extension TerminalStreamMessage {
                 width: width,
                 height: height,
                 content: content,
-                scrollbackLineLimit: scrollbackLineLimit
+                scrollbackLineLimit: scrollbackLineLimit,
+                contentByteCount: contentByteCount
             ))
         )
     }
@@ -189,7 +204,8 @@ public extension TerminalStreamMessage {
         width: Int,
         height: Int,
         content: Data,
-        scrollbackLineLimit: Int? = nil
+        scrollbackLineLimit: Int? = nil,
+        contentByteCount: Int? = nil
     ) -> TerminalStreamMessage {
         TerminalStreamMessage(
             paneId: paneId,
@@ -197,7 +213,8 @@ public extension TerminalStreamMessage {
                 width: width,
                 height: height,
                 content: content,
-                scrollbackLineLimit: scrollbackLineLimit
+                scrollbackLineLimit: scrollbackLineLimit,
+                contentByteCount: contentByteCount
             ))
         )
     }

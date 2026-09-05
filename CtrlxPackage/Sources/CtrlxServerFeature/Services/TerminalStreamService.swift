@@ -522,9 +522,9 @@ final public class TerminalStreamService {
         context.finishBootstrap(for: viewerId)
     }
 
-    /// Sends snapshot metadata first, followed by bounded data chunks. The existing
-    /// bootstrap ready barrier keeps initial snapshots offscreen until every chunk arrives,
-    /// while reset chunks remain ordered ahead of subsequent live bytes.
+    /// Sends snapshot metadata first, followed by bounded data chunks. The
+    /// advertised byte count gives viewers an explicit completion boundary;
+    /// reset chunks remain ordered ahead of subsequent live bytes.
     @discardableResult
     func sendSnapshot(
         kind: SnapshotKind,
@@ -544,7 +544,8 @@ final public class TerminalStreamService {
                 width: width,
                 height: height,
                 content: Data(),
-                scrollbackLineLimit: normalizedLimit
+                scrollbackLineLimit: normalizedLimit,
+                contentByteCount: content.count
             )
         case .reset:
             TerminalStreamMessage.resetState(
@@ -552,7 +553,8 @@ final public class TerminalStreamService {
                 width: width,
                 height: height,
                 content: Data(),
-                scrollbackLineLimit: normalizedLimit
+                scrollbackLineLimit: normalizedLimit,
+                contentByteCount: content.count
             )
         }
         await streamSender.sendTerminalStream(metadata, to: recipients)

@@ -691,6 +691,9 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
         private var containerSize: NSSize = .zero
         private var bootstrapPolicy = TerminalStreamBootstrapPolicy()
         private var bootstrapBuffer = TerminalStreamBootstrapBuffer()
+        private var bootstrapAccumulator = TerminalStreamSnapshotAccumulator()
+        private var resetAccumulator = TerminalStreamSnapshotAccumulator()
+        private var pendingResetState: TerminalStreamMessage.InitialState?
         private var streamTask: Task<Void, Never>?
         private var lastIsHostConnected: Bool?
         private var lastRetryGeneration: Int?
@@ -806,6 +809,8 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
             streamTask = nil
             streamAttemptId = nil
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             terminalView.lockedDimensions = nil
 
             // Unsubscribe from terminal stream
@@ -919,6 +924,8 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
             keyCoalescer.reset()
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             feedCoalescer.discardPending()
             terminalView.preserveUserScroll = false
             terminalView.isHidden = true
@@ -937,6 +944,8 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
             streamAttemptId = nil
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             feedCoalescer.discardPending()
             terminalView.preserveUserScroll = false
             terminalView.isHidden = true
@@ -977,10 +986,14 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
         private func handleStreamMessage(_ message: TerminalStreamMessage) {
             switch message.updateType {
             case let .initialState(state):
-                guard
-                    let data = Data(base64Encoded: state.contentBase64),
-                    bootstrapPolicy.receiveInitialState()
-                else { return }
+                guard let data = Data(base64Encoded: state.contentBase64) else { return }
+                let expectedByteCount = validSnapshotByteCount(
+                    state.contentByteCount,
+                    initialContent: data
+                )
+                guard bootstrapPolicy.receiveInitialState(
+                    snapshotIsComplete: expectedByteCount == nil
+                ) else { return }
 
                 columns = state.width
                 rows = state.height
@@ -988,31 +1001,65 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
                     state.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
                 )
                 bootstrapBuffer.appendDimensions(cols: columns, rows: rows)
-                bootstrapBuffer.appendData(data)
+                if let expectedByteCount {
+                    beginBootstrapSnapshot(
+                        expectedByteCount: expectedByteCount,
+                        initialContent: data
+                    )
+                } else {
+                    bootstrapBuffer.appendData(data)
+                }
 
                 revealTerminalIfReady()
 
             case let .resetState(state):
                 guard let data = Data(base64Encoded: state.contentBase64) else { return }
+                if streamState == .streaming {
+                    if !beginAtomicReset(state, initialContent: data) {
+                        applyReset(state, content: data)
+                    }
+                    break
+                }
+                guard bootstrapPolicy.hasInitialState else { return }
+
+                bootstrapBuffer.reset()
                 columns = state.width
                 rows = state.height
                 updateScrollbackLineLimit(
                     state.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
                 )
-                applyTerminalDimensions(cols: columns, rows: rows)
-                feedCoalescer.replace(with: data) { [terminalView] in
-                    terminalView.getTerminal().resetToInitialState()
-                    terminalView.preserveUserScroll = false
+                bootstrapBuffer.appendDimensions(cols: columns, rows: rows)
+                if let expectedByteCount = validSnapshotByteCount(
+                    state.contentByteCount,
+                    initialContent: data
+                ) {
+                    bootstrapPolicy.expectSnapshotCompletion()
+                    beginBootstrapSnapshot(
+                        expectedByteCount: expectedByteCount,
+                        initialContent: data
+                    )
+                } else {
+                    bootstrapAccumulator.cancel()
+                    bootstrapPolicy.receiveSnapshotCompletion()
+                    bootstrapBuffer.appendData(data)
                 }
-                terminalView.scroll(toPosition: 1)
-                terminalView.preserveUserScroll = true
-                terminalView.isHidden = false
-                terminalView.needsDisplay = true
-                notifyStateChange()
+                revealTerminalIfReady()
 
             case let .dataChunk(chunk):
                 guard bootstrapPolicy.hasInitialState else { return }
                 if let data = Data(base64Encoded: chunk.dataBase64) {
+                    if bootstrapAccumulator.isCollecting {
+                        if let completion = bootstrapAccumulator.append(data) {
+                            completeBootstrapSnapshot(completion)
+                        }
+                        return
+                    }
+                    if pendingResetState != nil {
+                        if let completion = resetAccumulator.append(data) {
+                            completeAtomicReset(completion)
+                        }
+                        return
+                    }
                     if streamState == .streaming {
                         feedCoalescer.enqueue(data)
                     } else {
@@ -1045,8 +1092,104 @@ private struct RemoteTerminalNSView: NSViewRepresentable {
                 // A stop sent while replacing our stale subscription can end
                 // the old host stream before the matching start arrives.
                 guard streamState == .streaming else { return }
+                cancelPendingReset()
                 updateState(.disconnected)
             }
+        }
+
+        private func validSnapshotByteCount(
+            _ advertisedByteCount: Int?,
+            initialContent: Data
+        ) -> Int? {
+            guard
+                let advertisedByteCount,
+                advertisedByteCount >= initialContent.count
+            else { return nil }
+            return advertisedByteCount
+        }
+
+        private func beginBootstrapSnapshot(
+            expectedByteCount: Int,
+            initialContent: Data
+        ) {
+            if let completion = bootstrapAccumulator.begin(expectedByteCount: expectedByteCount) {
+                completeBootstrapSnapshot(completion)
+            } else if
+                !initialContent.isEmpty,
+                let completion = bootstrapAccumulator.append(initialContent) {
+                completeBootstrapSnapshot(completion)
+            }
+        }
+
+        private func completeBootstrapSnapshot(
+            _ completion: TerminalStreamSnapshotAccumulator.Completion
+        ) {
+            bootstrapBuffer.appendData(completion.content)
+            bootstrapBuffer.appendData(completion.remainder)
+            bootstrapPolicy.receiveSnapshotCompletion()
+            revealTerminalIfReady()
+        }
+
+        private func beginAtomicReset(
+            _ state: TerminalStreamMessage.InitialState,
+            initialContent: Data
+        ) -> Bool {
+            guard
+                let expectedByteCount = validSnapshotByteCount(
+                    state.contentByteCount,
+                    initialContent: initialContent
+                )
+            else {
+                cancelPendingReset()
+                return false
+            }
+
+            pendingResetState = state
+            if let completion = resetAccumulator.begin(expectedByteCount: expectedByteCount) {
+                completeAtomicReset(completion)
+            } else if
+                !initialContent.isEmpty,
+                let completion = resetAccumulator.append(initialContent) {
+                completeAtomicReset(completion)
+            }
+            return true
+        }
+
+        private func completeAtomicReset(
+            _ completion: TerminalStreamSnapshotAccumulator.Completion
+        ) {
+            guard let state = pendingResetState else { return }
+            pendingResetState = nil
+            applyReset(state, content: completion.content)
+            if !completion.remainder.isEmpty {
+                feedCoalescer.enqueue(completion.remainder)
+            }
+        }
+
+        private func applyReset(
+            _ state: TerminalStreamMessage.InitialState,
+            content: Data
+        ) {
+            columns = state.width
+            rows = state.height
+            updateScrollbackLineLimit(
+                state.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
+            )
+            applyTerminalDimensions(cols: columns, rows: rows)
+            feedCoalescer.replace(with: content) { [terminalView] in
+                terminalView.getTerminal().resetToInitialState()
+                terminalView.preserveUserScroll = false
+            }
+            terminalView.scroll(toPosition: 1)
+            terminalView.preserveUserScroll = true
+            terminalView.isHidden = false
+            terminalView.needsDisplay = true
+            notifyStateChange()
+        }
+
+        private func cancelPendingReset() {
+            pendingResetState = nil
+            resetAccumulator.cancel()
         }
 
         private func revealTerminalIfReady() {

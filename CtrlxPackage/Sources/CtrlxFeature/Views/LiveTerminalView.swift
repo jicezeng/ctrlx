@@ -608,7 +608,10 @@
 
         @ObservationIgnored private var bootstrapPolicy = TerminalStreamBootstrapPolicy()
         @ObservationIgnored private var bootstrapBuffer = TerminalStreamBootstrapBuffer()
+        @ObservationIgnored private var bootstrapAccumulator = TerminalStreamSnapshotAccumulator()
         @ObservationIgnored private var recoveryPolicy = TerminalStreamRecoveryPolicy()
+        @ObservationIgnored private var resetAccumulator = TerminalStreamSnapshotAccumulator()
+        @ObservationIgnored private var pendingResetState: TerminalStreamMessage.InitialState?
 
         private var bootstrapDimensions: (width: Int, height: Int)?
         private var bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
@@ -656,6 +659,8 @@
             stabilityTask?.cancel()
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             bootstrapDimensions = nil
             bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             let id = UUID()
@@ -672,6 +677,8 @@
             stabilityTask?.cancel()
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             bootstrapDimensions = nil
             bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             streamSessionId = nil
@@ -683,6 +690,8 @@
         func fail(_ error: Error) {
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             bootstrapDimensions = nil
             bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             streamState = .error
@@ -695,6 +704,8 @@
             stabilityTask?.cancel()
             bootstrapPolicy.beginAttempt()
             bootstrapBuffer.reset()
+            bootstrapAccumulator.cancel()
+            cancelPendingReset()
             bootstrapDimensions = nil
             bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.defaultLineLimit
             streamSessionId = nil
@@ -732,17 +743,29 @@
         func handleStreamMessage(_ message: TerminalStreamMessage) {
             switch message.updateType {
             case let .initialState(initial):
-                guard
-                    let content = initial.content,
-                    bootstrapPolicy.receiveInitialState()
-                else { return }
+                guard let content = initial.content else { return }
+                let expectedByteCount = validSnapshotByteCount(
+                    initial.contentByteCount,
+                    initialContent: content
+                )
+                guard bootstrapPolicy.receiveInitialState(
+                    snapshotIsComplete: expectedByteCount == nil
+                ) else { return }
 
                 bootstrapDimensions = (initial.width, initial.height)
                 bootstrapScrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(
                     initial.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
                 )
                 bootstrapBuffer.appendDimensions(cols: initial.width, rows: initial.height)
-                bootstrapBuffer.appendData(content)
+                if let expectedByteCount {
+                    beginBootstrapSnapshot(
+                        expectedByteCount: expectedByteCount,
+                        initialContent: content
+                    )
+                } else {
+                    bootstrapBuffer.appendData(content)
+                }
+                revealTerminalIfReady()
 
             case let .resetState(snapshot):
                 guard let content = snapshot.content else { return }
@@ -750,12 +773,13 @@
                     snapshot.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
                 )
                 if streamState == .streaming {
-                    terminalState?.replace(
-                        width: snapshot.width,
-                        height: snapshot.height,
-                        content: content,
-                        scrollbackLineLimit: scrollbackLineLimit
-                    )
+                    if !beginAtomicReset(snapshot, initialContent: content) {
+                        applyReset(
+                            snapshot,
+                            content: content,
+                            scrollbackLineLimit: scrollbackLineLimit
+                        )
+                    }
                 } else if bootstrapPolicy.hasInitialState {
                     // A high-water resync is authoritative. Drop bootstrap bytes
                     // that precede it, then preserve later live bytes in order.
@@ -763,11 +787,36 @@
                     bootstrapDimensions = (snapshot.width, snapshot.height)
                     bootstrapScrollbackLineLimit = scrollbackLineLimit
                     bootstrapBuffer.appendDimensions(cols: snapshot.width, rows: snapshot.height)
-                    bootstrapBuffer.appendData(content)
+                    if let expectedByteCount = validSnapshotByteCount(
+                        snapshot.contentByteCount,
+                        initialContent: content
+                    ) {
+                        bootstrapPolicy.expectSnapshotCompletion()
+                        beginBootstrapSnapshot(
+                            expectedByteCount: expectedByteCount,
+                            initialContent: content
+                        )
+                    } else {
+                        bootstrapAccumulator.cancel()
+                        bootstrapPolicy.receiveSnapshotCompletion()
+                        bootstrapBuffer.appendData(content)
+                    }
                 }
 
             case let .dataChunk(chunk):
                 guard bootstrapPolicy.hasInitialState, let data = chunk.data else { return }
+                if bootstrapAccumulator.isCollecting {
+                    if let completion = bootstrapAccumulator.append(data) {
+                        completeBootstrapSnapshot(completion)
+                    }
+                    return
+                }
+                if pendingResetState != nil {
+                    if let completion = resetAccumulator.append(data) {
+                        completeAtomicReset(completion)
+                    }
+                    return
+                }
                 if streamState == .streaming {
                     terminalState?.feed(data)
                 } else {
@@ -798,8 +847,106 @@
                 // a stale stream (stops old, starts new) and the streamEnd from the old
                 // stream arrives before our new initialState.
                 guard streamState == .streaming else { return }
+                cancelPendingReset()
                 streamState = .ended
             }
+        }
+
+        private func validSnapshotByteCount(
+            _ advertisedByteCount: Int?,
+            initialContent: Data
+        ) -> Int? {
+            guard
+                let advertisedByteCount,
+                advertisedByteCount >= initialContent.count
+            else { return nil }
+            return advertisedByteCount
+        }
+
+        private func beginBootstrapSnapshot(
+            expectedByteCount: Int,
+            initialContent: Data
+        ) {
+            if let completion = bootstrapAccumulator.begin(expectedByteCount: expectedByteCount) {
+                completeBootstrapSnapshot(completion)
+            } else if
+                !initialContent.isEmpty,
+                let completion = bootstrapAccumulator.append(initialContent) {
+                completeBootstrapSnapshot(completion)
+            }
+        }
+
+        private func completeBootstrapSnapshot(
+            _ completion: TerminalStreamSnapshotAccumulator.Completion
+        ) {
+            bootstrapBuffer.appendData(completion.content)
+            bootstrapBuffer.appendData(completion.remainder)
+            bootstrapPolicy.receiveSnapshotCompletion()
+            revealTerminalIfReady()
+        }
+
+        /// Starts a reset transaction when the Host advertises its byte
+        /// boundary. Older Hosts omit the count and retain the legacy immediate
+        /// behavior so mixed-version pairs stay usable.
+        private func beginAtomicReset(
+            _ snapshot: TerminalStreamMessage.InitialState,
+            initialContent: Data
+        ) -> Bool {
+            guard
+                let expectedByteCount = validSnapshotByteCount(
+                    snapshot.contentByteCount,
+                    initialContent: initialContent
+                )
+            else {
+                cancelPendingReset()
+                return false
+            }
+
+            pendingResetState = snapshot
+            if let completion = resetAccumulator.begin(expectedByteCount: expectedByteCount) {
+                completeAtomicReset(completion)
+            } else if
+                !initialContent.isEmpty,
+                let completion = resetAccumulator.append(initialContent) {
+                completeAtomicReset(completion)
+            }
+            return true
+        }
+
+        private func completeAtomicReset(
+            _ completion: TerminalStreamSnapshotAccumulator.Completion
+        ) {
+            guard let snapshot = pendingResetState else { return }
+            pendingResetState = nil
+            let scrollbackLineLimit = TerminalScrollbackPolicy.normalizedLineLimit(
+                snapshot.scrollbackLineLimit ?? TerminalScrollbackPolicy.defaultLineLimit
+            )
+            applyReset(
+                snapshot,
+                content: completion.content,
+                scrollbackLineLimit: scrollbackLineLimit
+            )
+            if !completion.remainder.isEmpty {
+                terminalState?.feed(completion.remainder)
+            }
+        }
+
+        private func applyReset(
+            _ snapshot: TerminalStreamMessage.InitialState,
+            content: Data,
+            scrollbackLineLimit: Int
+        ) {
+            terminalState?.replace(
+                width: snapshot.width,
+                height: snapshot.height,
+                content: content,
+                scrollbackLineLimit: scrollbackLineLimit
+            )
+        }
+
+        private func cancelPendingReset() {
+            pendingResetState = nil
+            resetAccumulator.cancel()
         }
 
         func revealTerminalIfReady() {
@@ -1019,15 +1166,12 @@
             terminalView.onInput = onInput
             terminalView.onRawInput = onRawInput
 
-            // Create scroll view for horizontal and vertical scrolling.
-            // The terminal view is sized to match the terminal content exactly.
-            // When the terminal has more rows than fit on screen, the outer scroll
-            // view provides vertical scrolling — SwiftTerm naturally maintains the
-            // correct buffer size via processSizeChange because the view frame
-            // matches the terminal dimensions.
+            // Create an outer scroll view and a passive canvas. The canvas may
+            // grow to fill the phone, but the SwiftTerm view itself must always
+            // retain the Host's exact pixel dimensions; resizing the terminal
+            // renderer to fill the viewport silently changes its rows/columns.
             let scrollView = BottomAnchoredTerminalScrollView()
             scrollView.backgroundColor = .black
-            scrollView.addSubview(terminalView)
             scrollView.showsHorizontalScrollIndicator = true
             scrollView.showsVerticalScrollIndicator = false
             scrollView.alwaysBounceVertical = false
@@ -1040,28 +1184,54 @@
             scrollView.delegate = context.coordinator
             context.coordinator.outerScrollView = scrollView
 
+            let canvasView = UIView()
+            canvasView.backgroundColor = .black
+            canvasView.translatesAutoresizingMaskIntoConstraints = false
+            scrollView.addSubview(canvasView)
+            canvasView.addSubview(terminalView)
+
             // Let our mouse-mode pan win over tall-terminal vertical scrolling.
             terminalView.attachOuterScrollPanGesture(scrollView.panGestureRecognizer)
             terminalView.attachInputProxy(to: scrollView)
 
             let widthConstraint = terminalView.widthAnchor.constraint(equalToConstant: exactWidth)
-            widthConstraint.priority = .defaultHigh
-
             let heightConstraint = terminalView.heightAnchor.constraint(equalToConstant: exactHeight)
-            heightConstraint.priority = .defaultHigh
+
+            let canvasMatchesViewportWidth = canvasView.widthAnchor.constraint(
+                equalTo: scrollView.frameLayoutGuide.widthAnchor
+            )
+            canvasMatchesViewportWidth.priority = .defaultHigh
+            let canvasMatchesTerminalWidth = canvasView.widthAnchor.constraint(
+                equalTo: terminalView.widthAnchor
+            )
+            canvasMatchesTerminalWidth.priority = .defaultHigh
+            let canvasMatchesViewportHeight = canvasView.heightAnchor.constraint(
+                equalTo: scrollView.frameLayoutGuide.heightAnchor
+            )
+            canvasMatchesViewportHeight.priority = .defaultHigh
+            let canvasMatchesTerminalHeight = canvasView.heightAnchor.constraint(
+                equalTo: terminalView.heightAnchor
+            )
+            canvasMatchesTerminalHeight.priority = .defaultHigh
 
             NSLayoutConstraint.activate([
-                terminalView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-                terminalView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-                terminalView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-                terminalView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-                // Width: at least screen width, prefers exact terminal width
-                terminalView.widthAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.widthAnchor),
+                canvasView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+                canvasView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+                canvasView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+                canvasView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+                canvasView.widthAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.widthAnchor),
+                canvasView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor),
+                canvasView.widthAnchor.constraint(greaterThanOrEqualTo: terminalView.widthAnchor),
+                canvasView.heightAnchor.constraint(greaterThanOrEqualTo: terminalView.heightAnchor),
+                canvasMatchesViewportWidth,
+                canvasMatchesTerminalWidth,
+                canvasMatchesViewportHeight,
+                canvasMatchesTerminalHeight,
+                terminalView.leadingAnchor.constraint(equalTo: canvasView.leadingAnchor),
+                terminalView.trailingAnchor.constraint(lessThanOrEqualTo: canvasView.trailingAnchor),
+                terminalView.topAnchor.constraint(greaterThanOrEqualTo: canvasView.topAnchor),
+                terminalView.bottomAnchor.constraint(equalTo: canvasView.bottomAnchor),
                 widthConstraint,
-                // Height: at least screen height, prefers exact terminal height.
-                // Short terminals fill the screen; tall terminals expand and the
-                // outer scroll view provides vertical scrolling.
-                terminalView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor),
                 heightConstraint,
             ])
 
@@ -1186,6 +1356,12 @@
                 handleResize(width: width, height: height)
                 feedCoalescer.replace(with: content) { [weak self] in
                     self?.terminalView?.getTerminal().resetToInitialState()
+                }
+                terminalView?.scrollToBottom()
+                (outerScrollView as? BottomAnchoredTerminalScrollView)?.requestScrollToBottom()
+                terminalView?.setNeedsLayout()
+                if let terminalView {
+                    terminalView.setNeedsDisplay(terminalView.bounds)
                 }
             }
 
