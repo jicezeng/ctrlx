@@ -1,8 +1,8 @@
-# ClaudeSpy Mac App Architecture
+# Ctrlx Mac App Architecture
 
-ClaudeSpy is a native macOS application that mirrors tmux panes in dedicated windows, integrates with **Claude Code and OpenAI's Codex CLI** via HTTP hooks, and streams terminal data to paired iOS devices over encrypted WebSocket connections.
+Ctrlx is a native macOS application that mirrors tmux panes in dedicated windows, integrates with **Claude Code and OpenAI's Codex CLI** via HTTP hooks, and streams terminal data to paired iOS devices over encrypted WebSocket connections.
 
-Coding-agent integration is gated by a `CodingAgent` enum (`.claudeCode` / `.codex`) in `ClaudeSpyNetworking`. Every hook event, session, and project info value carries an `agent` field so the same plumbing serves both backends; the only agent-specific code lives in the project scanners, plugin/hook installers, and command-path resolution.
+Coding-agent integration is gated by a `CodingAgent` enum (`.claudeCode` / `.codex`) in `CtrlxNetworking`. Every hook event, session, and project info value carries an `agent` field so the same plumbing serves both backends; the only agent-specific code lives in the project scanners, plugin/hook installers, and command-path resolution.
 
 ## Component Overview
 
@@ -124,7 +124,7 @@ tmux session
     │
     ├── tmux -C attach -f no-output,ignore-size (control mode: commands + events only)
     │
-    ├── pipe-pane -O "cat > /tmp/claudespy-pipe-<id>.fifo" (raw PTY bytes)
+    ├── pipe-pane -O "cat > /tmp/ctrlx-pipe-<id>.fifo" (raw PTY bytes)
     │
     ▼
 PipePaneReader (actor, one per pane)
@@ -221,7 +221,7 @@ All SwiftUI Views
 ## File Structure
 
 ```
-ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/
+CtrlxPackage/Sources/CtrlxServerFeature/
 ├── Coordinators/
 │   └── AppCoordinator.swift           # Central service coordinator
 ├── Hooks/

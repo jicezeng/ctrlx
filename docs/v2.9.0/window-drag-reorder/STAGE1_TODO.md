@@ -25,7 +25,7 @@
 
 - 相关测试：61 项通过，覆盖稳定身份、协议兼容、落点、回滚、linked Window、布局映射与真实 tmux 重排。
 - 真实 tmux 测试使用独立 socket，确认重排后 Window/Panes 无丢失且索引槽位保持不变。
-- macOS `ClaudeSpyServer` Debug 工程构建通过。
+- macOS `CtrlxServer` Debug 工程构建通过。
 - 构建产物 `codesign --verify --deep --strict` 通过。
 - 已覆盖安装到 `/Applications/Gallager.app`，安装产物与验收构建的可执行文件 SHA-256 一致。
 - 真实 App E2E 已验证指定标签落点、末尾落点、Session 往返持久化、跨 pane Terminal 和 Files 拖拽；

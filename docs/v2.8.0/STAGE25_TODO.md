@@ -36,7 +36,7 @@
 - 完整 Swift package：1648 tests / 234 suites passed。
 - 隔离 tmux 身份验收通过：session `$0`、pane `%0`、pane PID `18971`、pane 子进程 PID
   `19049` 在 control client 退出前后完全一致。
-- macOS `ClaudeSpyServer` Release arm64 构建通过；Apple Development 深度签名及
+- macOS `CtrlxServer` Release arm64 构建通过；Apple Development 深度签名及
   `codesign --verify --deep --strict` 通过，版本 2.7 (40)。
 - 固定名称 `dist/Gallager-2.7-zengjice.dmg` CRC、只读挂载、Applications 链接、包内签名、
   metadata 和源产物哈希一致性通过；SHA-256 为

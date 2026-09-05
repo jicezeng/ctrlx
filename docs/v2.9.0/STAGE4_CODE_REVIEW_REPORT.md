@@ -40,7 +40,7 @@
 ## Verification
 
 - 聚焦 Swift Testing：5 suites、41 tests passed。
-- macOS `ClaudeSpyServer` Debug 全量构建和 Apple Development 签名 Release 构建通过。
+- macOS `CtrlxServer` Debug 全量构建和 Apple Development 签名 Release 构建通过。
 - Release `f42f066e6852` 已覆盖安装；App 返回 `ready` / `pong`，安装前后 tmux pane 清单一致。
 - SwiftFormat 对本 Stage 小型文件通过；大型文件没有新增命中当前 formatter 的变更行。
 - `git diff --check` 通过。

@@ -70,7 +70,7 @@
 - 聚焦单元测试、iOS Simulator 构建及 iPhone 真机验证通过。
 - Mac viewer 的 host 短断和 start 瞬时失败可在原页面恢复；替换订阅期间旧 stream
   的 `streamEnd` 不得终止新连接。持续失败时保留明确错误和人工 Retry。
-- `ClaudeSpyServer` macOS 构建通过，并在本机 viewer 验证远程 terminal 输入无回归。
+- `CtrlxServer` macOS 构建通过，并在本机 viewer 验证远程 terminal 输入无回归。
 
 ## Stage 3：Terminal Payload 缓存性能
 

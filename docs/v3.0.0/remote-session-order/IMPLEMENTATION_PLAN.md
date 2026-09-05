@@ -17,7 +17,7 @@ macOS 和 iOS 作为 Viewer 时，Remote Hosts 下的 session 始终按 Host 推
 
 ## 实施范围
 
-- 在 `ClaudeSpyCommon` 提供唯一的远程 session 顺序合并与移动算法。
+- 在 `CtrlxCommon` 提供唯一的远程 session 顺序合并与移动算法。
 - 在 macOS `AppSettings` 和 iOS `IOSSettings` 中分别持久化 Viewer 本地顺序。
 - macOS Remote Host section 启用原生拖拽重排。
 - iOS Sessions 页增加 `Edit` / `Done`，每个 Host section 内可拖拽重排。

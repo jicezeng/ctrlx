@@ -7,29 +7,29 @@
 
 `scripts/e2e-attach-video.sh` uploads E2E proof videos as release assets named
 `pr<N>-<scenario-dir>[-<label>].mp4` on the rolling `e2e-videos` prerelease of
-`gpambrozio/ClaudeSpyTestResults`, and posts a PR comment on ClaudeSpy linking
+`gpambrozio/ClaudeSpyTestResults`, and posts a PR comment on Ctrlx linking
 them. The assets are explicitly ephemeral ("may be deleted after review"), but
 nothing deletes them — merged PRs leave orphaned videos behind (e.g. the
 `pr622-*` assets today). Manual `gh release delete-asset` is the only cleanup.
 
 ## Goal
 
-When a ClaudeSpy PR merges or closes, its proof videos are deleted
+When a Ctrlx PR merges or closes, its proof videos are deleted
 automatically after a **3-day grace period**, and the PR comment that linked
 them is edited so readers don't click dead links.
 
 ## Approach
 
-A **daily scheduled sweep in the ClaudeSpy repo** (not event-driven, not in the
+A **daily scheduled sweep in the Ctrlx repo** (not event-driven, not in the
 results repo):
 
 - A sweep tolerates the grace period naturally; GitHub Actions has no clean
   "run 3 days after the close event" primitive.
 - A sweep also catches already-orphaned assets (like `pr622-*`) that any
   event-based approach would miss.
-- Living in ClaudeSpy keeps the cleanup next to the upload script whose naming
+- Living in Ctrlx keeps the cleanup next to the upload script whose naming
   convention it depends on, so they evolve in the same PRs, and lets the
-  workflow's own `GITHUB_TOKEN` handle all ClaudeSpy-side operations
+  workflow's own `GITHUB_TOKEN` handle all Ctrlx-side operations
   (PR-state reads, comment edits). Both repos are private, so one cross-repo
   PAT is required in either direction; this direction needs the narrower one
   (Contents-only on the results repo).

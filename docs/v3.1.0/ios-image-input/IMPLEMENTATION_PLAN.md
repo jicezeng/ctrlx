@@ -17,7 +17,7 @@ Agent；macOS Viewer 已有图片粘贴能力，但这条能力尚未暴露给 i
 
 ## 实施范围
 
-- 将 macOS 已验证的图片规范化器下沉到 `ClaudeSpyCommon`，供 macOS/iOS 共用。
+- 将 macOS 已验证的图片规范化器下沉到 `CtrlxCommon`，供 macOS/iOS 共用。
 - 在 iOS `WindowLayoutView` 接入 `PhotosPicker`、上传生命周期和错误反馈。
 - 增加图片格式识别、透传、压缩和无效输入的纯逻辑测试。
 - 验证共享 Swift 测试、macOS 构建和无签名 iPhoneOS arm64 构建。

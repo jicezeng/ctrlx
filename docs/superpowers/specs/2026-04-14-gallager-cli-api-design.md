@@ -48,11 +48,11 @@ Issue: #343
 
 ### Components
 
-**`gallager` CLI binary** — Swift ArgumentParser executable in `ClaudeSpyPackage/Sources/Gallager/`. Replaces `GallagerEditor`. Serializes subcommands to JSON-RPC, sends over Unix socket, prints responses. Minimal logic — just a transport layer.
+**`gallager` CLI binary** — Swift ArgumentParser executable in `CtrlxPackage/Sources/Gallager/`. Replaces `GallagerEditor`. Serializes subcommands to JSON-RPC, sends over Unix socket, prints responses. Minimal logic — just a transport layer.
 
-**`APISocketServer`** — `@DependencyClient struct` in `ClaudeSpyServerFeature/Services/`. Actor-based live implementation. Manages Unix domain socket lifecycle: bind, listen, accept connections, read newline-delimited JSON requests, dispatch to handler, write JSON responses. Replaces `EditorSocketServer`.
+**`APISocketServer`** — `@DependencyClient struct` in `CtrlxServerFeature/Services/`. Actor-based live implementation. Manages Unix domain socket lifecycle: bind, listen, accept connections, read newline-delimited JSON requests, dispatch to handler, write JSON responses. Replaces `EditorSocketServer`.
 
-**`APIRequestRouter`** — `@DependencyClient struct` in `ClaudeSpyServerFeature/Services/`. Routes JSON-RPC method strings to service calls. Maps between API models and internal models. Returns typed JSON-RPC responses.
+**`APIRequestRouter`** — `@DependencyClient struct` in `CtrlxServerFeature/Services/`. Routes JSON-RPC method strings to service calls. Maps between API models and internal models. Returns typed JSON-RPC responses.
 
 ### Dependency Injection
 
@@ -294,12 +294,12 @@ Global Options:
 
 | Component | Path |
 |-----------|------|
-| CLI binary | `ClaudeSpyPackage/Sources/Gallager/` |
-| API models | `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/APIModels.swift` |
-| JSON-RPC types | `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift` |
-| Socket server | `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swift` |
-| Request router | `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift` |
-| Integration | `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` |
+| CLI binary | `CtrlxPackage/Sources/Gallager/` |
+| API models | `CtrlxPackage/Sources/CtrlxNetworking/Models/APIModels.swift` |
+| JSON-RPC types | `CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift` |
+| Socket server | `CtrlxPackage/Sources/CtrlxServerFeature/Services/APISocketServer.swift` |
+| Request router | `CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift` |
+| Integration | `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` |
 
 ## Testing Strategy
 

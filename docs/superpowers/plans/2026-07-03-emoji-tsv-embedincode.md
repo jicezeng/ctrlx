@@ -12,7 +12,7 @@
 
 **Goal:** Replace the generated `EmojiData.swift` (117KB Swift string literal) with a committed `emoji.tsv` data file embedded into code at build time by SPM's `.embedInCode`, per `docs/superpowers/specs/2026-07-03-emoji-data-shipping-design.md`.
 
-**Architecture:** The Python generator emits plain TSV to `ClaudeSpyPackage/Sources/GallagerEmoji/Resources/emoji.tsv`. SPM's `.embedInCode` resource rule generates `PackageResources.emoji_tsv: [UInt8]` (internal to the `GallagerEmoji` module) in DerivedData, so the bytes still compile into all three binaries — macOS app, iOS app, and the bare single-file `GallagerCLI`. `EmojiDatabase` decodes those bytes instead of reading `EmojiData.table`; runtime behavior is unchanged.
+**Architecture:** The Python generator emits plain TSV to `CtrlxPackage/Sources/GallagerEmoji/Resources/emoji.tsv`. SPM's `.embedInCode` resource rule generates `PackageResources.emoji_tsv: [UInt8]` (internal to the `GallagerEmoji` module) in DerivedData, so the bytes still compile into all three binaries — macOS app, iOS app, and the bare single-file `GallagerCLI`. `EmojiDatabase` decodes those bytes instead of reading `EmojiData.table`; runtime behavior is unchanged.
 
 **Tech Stack:** Swift 6.3 / SPM (`.embedInCode`, tools-version ≥ 5.9), Python 3 generator, Swift Testing (`@Test`/`#expect`).
 
@@ -31,7 +31,7 @@
 
 **Files:**
 - Modify: `scripts/generate-emoji-data.py`
-- Create (generated): `ClaudeSpyPackage/Sources/GallagerEmoji/Resources/emoji.tsv`
+- Create (generated): `CtrlxPackage/Sources/GallagerEmoji/Resources/emoji.tsv`
 
 **Interfaces:**
 - Consumes: emojibase-data 16.0.3 (pinned URL already in the script).
@@ -59,7 +59,7 @@ Run it whenever you want to refresh the emoji set:
 
     python3 scripts/generate-emoji-data.py
 
-It rewrites ``ClaudeSpyPackage/Sources/GallagerEmoji/Resources/emoji.tsv`` in
+It rewrites ``CtrlxPackage/Sources/GallagerEmoji/Resources/emoji.tsv`` in
 place. The output is deterministic (sorted by group then CLDR display order) so
 re-running with the same upstream data produces no diff.
 """
@@ -70,7 +70,7 @@ Change `OUTPUT_PATH`:
 ```python
 OUTPUT_PATH = os.path.join(
     REPO_ROOT,
-    "ClaudeSpyPackage",
+    "CtrlxPackage",
     "Sources",
     "GallagerEmoji",
     "Resources",
@@ -161,14 +161,14 @@ def main() -> None:
 - [ ] **Step 2: Run the generator**
 
 Run: `python3 scripts/generate-emoji-data.py`
-Expected stderr: `Fetching https://raw.githubusercontent.com/...` then `Wrote 1906 emoji to .../ClaudeSpyPackage/Sources/GallagerEmoji/Resources/emoji.tsv`
+Expected stderr: `Fetching https://raw.githubusercontent.com/...` then `Wrote 1906 emoji to .../CtrlxPackage/Sources/GallagerEmoji/Resources/emoji.tsv`
 
 (Do NOT delete `EmojiData.swift` yet — the Swift side still references it until Task 2.)
 
 - [ ] **Step 3: Verify the TSV shape**
 
 ```bash
-cd ClaudeSpyPackage/Sources/GallagerEmoji/Resources
+cd CtrlxPackage/Sources/GallagerEmoji/Resources
 head -4 emoji.tsv                                   # 4 "# " comment lines
 awk -F'\t' 'NF != 5 && !/^# /' emoji.tsv | wc -l    # expect 0 (only comments are non-5-field)
 grep -c '' emoji.tsv                                # expect 1910 (1906 rows + 4 comments)
@@ -186,7 +186,7 @@ Expected: one row containing `trash`, `bin`, `garbage`, `can`, `rubbish` in the 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/generate-emoji-data.py ClaudeSpyPackage/Sources/GallagerEmoji/Resources/emoji.tsv
+git add scripts/generate-emoji-data.py CtrlxPackage/Sources/GallagerEmoji/Resources/emoji.tsv
 git commit -m "Generator emits emoji.tsv (raw TSV) and excludes KEYWORD_SEP from keywords"
 ```
 
@@ -195,11 +195,11 @@ git commit -m "Generator emits emoji.tsv (raw TSV) and excludes KEYWORD_SEP from
 ### Task 2: `EmojiDatabase` reads the embedded resource; delete `EmojiData.swift`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Package.swift` (GallagerEmoji target, ~line 314)
-- Modify: `ClaudeSpyPackage/Sources/GallagerEmoji/EmojiDatabase.swift`
-- Modify: `ClaudeSpyPackage/Sources/GallagerEmoji/Emoji.swift` (doc comment only)
-- Delete: `ClaudeSpyPackage/Sources/GallagerEmoji/EmojiData.swift`
-- Test: `ClaudeSpyPackage/Tests/GallagerEmojiTests/EmojiDatabaseTests.swift`
+- Modify: `CtrlxPackage/Package.swift` (GallagerEmoji target, ~line 314)
+- Modify: `CtrlxPackage/Sources/GallagerEmoji/EmojiDatabase.swift`
+- Modify: `CtrlxPackage/Sources/GallagerEmoji/Emoji.swift` (doc comment only)
+- Delete: `CtrlxPackage/Sources/GallagerEmoji/EmojiData.swift`
+- Test: `CtrlxPackage/Tests/GallagerEmojiTests/EmojiDatabaseTests.swift`
 
 **Interfaces:**
 - Consumes: `Resources/emoji.tsv` from Task 1; SPM-generated `PackageResources.emoji_tsv: [UInt8]` (internal to the module, name = filename with non-identifier chars mapped to `_`).
@@ -232,7 +232,7 @@ Append to `EmojiDatabaseTests.swift` inside the struct:
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cd ClaudeSpyPackage && swift test --filter GallagerEmojiTests`
+Run: `cd CtrlxPackage && swift test --filter GallagerEmojiTests`
 Expected: **compile error** — `EmojiDatabase` has no `init(table:maxVersion:)`. (First run builds the whole test product; this is slow once, then cached.)
 
 - [ ] **Step 3: Split the init and add the comment skip (still reading `EmojiData.table`)**
@@ -261,7 +261,7 @@ In `parse`, add the comment skip as the first statement of the loop body:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ClaudeSpyPackage && swift test --filter GallagerEmojiTests`
+Run: `cd CtrlxPackage && swift test --filter GallagerEmojiTests`
 Expected: all tests pass, 0 failures (the two new tests included).
 
 - [ ] **Step 5: Wire `.embedInCode` and swap the data source**
@@ -317,12 +317,12 @@ In `Emoji.swift`, update the first doc-comment line that references the deleted 
 Delete the generated file:
 
 ```bash
-git rm ClaudeSpyPackage/Sources/GallagerEmoji/EmojiData.swift
+git rm CtrlxPackage/Sources/GallagerEmoji/EmojiData.swift
 ```
 
 - [ ] **Step 6: Run the full emoji suite against the embedded data**
 
-Run: `cd ClaudeSpyPackage && swift test --filter GallagerEmojiTests`
+Run: `cd CtrlxPackage && swift test --filter GallagerEmojiTests`
 Expected: all tests pass, 0 failures — `tableLoaded` (count > 1500), `keycapHashSurvives`, and the trash/bin/garbage synonym tests now execute against bytes decoded from `PackageResources.emoji_tsv`.
 
 If the build fails with `cannot find 'PackageResources' in scope`, the mangled accessor name differs — inspect what SPM generated:
@@ -336,7 +336,7 @@ and adjust the property name in `init` to match.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A ClaudeSpyPackage
+git add -A CtrlxPackage
 git commit -m "Ship emoji table as embedInCode resource instead of generated Swift"
 ```
 
@@ -350,7 +350,7 @@ git commit -m "Ship emoji table as embedInCode resource instead of generated Swi
 - Verify: built `Gallager.app` bundle
 
 **Interfaces:**
-- Consumes: Tasks 1–2 landed; scheme names `ClaudeSpyServer` (macOS) / `ClaudeSpy` (iOS).
+- Consumes: Tasks 1–2 landed; scheme names `CtrlxServer` (macOS) / `Ctrlx` (iOS).
 - Produces: docs consistent with the shipped mechanism; PR #632 description updated; proof the embedded CLI still resolves keywords.
 
 - [ ] **Step 1: Update `docs/emoji-search.md`**
@@ -358,7 +358,7 @@ git commit -m "Ship emoji table as embedInCode resource instead of generated Swi
 Layout block — replace the `EmojiData.swift` line so the tree reads:
 
 ```
-ClaudeSpyPackage/Sources/GallagerEmoji/
+CtrlxPackage/Sources/GallagerEmoji/
 ├── Emoji.swift            # value type: glyph, label, keywords, group, version
 ├── EmojiCategory.swift    # the 8 picker sections (emojibase groups → categories)
 ├── EmojiDatabase.swift    # parse + version-cap + categorized() + search()
@@ -398,8 +398,8 @@ with
 Run (via the `xcodebuild` skill):
 
 ```bash
-xcodebuild -project ClaudeSpy.xcodeproj -scheme ClaudeSpyServer -configuration Debug build
-xcodebuild -project ClaudeSpy.xcodeproj -scheme ClaudeSpy -destination 'generic/platform=iOS Simulator' build
+xcodebuild -project Ctrlx.xcodeproj -scheme CtrlxServer -configuration Debug build
+xcodebuild -project Ctrlx.xcodeproj -scheme Ctrlx -destination 'generic/platform=iOS Simulator' build
 ```
 
 Expected: both succeed, 0 errors.

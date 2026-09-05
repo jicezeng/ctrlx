@@ -1,0 +1,1524 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		81581B512F11B9BF005EA7FD /* CtrlxNotificationExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 81581B4A2F11B9BF005EA7FD /* CtrlxNotificationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		81581B592F11B9DC005EA7FD /* CtrlxEncryption in Frameworks */ = {isa = PBXBuildFile; productRef = 81581B582F11B9DC005EA7FD /* CtrlxEncryption */; };
+		81581B5B2F11B9DC005EA7FD /* CtrlxNetworking in Frameworks */ = {isa = PBXBuildFile; productRef = 81581B5A2F11B9DC005EA7FD /* CtrlxNetworking */; };
+		817BF9BA2F09C7CC00BD1D53 /* CtrlxServerFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 817BF9B92F09C7CC00BD1D53 /* CtrlxServerFeature */; };
+		819180922F467B82001A43BE /* CtrlxFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 819180912F467B82001A43BE /* CtrlxFeature */; };
+		819180962F467EEF001A43BE /* CtrlxNetworking in Frameworks */ = {isa = PBXBuildFile; productRef = 819180952F467EEF001A43BE /* CtrlxNetworking */; };
+		81E2E1D52F8573260057AA49 /* GallagerCLI in Frameworks */ = {isa = PBXBuildFile; productRef = 81E2E1D42F8573260057AA49 /* GallagerCLI */; };
+		8B41F6832DEDD23B001A66F9 /* CtrlxFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6822DEDD23B001A66F9 /* CtrlxFeature */; };
+		8B41F6852DEDD25C001A66F9 /* CtrlxFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6842DEDD25C001A66F9 /* CtrlxFeature */; };
+		AABBCC112F2A00000063PLGN /* plugin in Resources */ = {isa = PBXBuildFile; fileRef = AABBCC102F2A00000063PLGN /* plugin */; };
+		DCF13F6A89DA4860A5776FD7 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 0FF9E03F3BF7435B8FDA207D /* FlyingFox */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		81581B4F2F11B9BF005EA7FD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B41F63D2DEDD0D5001A66F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 81581B492F11B9BF005EA7FD;
+			remoteInfo = CtrlxNotificationExtension;
+		};
+		815F9E6A2F09BFF9003791F7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B41F63D2DEDD0D5001A66F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 815F9E5C2F09BFF8003791F7;
+			remoteInfo = CtrlxServer;
+		};
+		815F9E742F09BFF9003791F7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B41F63D2DEDD0D5001A66F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 815F9E5C2F09BFF8003791F7;
+			remoteInfo = CtrlxServer;
+		};
+		8B41F65D2DEDD0D6001A66F9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B41F63D2DEDD0D5001A66F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8B41F6442DEDD0D5001A66F9;
+			remoteInfo = Ctrlx;
+		};
+		FCB2ACD285174C4B80DE1973 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B41F63D2DEDD0D5001A66F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 11661051F1244B379044AF6F;
+			remoteInfo = CtrlxE2EHost;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		81581B522F11B9BF005EA7FD /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				81581B512F11B9BF005EA7FD /* CtrlxNotificationExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		81581B4A2F11B9BF005EA7FD /* CtrlxNotificationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CtrlxNotificationExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		815F9E5D2F09BFF8003791F7 /* CtrlX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CtrlX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		815F9E692F09BFF9003791F7 /* CtrlxServerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CtrlxServerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		815F9E732F09BFF9003791F7 /* CtrlxServerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CtrlxServerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8B41F6452DEDD0D5001A66F9 /* CtrlX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CtrlX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8B41F65C2DEDD0D6001A66F9 /* CtrlX.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CtrlX.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9EE526E9177246FAB164195B /* CtrlxE2ERunner.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CtrlxE2ERunner.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A45795AAFABA49589FBB2F35 /* CtrlxE2EHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CtrlxE2EHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AABBCC102F2A00000063PLGN /* plugin */ = {isa = PBXFileReference; lastKnownFileType = folder; path = plugin; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		615D0E852B034FFBB280892B /* Exceptions for "CtrlxE2EHost" folder in "CtrlxE2EHost" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 11661051F1244B379044AF6F /* CtrlxE2EHost */;
+		};
+		8120FD262F0ED3B000BA9B94 /* Exceptions for "Ctrlx" folder in "Ctrlx" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8B41F6442DEDD0D5001A66F9 /* Ctrlx */;
+		};
+		81581B562F11B9BF005EA7FD /* Exceptions for "CtrlxNotificationExtension" folder in "CtrlxNotificationExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 81581B492F11B9BF005EA7FD /* CtrlxNotificationExtension */;
+		};
+		815F9E8F2F1A0000003791F7 /* Exceptions for "CtrlxServer" folder in "CtrlxServer" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 815F9E5C2F09BFF8003791F7 /* CtrlxServer */;
+		};
+		8BD71C0A2DEE41E000CEDD92 /* Exceptions for "Config" folder in "Ctrlx" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Debug-macOS.xcconfig",
+				Debug.xcconfig,
+				"Release-macOS.xcconfig",
+				Release.xcconfig,
+				"Shared-Base.xcconfig",
+				"Shared-macOS.xcconfig",
+				Shared.xcconfig,
+				Tests.xcconfig,
+			);
+			target = 8B41F6442DEDD0D5001A66F9 /* Ctrlx */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5F8636777B20418884930E87 /* CtrlxE2EHost */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				615D0E852B034FFBB280892B /* Exceptions for "CtrlxE2EHost" folder in "CtrlxE2EHost" target */,
+			);
+			path = CtrlxE2EHost;
+			sourceTree = "<group>";
+		};
+		6CAE4E3F41BA40068B04C82E /* CtrlxE2ERunner */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CtrlxE2ERunner;
+			sourceTree = "<group>";
+		};
+		81581B4B2F11B9BF005EA7FD /* CtrlxNotificationExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				81581B562F11B9BF005EA7FD /* Exceptions for "CtrlxNotificationExtension" folder in "CtrlxNotificationExtension" target */,
+			);
+			path = CtrlxNotificationExtension;
+			sourceTree = "<group>";
+		};
+		815F9E5E2F09BFF8003791F7 /* CtrlxServer */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				815F9E8F2F1A0000003791F7 /* Exceptions for "CtrlxServer" folder in "CtrlxServer" target */,
+			);
+			path = CtrlxServer;
+			sourceTree = "<group>";
+		};
+		815F9E6C2F09BFF9003791F7 /* CtrlxServerTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CtrlxServerTests;
+			sourceTree = "<group>";
+		};
+		815F9E762F09BFF9003791F7 /* CtrlxServerUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CtrlxServerUITests;
+			sourceTree = "<group>";
+		};
+		8B41F6472DEDD0D5001A66F9 /* Ctrlx */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8120FD262F0ED3B000BA9B94 /* Exceptions for "Ctrlx" folder in "Ctrlx" target */,
+			);
+			path = Ctrlx;
+			sourceTree = "<group>";
+		};
+		8B41F65F2DEDD0D6001A66F9 /* CtrlxUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CtrlxUITests;
+			sourceTree = "<group>";
+		};
+		8BD71C052DEE41D800CEDD92 /* Config */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8BD71C0A2DEE41E000CEDD92 /* Exceptions for "Config" folder in "Ctrlx" target */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		81581B472F11B9BF005EA7FD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				81581B592F11B9DC005EA7FD /* CtrlxEncryption in Frameworks */,
+				81581B5B2F11B9DC005EA7FD /* CtrlxNetworking in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E5A2F09BFF8003791F7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				817BF9BA2F09C7CC00BD1D53 /* CtrlxServerFeature in Frameworks */,
+				81E2E1D52F8573260057AA49 /* GallagerCLI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E662F09BFF9003791F7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				819180962F467EEF001A43BE /* CtrlxNetworking in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E702F09BFF9003791F7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B41F6422DEDD0D5001A66F9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				819180922F467B82001A43BE /* CtrlxFeature in Frameworks */,
+				8B41F6852DEDD25C001A66F9 /* CtrlxFeature in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B41F6592DEDD0D6001A66F9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8B41F6832DEDD23B001A66F9 /* CtrlxFeature in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A974AB0173AB4B78B0BCD5C5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EBFBD835F524444CA72FB796 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DCF13F6A89DA4860A5776FD7 /* FlyingFox in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		8B41F63C2DEDD0D5001A66F9 = {
+			isa = PBXGroup;
+			children = (
+				8BD71C052DEE41D800CEDD92 /* Config */,
+				8B41F6472DEDD0D5001A66F9 /* Ctrlx */,
+				8B41F65F2DEDD0D6001A66F9 /* CtrlxUITests */,
+				815F9E5E2F09BFF8003791F7 /* CtrlxServer */,
+				815F9E6C2F09BFF9003791F7 /* CtrlxServerTests */,
+				815F9E762F09BFF9003791F7 /* CtrlxServerUITests */,
+				81581B4B2F11B9BF005EA7FD /* CtrlxNotificationExtension */,
+				5F8636777B20418884930E87 /* CtrlxE2EHost */,
+				6CAE4E3F41BA40068B04C82E /* CtrlxE2ERunner */,
+				AABBCC102F2A00000063PLGN /* plugin */,
+				8B41F6812DEDD23B001A66F9 /* Frameworks */,
+				8B41F6462DEDD0D5001A66F9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8B41F6462DEDD0D5001A66F9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8B41F6452DEDD0D5001A66F9 /* CtrlX.app */,
+				8B41F65C2DEDD0D6001A66F9 /* CtrlX.xctest */,
+				815F9E5D2F09BFF8003791F7 /* CtrlX.app */,
+				815F9E692F09BFF9003791F7 /* CtrlxServerTests.xctest */,
+				815F9E732F09BFF9003791F7 /* CtrlxServerUITests.xctest */,
+				81581B4A2F11B9BF005EA7FD /* CtrlxNotificationExtension.appex */,
+				A45795AAFABA49589FBB2F35 /* CtrlxE2EHost.app */,
+				9EE526E9177246FAB164195B /* CtrlxE2ERunner.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8B41F6812DEDD23B001A66F9 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		11661051F1244B379044AF6F /* CtrlxE2EHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5375C99F62CE42F790A77C72 /* Build configuration list for PBXNativeTarget "CtrlxE2EHost" */;
+			buildPhases = (
+				F5D5929D34F042149DA3341A /* Sources */,
+				A974AB0173AB4B78B0BCD5C5 /* Frameworks */,
+				4DF8C592D0A04589AFE9D0B7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5F8636777B20418884930E87 /* CtrlxE2EHost */,
+			);
+			name = CtrlxE2EHost;
+			packageProductDependencies = (
+			);
+			productName = CtrlxE2EHost;
+			productReference = A45795AAFABA49589FBB2F35 /* CtrlxE2EHost.app */;
+			productType = "com.apple.product-type.application";
+		};
+		81581B492F11B9BF005EA7FD /* CtrlxNotificationExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 81581B552F11B9BF005EA7FD /* Build configuration list for PBXNativeTarget "CtrlxNotificationExtension" */;
+			buildPhases = (
+				81581B462F11B9BF005EA7FD /* Sources */,
+				81581B472F11B9BF005EA7FD /* Frameworks */,
+				81581B482F11B9BF005EA7FD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				81581B4B2F11B9BF005EA7FD /* CtrlxNotificationExtension */,
+			);
+			name = CtrlxNotificationExtension;
+			packageProductDependencies = (
+				81581B582F11B9DC005EA7FD /* CtrlxEncryption */,
+				81581B5A2F11B9DC005EA7FD /* CtrlxNetworking */,
+			);
+			productName = CtrlxNotificationExtension;
+			productReference = 81581B4A2F11B9BF005EA7FD /* CtrlxNotificationExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		815F9E5C2F09BFF8003791F7 /* CtrlxServer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 815F9E812F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServer" */;
+			buildPhases = (
+				815F9E592F09BFF8003791F7 /* Sources */,
+				81E2E2332F8576310057AA49 /* Copy GallagerCLI to bundle */,
+				815F9E5A2F09BFF8003791F7 /* Frameworks */,
+				815F9E5B2F09BFF8003791F7 /* Resources */,
+				81B5E4A02F90000100000001 /* Sync Codex Skills */,
+				817BF9C02F0ED00000BD1D53 /* SwiftLint */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				81E2E2322F8574740057AA49 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				815F9E5E2F09BFF8003791F7 /* CtrlxServer */,
+			);
+			name = CtrlxServer;
+			packageProductDependencies = (
+				817BF9B92F09C7CC00BD1D53 /* CtrlxServerFeature */,
+				819180932F467B82001A43BE /* CtrlxServerFeature */,
+				81E2E1D42F8573260057AA49 /* Gallager */,
+			);
+			productName = CtrlxServer;
+			productReference = 815F9E5D2F09BFF8003791F7 /* CtrlX.app */;
+			productType = "com.apple.product-type.application";
+		};
+		815F9E682F09BFF9003791F7 /* CtrlxServerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 815F9E822F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServerTests" */;
+			buildPhases = (
+				815F9E652F09BFF9003791F7 /* Sources */,
+				815F9E662F09BFF9003791F7 /* Frameworks */,
+				815F9E672F09BFF9003791F7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				815F9E6B2F09BFF9003791F7 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				815F9E6C2F09BFF9003791F7 /* CtrlxServerTests */,
+			);
+			name = CtrlxServerTests;
+			packageProductDependencies = (
+				819180952F467EEF001A43BE /* CtrlxNetworking */,
+			);
+			productName = CtrlxServerTests;
+			productReference = 815F9E692F09BFF9003791F7 /* CtrlxServerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		815F9E722F09BFF9003791F7 /* CtrlxServerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 815F9E832F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServerUITests" */;
+			buildPhases = (
+				815F9E6F2F09BFF9003791F7 /* Sources */,
+				815F9E702F09BFF9003791F7 /* Frameworks */,
+				815F9E712F09BFF9003791F7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				815F9E752F09BFF9003791F7 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				815F9E762F09BFF9003791F7 /* CtrlxServerUITests */,
+			);
+			name = CtrlxServerUITests;
+			packageProductDependencies = (
+			);
+			productName = CtrlxServerUITests;
+			productReference = 815F9E732F09BFF9003791F7 /* CtrlxServerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		8B41F6442DEDD0D5001A66F9 /* Ctrlx */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8B41F6662DEDD0D6001A66F9 /* Build configuration list for PBXNativeTarget "Ctrlx" */;
+			buildPhases = (
+				8B41F6412DEDD0D5001A66F9 /* Sources */,
+				8B41F6422DEDD0D5001A66F9 /* Frameworks */,
+				8B41F6432DEDD0D5001A66F9 /* Resources */,
+				817BF9C12F0ED00100BD1D53 /* SwiftLint */,
+				81581B522F11B9BF005EA7FD /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				81581B502F11B9BF005EA7FD /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				8B41F6472DEDD0D5001A66F9 /* Ctrlx */,
+				8BD71C052DEE41D800CEDD92 /* Config */,
+			);
+			name = Ctrlx;
+			packageProductDependencies = (
+				8B41F6842DEDD25C001A66F9 /* CtrlxFeature */,
+				819180912F467B82001A43BE /* CtrlxFeature */,
+			);
+			productName = Ctrlx;
+			productReference = 8B41F6452DEDD0D5001A66F9 /* CtrlX.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8B41F65B2DEDD0D6001A66F9 /* CtrlxUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8B41F66C2DEDD0D6001A66F9 /* Build configuration list for PBXNativeTarget "CtrlxUITests" */;
+			buildPhases = (
+				8B41F6582DEDD0D6001A66F9 /* Sources */,
+				8B41F6592DEDD0D6001A66F9 /* Frameworks */,
+				8B41F65A2DEDD0D6001A66F9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8B41F65E2DEDD0D6001A66F9 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				8B41F65F2DEDD0D6001A66F9 /* CtrlxUITests */,
+			);
+			name = CtrlxUITests;
+			packageProductDependencies = (
+				8B41F6822DEDD23B001A66F9 /* CtrlxFeature */,
+			);
+			productName = CtrlxUITests;
+			productReference = 8B41F65C2DEDD0D6001A66F9 /* CtrlX.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		E3BC9293B2B7447CB28061F1 /* CtrlxE2ERunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9146E98A98584807BD18C9EE /* Build configuration list for PBXNativeTarget "CtrlxE2ERunner" */;
+			buildPhases = (
+				77EBBDC851274BEC845997E6 /* Sources */,
+				EBFBD835F524444CA72FB796 /* Frameworks */,
+				0B9338F4D0424FD2B52826FF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CDB17D8FF9D54F84ABC7DF47 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				6CAE4E3F41BA40068B04C82E /* CtrlxE2ERunner */,
+			);
+			name = CtrlxE2ERunner;
+			packageProductDependencies = (
+				0FF9E03F3BF7435B8FDA207D /* FlyingFox */,
+			);
+			productName = CtrlxE2ERunner;
+			productReference = 9EE526E9177246FAB164195B /* CtrlxE2ERunner.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8B41F63D2DEDD0D5001A66F9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					11661051F1244B379044AF6F = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					81581B492F11B9BF005EA7FD = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					815F9E5C2F09BFF8003791F7 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					815F9E682F09BFF9003791F7 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 815F9E5C2F09BFF8003791F7;
+					};
+					815F9E722F09BFF9003791F7 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 815F9E5C2F09BFF8003791F7;
+					};
+					8B41F6442DEDD0D5001A66F9 = {
+						CreatedOnToolsVersion = 16.3;
+					};
+					8B41F65B2DEDD0D6001A66F9 = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = 8B41F6442DEDD0D5001A66F9;
+					};
+					E3BC9293B2B7447CB28061F1 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 11661051F1244B379044AF6F;
+					};
+				};
+			};
+			buildConfigurationList = 8B41F6402DEDD0D5001A66F9 /* Build configuration list for PBXProject "Ctrlx" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8B41F63C2DEDD0D5001A66F9;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				45FE32EF18D8427899BE768B /* XCRemoteSwiftPackageReference "FlyingFox" */,
+				819180902F467B82001A43BE /* XCLocalSwiftPackageReference "CtrlxPackage" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8B41F6462DEDD0D5001A66F9 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8B41F6442DEDD0D5001A66F9 /* Ctrlx */,
+				8B41F65B2DEDD0D6001A66F9 /* CtrlxUITests */,
+				815F9E5C2F09BFF8003791F7 /* CtrlxServer */,
+				815F9E682F09BFF9003791F7 /* CtrlxServerTests */,
+				815F9E722F09BFF9003791F7 /* CtrlxServerUITests */,
+				81581B492F11B9BF005EA7FD /* CtrlxNotificationExtension */,
+				11661051F1244B379044AF6F /* CtrlxE2EHost */,
+				E3BC9293B2B7447CB28061F1 /* CtrlxE2ERunner */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0B9338F4D0424FD2B52826FF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4DF8C592D0A04589AFE9D0B7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		81581B482F11B9BF005EA7FD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E5B2F09BFF8003791F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AABBCC112F2A00000063PLGN /* plugin in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E672F09BFF9003791F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E712F09BFF9003791F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B41F6432DEDD0D5001A66F9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B41F65A2DEDD0D6001A66F9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		817BF9C02F0ED00000BD1D53 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/swiftlint.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		817BF9C12F0ED00100BD1D53 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/swiftlint.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		81E2E2332F8576310057AA49 /* Copy CtrlX CLI to bundle */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${BUILD_DIR}/${CONFIGURATION}/GallagerCLI",
+			);
+			name = "Copy CtrlX CLI to bundle";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/CtrlXCLI",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Build the internal GallagerCLI target and install it as CtrlXCLI\nset -e\nEDITOR_PATH=\"${BUILD_DIR}/${CONFIGURATION}/GallagerCLI\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/CtrlXCLI\"\n\nif [ -f \"$EDITOR_PATH\" ]; then\n    cp \"$EDITOR_PATH\" \"$DEST\"\n    # GallagerEmoji is shared by the app and the CLI, so Xcode links it as a\n    # dynamic framework embedded in Contents/Frameworks. The bare copied CLI's\n    # rpaths don't cover that (Release has only /usr/lib/swift), so add it here\n    # or every CLI invocation dies in dyld before main().\n    install_name_tool -add_rpath \"@loader_path/../Frameworks\" \"$DEST\"\n    if [ \"${CODE_SIGNING_ALLOWED:-YES}\" = YES ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime --timestamp \"$DEST\"\n    fi\nelse\n    echo \"warning: GallagerCLI build product not found at $EDITOR_PATH — build the CtrlxPackage scheme first\"\nfi\n";
+		};
+		81B5E4A02F90000100000001 /* Sync Codex Skills */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync Codex Skills";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/sync-codex-skills.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		77EBBDC851274BEC845997E6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		81581B462F11B9BF005EA7FD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E592F09BFF8003791F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E652F09BFF9003791F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		815F9E6F2F09BFF9003791F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B41F6412DEDD0D5001A66F9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8B41F6582DEDD0D6001A66F9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F5D5929D34F042149DA3341A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		81581B502F11B9BF005EA7FD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 81581B492F11B9BF005EA7FD /* CtrlxNotificationExtension */;
+			targetProxy = 81581B4F2F11B9BF005EA7FD /* PBXContainerItemProxy */;
+		};
+		815F9E6B2F09BFF9003791F7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 815F9E5C2F09BFF8003791F7 /* CtrlxServer */;
+			targetProxy = 815F9E6A2F09BFF9003791F7 /* PBXContainerItemProxy */;
+		};
+		815F9E752F09BFF9003791F7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 815F9E5C2F09BFF8003791F7 /* CtrlxServer */;
+			targetProxy = 815F9E742F09BFF9003791F7 /* PBXContainerItemProxy */;
+		};
+		81E2E2322F8574740057AA49 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = 81E2E2312F8574740057AA49 /* GallagerCLI */;
+		};
+		8B41F65E2DEDD0D6001A66F9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8B41F6442DEDD0D5001A66F9 /* Ctrlx */;
+			targetProxy = 8B41F65D2DEDD0D6001A66F9 /* PBXContainerItemProxy */;
+		};
+		CDB17D8FF9D54F84ABC7DF47 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 11661051F1244B379044AF6F /* CtrlxE2EHost */;
+			targetProxy = FCB2ACD285174C4B80DE1973 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		43B76C554E484787B8E443E5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CtrlxE2EHost/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.e2ehost;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6E023A0C47344B8289573011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.e2erunner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CtrlxE2EHost;
+			};
+			name = Debug;
+		};
+		81581B532F11B9BF005EA7FD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = Debug.xcconfig;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "$(CTRLX_IOS_NOTIFICATION_EXTENSION_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CtrlxNotificationExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "CtrlX Notification Service";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CTRLX_IOS_NOTIFICATION_EXTENSION_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		81581B542F11B9BF005EA7FD /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "$(CTRLX_IOS_NOTIFICATION_EXTENSION_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CtrlxNotificationExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "CtrlX Notification Service";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CTRLX_IOS_NOTIFICATION_EXTENSION_BUNDLE_IDENTIFIER)";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		815F9E7B2F09BFF9003791F7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = "Debug-macOS.xcconfig";
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/CtrlxServer.Debug.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(CTRLX_MAC_DEVELOPMENT_TEAM)";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CtrlxServer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CtrlX;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.macos;
+				PRODUCT_NAME = CtrlX;
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		815F9E7C2F09BFF9003791F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = "Release-macOS.xcconfig";
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/CtrlxServer.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(CTRLX_MAC_DEVELOPMENT_TEAM)";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CtrlxServer/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CtrlX;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.macos;
+				PRODUCT_NAME = CtrlX;
+				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		815F9E7D2F09BFF9003791F7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(CTRLX_MAC_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.macos.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CtrlX.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CtrlX";
+			};
+			name = Debug;
+		};
+		815F9E7E2F09BFF9003791F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(CTRLX_MAC_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.macos.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CtrlX.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CtrlX";
+			};
+			name = Release;
+		};
+		815F9E7F2F09BFF9003791F7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(CTRLX_MAC_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.macos.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = CtrlxServer;
+			};
+			name = Debug;
+		};
+		815F9E802F09BFF9003791F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(CTRLX_MAC_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.macos.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = CtrlxServer;
+			};
+			name = Release;
+		};
+		85683CCEACFF496E984B98CA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CtrlxE2EHost/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.e2ehost;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		8B41F6642DEDD0D6001A66F9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8B41F6652DEDD0D6001A66F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8B41F6672DEDD0D6001A66F9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = Debug.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Ctrlx/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CtrlX;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8B41F6682DEDD0D6001A66F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = Release.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Ctrlx/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CtrlX;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortraitUpsideDown";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		8B41F66D2DEDD0D6001A66F9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = Tests.xcconfig;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Ctrlx;
+			};
+			name = Debug;
+		};
+		8B41F66E2DEDD0D6001A66F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 8BD71C052DEE41D800CEDD92 /* Config */;
+			baseConfigurationReferenceRelativePath = Tests.xcconfig;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Ctrlx;
+			};
+			name = Release;
+		};
+		A510258F0D6D425A91F0C820 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jicezeng.ctrlx.e2erunner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CtrlxE2EHost;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5375C99F62CE42F790A77C72 /* Build configuration list for PBXNativeTarget "CtrlxE2EHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				43B76C554E484787B8E443E5 /* Debug */,
+				85683CCEACFF496E984B98CA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		81581B552F11B9BF005EA7FD /* Build configuration list for PBXNativeTarget "CtrlxNotificationExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				81581B532F11B9BF005EA7FD /* Debug */,
+				81581B542F11B9BF005EA7FD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		815F9E812F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				815F9E7B2F09BFF9003791F7 /* Debug */,
+				815F9E7C2F09BFF9003791F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		815F9E822F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				815F9E7D2F09BFF9003791F7 /* Debug */,
+				815F9E7E2F09BFF9003791F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		815F9E832F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				815F9E7F2F09BFF9003791F7 /* Debug */,
+				815F9E802F09BFF9003791F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8B41F6402DEDD0D5001A66F9 /* Build configuration list for PBXProject "Ctrlx" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B41F6642DEDD0D6001A66F9 /* Debug */,
+				8B41F6652DEDD0D6001A66F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8B41F6662DEDD0D6001A66F9 /* Build configuration list for PBXNativeTarget "Ctrlx" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B41F6672DEDD0D6001A66F9 /* Debug */,
+				8B41F6682DEDD0D6001A66F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8B41F66C2DEDD0D6001A66F9 /* Build configuration list for PBXNativeTarget "CtrlxUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8B41F66D2DEDD0D6001A66F9 /* Debug */,
+				8B41F66E2DEDD0D6001A66F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9146E98A98584807BD18C9EE /* Build configuration list for PBXNativeTarget "CtrlxE2ERunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6E023A0C47344B8289573011 /* Debug */,
+				A510258F0D6D425A91F0C820 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		819180902F467B82001A43BE /* XCLocalSwiftPackageReference "CtrlxPackage" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = CtrlxPackage;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		45FE32EF18D8427899BE768B /* XCRemoteSwiftPackageReference "FlyingFox" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swhitty/FlyingFox.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.22.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0FF9E03F3BF7435B8FDA207D /* FlyingFox */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 45FE32EF18D8427899BE768B /* XCRemoteSwiftPackageReference "FlyingFox" */;
+			productName = FlyingFox;
+		};
+		81581B582F11B9DC005EA7FD /* CtrlxEncryption */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxEncryption;
+		};
+		81581B5A2F11B9DC005EA7FD /* CtrlxNetworking */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxNetworking;
+		};
+		817BF9B92F09C7CC00BD1D53 /* CtrlxServerFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxServerFeature;
+		};
+		819180912F467B82001A43BE /* CtrlxFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxFeature;
+		};
+		819180932F467B82001A43BE /* CtrlxServerFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxServerFeature;
+		};
+		819180952F467EEF001A43BE /* CtrlxNetworking */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 819180902F467B82001A43BE /* XCLocalSwiftPackageReference "CtrlxPackage" */;
+			productName = CtrlxNetworking;
+		};
+		81E2E1D42F8573260057AA49 /* GallagerCLI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 819180902F467B82001A43BE /* XCLocalSwiftPackageReference "CtrlxPackage" */;
+			productName = GallagerCLI;
+		};
+		81E2E2312F8574740057AA49 /* GallagerCLI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 819180902F467B82001A43BE /* XCLocalSwiftPackageReference "CtrlxPackage" */;
+			productName = GallagerCLI;
+		};
+		8B41F6822DEDD23B001A66F9 /* CtrlxFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxFeature;
+		};
+		8B41F6842DEDD25C001A66F9 /* CtrlxFeature */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CtrlxFeature;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 8B41F63D2DEDD0D5001A66F9 /* Project object */;
+}

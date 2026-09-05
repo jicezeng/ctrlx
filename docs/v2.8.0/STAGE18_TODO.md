@@ -35,7 +35,7 @@
 - 相同隔离 tmux socket 上，200 次进程式发送约 1.00 秒；复用持久 control-mode 且逐次
   等待 `%end` 约 0.01 秒。该结果只衡量 tmux 命令提交，不代表端到端回显延迟。
 - 完整 Swift package：1616 tests / 225 suites passed。
-- macOS Release：`ClaudeSpyServer` arm64 构建通过，产物为 `Gallager.app` 2.7 (40)；
+- macOS Release：`CtrlxServer` arm64 构建通过，产物为 `Gallager.app` 2.7 (40)；
   Apple Development 深度重签和 `codesign --verify --deep --strict` 通过。
 - Release 候选版已覆盖安装到 `/Applications/Gallager.app`，`wait-ready` 返回 `ready`，
   `ping` 返回 `pong`，并能读取现有 `coding` session 和 windows。

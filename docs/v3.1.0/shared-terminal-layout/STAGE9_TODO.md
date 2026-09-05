@@ -17,8 +17,8 @@
 
 ## Verification
 
-- `swift test --package-path ClaudeSpyPackage --skip-update`: 1,770 tests passed.
-- macOS Xcode build: `ClaudeSpyServer` Debug build succeeded using an isolated
+- `swift test --package-path CtrlxPackage --skip-update`: 1,770 tests passed.
+- macOS Xcode build: `CtrlxServer` Debug build succeeded using an isolated
   DerivedData directory and the repository's existing local package cache.
 - E2E scenarios cover Host-to-Viewer split, Viewer-to-Host collapse, multiple
   right-side terminals and dead-window pruning.

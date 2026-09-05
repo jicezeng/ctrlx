@@ -31,7 +31,7 @@
 
 ## Verification
 
-- 手动键盘方案：`ClaudeSpyFeatureTests` 44 tests / 5 suites passed。
+- 手动键盘方案：`CtrlxFeatureTests` 44 tests / 5 suites passed。
 - iOS device 无签名构建：Passed。
 - 使用本机 Apple Development 证书签名、校验并安装到 ZengJice iPhone：Passed。
 - 默认不弹键盘、设置切换和直接键盘按钮真机交互：Passed。

@@ -35,8 +35,8 @@ mkdir -p "$DERIVED_DATA" "$SOURCE_PACKAGES" "$DIST_DIR"
 
 log_info "Building CtrlX $VERSION from $PROJECT_ROOT"
 /usr/bin/xcodebuild \
-    -workspace "$PROJECT_ROOT/ClaudeSpy.xcworkspace" \
-    -scheme ClaudeSpyServer \
+    -workspace "$PROJECT_ROOT/Ctrlx.xcworkspace" \
+    -scheme CtrlxServer \
     -configuration Release \
     -destination 'platform=macOS,arch=arm64' \
     -derivedDataPath "$DERIVED_DATA" \

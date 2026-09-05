@@ -921,7 +921,7 @@ git commit -m "Add 404 page"
 ### Task 10: Caddy vhost + deploy.sh website mode
 
 **Files:**
-- Create: `ClaudeSpyPackage/caddy/website.caddy`
+- Create: `CtrlxPackage/caddy/website.caddy`
 - Modify: `scripts/deploy.sh` (config block ~line 40, new `deploy_website()` near `deploy_staging()`, `usage()`, main `case`)
 
 **Interfaces:**
@@ -930,7 +930,7 @@ git commit -m "Add 404 page"
 
 - [ ] **Step 1: Write the Caddy vhost**
 
-`ClaudeSpyPackage/caddy/website.caddy`:
+`CtrlxPackage/caddy/website.caddy`:
 
 ```
 # Gallager marketing site (gallager.app)
@@ -1061,7 +1061,7 @@ Expected: `syntax OK`; help lists the `website` command and `WEBSITE_*` variable
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/caddy/website.caddy scripts/deploy.sh
+git add CtrlxPackage/caddy/website.caddy scripts/deploy.sh
 git commit -m "Add gallager.app Caddy vhost and deploy.sh website mode"
 ```
 
@@ -1129,7 +1129,7 @@ npm run preview    # serve dist/ locally
 ```
 
 Builds locally, rsyncs `dist/` to `/opt/gallager-website` on the relay box,
-installs `ClaudeSpyPackage/caddy/website.caddy` and reloads Caddy.
+installs `CtrlxPackage/caddy/website.caddy` and reloads Caddy.
 
 One-time prerequisite: DNS A records for `gallager.app` and
 `www.gallager.app` pointing at the server. Caddy provisions Let's Encrypt
@@ -1158,7 +1158,7 @@ rm -rf website/.originals
 In `CLAUDE.md`'s **Reference Docs** list, add:
 
 ```markdown
-- **Website (gallager.app):** `website/` - Astro static site (index/docs/pricing/security) replacing the old self-contained artifact bundles; one design system (`website/src/styles/modernist.css`), shared Nav/Footer/Hero components, content-as-data in page frontmatter. `npm run dev|build` in `website/`; deployed by `scripts/deploy.sh website` → `/opt/gallager-website` behind Caddy (`ClaudeSpyPackage/caddy/website.caddy`, DNS one-time step). See `website/README.md`.
+- **Website (gallager.app):** `website/` - Astro static site (index/docs/pricing/security) replacing the old self-contained artifact bundles; one design system (`website/src/styles/modernist.css`), shared Nav/Footer/Hero components, content-as-data in page frontmatter. `npm run dev|build` in `website/`; deployed by `scripts/deploy.sh website` → `/opt/gallager-website` behind Caddy (`CtrlxPackage/caddy/website.caddy`, DNS one-time step). See `website/README.md`.
 ```
 
 - [ ] **Step 5: Final build + commit**

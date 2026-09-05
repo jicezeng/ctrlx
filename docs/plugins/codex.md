@@ -22,7 +22,7 @@ Scans `~/.codex/sessions/` (or `$CODEX_HOME/sessions/`) date-partitioned rollout
 `~/.codex/sessions/` (debounced) drives `refreshProjects()`.
 
 ## Pane ↔ session correlation (core-internal, spec §12)
-Codex keeps `~/.claudespy/codex-sessions/<tmux_pane>.json` (`{session_id, cwd,
+Codex keeps `~/.ctrlx/codex-sessions/<tmux_pane>.json` (`{session_id, cwd,
 started_at}`), written on a session-start event that carries a `TMUX_PANE`. When a
 later frame omits the pane, the core resolves it by `session_id` from this store.
 The app does not know about this file.
@@ -149,7 +149,7 @@ posture per session (`reviewerPostures`): `SessionStart` / `UserPromptSubmit` /
 from a toggle with ≤ one turn of lag), `PreToolUse` / `PostToolUse` / `Stop` reuse the
 cache.
 
-**Unchanged:** ClaudeSpy's per-pane yolo toggle, the dispatcher auto-approve path, and
+**Unchanged:** Ctrlx's per-pane yolo toggle, the dispatcher auto-approve path, and
 Claude Code's `PermissionRequest` handling.
 
 **Known blind spots:** on codex ≥ 0.146 the turn_context read closes the former `-c

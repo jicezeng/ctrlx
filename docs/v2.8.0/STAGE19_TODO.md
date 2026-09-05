@@ -35,7 +35,7 @@
 - 完整 Swift package：1621 tests / 227 suites passed。
 - SwiftTerm fork 修订 `99f2287e17f640beafdbc2b935ef1aac97f0fa7c` 已推送并同时锁定在
   package manifest、package lockfile 与 Xcode workspace lockfile。
-- macOS Release：`ClaudeSpyServer` arm64 构建通过，产物为 `Gallager.app` 2.7 (40)；
+- macOS Release：`CtrlxServer` arm64 构建通过，产物为 `Gallager.app` 2.7 (40)；
   Apple Development 深度重签及 `codesign --verify --deep --strict` 通过。
 - Release 候选版已覆盖安装到 `/Applications/Gallager.app`；`wait-ready` 返回 `ready`，
   `ping` 返回 `pong`，并能读取现有 `coding` session。

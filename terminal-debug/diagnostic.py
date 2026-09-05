@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Diagnostic: Reproduce ClaudeSpy's filterToColorCodesOnly in Python
+Diagnostic: Reproduce Ctrlx's filterToColorCodesOnly in Python
 and compare with raw output to identify what gets corrupted.
 
 This re-implements the Swift function's exact logic to verify H1 and H2.
@@ -191,13 +191,13 @@ def main():
     print(f"  OSC sequences:       {total_osc}")
     print(f"  Non-CSI escapes:     {total_non_csi}")
 
-    # === PART 3: Simulate what ClaudeSpy does vs raw replay ===
+    # === PART 3: Simulate what Ctrlx does vs raw replay ===
     print()
     print("=" * 70)
     print("PART 3: Simulate initial state processing")
     print("=" * 70)
 
-    # ClaudeSpy splits the initial capture by newlines, filters each line
+    # Ctrlx splits the initial capture by newlines, filters each line
     initial_lines = initial_str.rstrip('\n').split('\n')
     print(f"\nInitial capture has {len(initial_lines)} lines (terminal height: {height})")
 
@@ -268,11 +268,11 @@ def main():
     print("every subsequent redraw will be offset by that error.")
     print()
 
-    # Check: where does ClaudeSpy put the cursor after initial state?
+    # Check: where does Ctrlx put the cursor after initial state?
     # It uses: ESC[cursorY+1;cursorX+1H
     # But if the terminal has fewer rows, this position may not match
 
-    print("ClaudeSpy initial state ends with cursor at the tmux cursor position.")
+    print("Ctrlx initial state ends with cursor at the tmux cursor position.")
     print(f"If mirror terminal has fewer than {height} rows, cursor Y is clamped,")
     print("causing all relative CursorUp/CursorDown to be offset.")
     print()

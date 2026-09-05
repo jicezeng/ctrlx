@@ -1,6 +1,6 @@
 # Element Queries Reference
 
-The `ElementQuery` enum (`ClaudeSpyE2ELib/Drivers/Simulator/ElementQuery.swift`) matches against the iOS accessibility tree provided by the XCUITest runner. The same enum is also accepted by `macWaitForElementQuery` / `macWaitForElementQueryToDisappear` for precise matching against the macOS accessibility tree.
+The `ElementQuery` enum (`CtrlxE2ELib/Drivers/Simulator/ElementQuery.swift`) matches against the iOS accessibility tree provided by the XCUITest runner. The same enum is also accepted by `macWaitForElementQuery` / `macWaitForElementQueryToDisappear` for precise matching against the macOS accessibility tree.
 
 ## Query Types
 

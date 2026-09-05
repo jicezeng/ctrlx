@@ -11,7 +11,7 @@ Suggested branch: `plugin-system-v2-sidecar`
 
 **Architecture:** Add exactly one new `PluginCore` conformer — `SidecarPluginCore` — that marshals each `PluginCore` method to a JSON-RPC request over a child process's stdio (LSP `Content-Length` framing) and translates inbound notifications back into `PluginHost` callbacks. A `SidecarSupervisor` owns the child process lifecycle (spawn, stderr logging, crash counter/backoff/auto-disable). `PluginRegistry.makeCore` gains the `.sidecar` construction path it already stubs. Distribution (HTTPS manifest+bundle fetch, SHA-256 integrity pinning, zip-slip-hardened unpack, an on-disk `registry.json`, a trust prompt, and install/update/remove CLI verbs) is layered on top. Everything upstream of `PluginCore` — the dispatcher, the one app-owned ingress socket, the OTLP receiver, `PluginEvent`, `AgentResponseRequest`, the iOS surface — is untouched.
 
-**Tech Stack:** Swift 6.1+, Swift Concurrency (actors for I/O), `Foundation.Process`, SwiftUI (MV pattern, no ViewModels), Point-Free Dependencies, swift-testing, the `ClaudeSpyE2ELib` Swift-DSL E2E framework. SPM package at `ClaudeSpyPackage/`.
+**Tech Stack:** Swift 6.1+, Swift Concurrency (actors for I/O), `Foundation.Process`, SwiftUI (MV pattern, no ViewModels), Point-Free Dependencies, swift-testing, the `CtrlxE2ELib` Swift-DSL E2E framework. SPM package at `CtrlxPackage/`.
 
 ---
 
@@ -40,35 +40,35 @@ Every task's requirements implicitly include this section. Values are copied ver
 
 ### New files
 
-**Shared, pure (`ClaudeSpyPackage/Sources/GallagerPluginProtocol/`)** — usable by both the app and the executable test fixture:
+**Shared, pure (`CtrlxPackage/Sources/GallagerPluginProtocol/`)** — usable by both the app and the executable test fixture:
 - `SidecarWire.swift` — the JSON-RPC envelope (`RPCMessage`), `StdioFramer` (Content-Length codec), method-name constants (`SidecarRPC`, `HostRPC`), and the Codable wire DTOs that aren't already Codable (`PluginEnvWire`, `IngressFrameWire`).
 - `Manifest.swift` (modify) — add the v2 fields + `Sidecar`/`Capabilities` sub-structs.
 
-**App, macOS (`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/`):**
+**App, macOS (`CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/`):**
 - `PluginRootLayout.swift` — the on-disk paths a sidecar needs (plugin root, state dir, log dir, ingress socket path).
 - `SidecarTransport.swift` — actor: long-lived stdio JSON-RPC, request/response correlation in *both* directions, per-RPC timeout, ordered notification delivery.
 - `SidecarSupervisor.swift` — actor: spawn, stderr→`stderr.log`, `terminationHandler`, crash counter/backoff/auto-disable, graceful shutdown (SIGTERM→SIGKILL).
 - `SidecarPluginCore.swift` — actor, `PluginCore` conformer; marshals each method ↔ RPC, retains the `PluginHost`, synthesizes callbacks from inbound notifications, services the inbound `agent_panes` request.
 - `SidecarStderrLog.swift` — 5 MB-rotated stderr sink (thin reuse of `PluginLogSink`'s rotation).
 
-**App, macOS (`ClaudeSpyServerFeature/Plugins/`):**
+**App, macOS (`CtrlxServerFeature/Plugins/`):**
 - `PluginRegistryStore.swift` — Codable `registry.json` model (`source`, `runtime`, `id`, `version`, `manifestURL?`, `bundleURL?`, `bundleSHA256?`, `enabled`) + atomic load/save.
 
-**App, macOS (`ClaudeSpyServerFeature/Distribution/`):**
+**App, macOS (`CtrlxServerFeature/Distribution/`):**
 - `PluginInstaller.swift` — HTTPS manifest+bundle fetch (size caps), SHA-256 verify, unzip + zip-slip rejection, atomic install/swap, folder-drop discovery.
 - `PluginUpdateChecker.swift` — `If-None-Match`/`If-Modified-Since` manifest re-fetch, "newer version" detection, source-changed re-trust.
 - `TrustDetails.swift` — the value the trust sheet renders (display name, publisher, version, source URL, bundle size, sha256).
 
-**App, macOS UI (`ClaudeSpyServerFeature/Views/`):**
+**App, macOS UI (`CtrlxServerFeature/Views/`):**
 - `AddPluginSheet.swift` — "Add Plugin from URL…" entry + the trust sheet.
 
-**Executable test fixture (`ClaudeSpyPackage/Sources/EchoPluginSidecar/`):**
+**Executable test fixture (`CtrlxPackage/Sources/EchoPluginSidecar/`):**
 - `main.swift` — a real out-of-process sidecar: reads `Content-Length` frames on stdin, answers `initialize`/`translate_event`/`deliver_response`/…, pushes `set_projects`/`emit_event`/`send_text`, supports a control payload that aborts (crash test) and a configurable response-delivery script. Built as an `executableTarget`.
 
 **Tests:**
 - `Tests/GallagerPluginProtocolTests/SidecarWireTests.swift`, `ManifestV2Tests.swift`.
-- `Tests/ClaudeSpyServerFeatureTests/SidecarPluginCoreTests.swift` (with `MockSidecarProcess`), `SidecarSupervisorTests.swift`, `PluginInstallerTests.swift`, `PluginRegistryStoreTests.swift`, `PluginManifestSanitizeTests.swift`.
-- `Sources/ClaudeSpyE2ELib/Scenarios/PluginCrashRestartScenario.swift`, `PluginCrashLoopDisableScenario.swift`, `PluginSidecarResponseRoundTripScenario.swift`.
+- `Tests/CtrlxServerFeatureTests/SidecarPluginCoreTests.swift` (with `MockSidecarProcess`), `SidecarSupervisorTests.swift`, `PluginInstallerTests.swift`, `PluginRegistryStoreTests.swift`, `PluginManifestSanitizeTests.swift`.
+- `Sources/CtrlxE2ELib/Scenarios/PluginCrashRestartScenario.swift`, `PluginCrashLoopDisableScenario.swift`, `PluginSidecarResponseRoundTripScenario.swift`.
 
 **Docs:**
 - `docs/plugins/sidecar-authoring.md` — the durable external contract a third party builds against.
@@ -90,8 +90,8 @@ Every task's requirements implicitly include this section. Values are copied ver
 ### Task 1: Extend `PluginManifest` with the v2 fields
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/GallagerPluginProtocol/Manifest.swift`
-- Test: `ClaudeSpyPackage/Tests/GallagerPluginProtocolTests/ManifestV2Tests.swift`
+- Modify: `CtrlxPackage/Sources/GallagerPluginProtocol/Manifest.swift`
+- Test: `CtrlxPackage/Tests/GallagerPluginProtocolTests/ManifestV2Tests.swift`
 
 **Interfaces:**
 - Produces: `PluginManifest.sidecar: Sidecar?`, `.capabilities: Capabilities`, `.publisher: String?`, `.manifestURL: URL?`, `.bundleURL: URL?`, `.bundleSHA256: String?`, `.signature: String?`; nested `PluginManifest.Sidecar { executable: String; args: [String] }`, `PluginManifest.Capabilities { richPaneDetection: Bool; modalPrompts: Bool }`. All decode tolerantly (absent ⇒ nil/false). The existing fields and `Runtime` enum are unchanged.
@@ -232,8 +232,8 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/GallagerPluginProtocol/Manifest.swift \
-        ClaudeSpyPackage/Tests/GallagerPluginProtocolTests/ManifestV2Tests.swift
+git add CtrlxPackage/Sources/GallagerPluginProtocol/Manifest.swift \
+        CtrlxPackage/Tests/GallagerPluginProtocolTests/ManifestV2Tests.swift
 git commit -m "feat(plugin-v2): decode v2 sidecar manifest fields"
 ```
 
@@ -242,8 +242,8 @@ git commit -m "feat(plugin-v2): decode v2 sidecar manifest fields"
 ### Task 2: The `StdioFramer` (LSP Content-Length codec)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/GallagerPluginProtocol/SidecarWire.swift`
-- Test: `ClaudeSpyPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift`
+- Create: `CtrlxPackage/Sources/GallagerPluginProtocol/SidecarWire.swift`
+- Test: `CtrlxPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift`
 
 **Interfaces:**
 - Produces:
@@ -389,8 +389,8 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/GallagerPluginProtocol/SidecarWire.swift \
-        ClaudeSpyPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift
+git add CtrlxPackage/Sources/GallagerPluginProtocol/SidecarWire.swift \
+        CtrlxPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift
 git commit -m "feat(plugin-v2): Content-Length stdio framer with header/body caps"
 ```
 
@@ -399,8 +399,8 @@ git commit -m "feat(plugin-v2): Content-Length stdio framer with header/body cap
 ### Task 3: The JSON-RPC envelope + method vocabulary + wire DTOs
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/GallagerPluginProtocol/SidecarWire.swift`
-- Test: `ClaudeSpyPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift`
+- Modify: `CtrlxPackage/Sources/GallagerPluginProtocol/SidecarWire.swift`
+- Test: `CtrlxPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift`
 
 **Interfaces:**
 - Produces:
@@ -408,12 +408,12 @@ git commit -m "feat(plugin-v2): Content-Length stdio framer with header/body cap
   - `struct RPCError: Codable, Sendable, Equatable { var code: String; var message: String }` with `static let methodNotFound = RPCError(code: "method_not_found", message: ...)`.
   - `enum SidecarRPC` (App→Sidecar method names) and `enum HostRPC` (Sidecar→App names) as `String` constant holders matching spec §2.
   - `struct PluginEnvWire: Codable, Sendable` mirroring `PluginEnv` minus `host`, with `settings` carried as a **nested JSON value** (`JSONValue`), not base64. Plus `init(from: PluginEnv)` and the inverse used by the fixture.
-- Consumed by: Task 4, Task 6, Task 10. `JSONValue` is the existing `ClaudeSpyNetworking.JSONValue`.
+- Consumed by: Task 4, Task 6, Task 10. `JSONValue` is the existing `CtrlxNetworking.JSONValue`.
 
 - [ ] **Step 1: Write the failing test** (append to `SidecarWireTests.swift`)
 
 ```swift
-import ClaudeSpyNetworking
+import CtrlxNetworking
 
 @Suite("RPCMessage")
 struct RPCMessageTests {
@@ -475,7 +475,7 @@ Expected: FAIL — `cannot find 'RPCMessage' in scope`.
 - [ ] **Step 3: Implement the envelope, vocabulary, and `PluginEnvWire`** (append to `SidecarWire.swift`)
 
 ```swift
-import ClaudeSpyNetworking
+import CtrlxNetworking
 
 public struct RPCError: Codable, Sendable, Equatable {
     public var code: String
@@ -572,7 +572,7 @@ public struct PluginEnvWire: Codable, Sendable, Equatable {
 }
 ```
 
-> Note: `JSONValue` must support `Decodable` from arbitrary JSON and `.object`/`.string`/`.bool` cases — confirm against `ClaudeSpyNetworking/Models/JSONRPC.swift`. If `JSONValue` lacks a `Decodable` that accepts a raw object, add it in that file as part of this task (a small, well-scoped extension) and cover it with one assertion in `PluginEnvWireTests`.
+> Note: `JSONValue` must support `Decodable` from arbitrary JSON and `.object`/`.string`/`.bool` cases — confirm against `CtrlxNetworking/Models/JSONRPC.swift`. If `JSONValue` lacks a `Decodable` that accepts a raw object, add it in that file as part of this task (a small, well-scoped extension) and cover it with one assertion in `PluginEnvWireTests`.
 
 - [ ] **Step 4: Run, verify pass**
 
@@ -582,9 +582,9 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/GallagerPluginProtocol/SidecarWire.swift \
-        ClaudeSpyPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift
+git add CtrlxPackage/Sources/GallagerPluginProtocol/SidecarWire.swift \
+        CtrlxPackage/Tests/GallagerPluginProtocolTests/SidecarWireTests.swift \
+        CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift
 git commit -m "feat(plugin-v2): JSON-RPC envelope, method vocabulary, PluginEnvWire"
 ```
 
@@ -595,8 +595,8 @@ git commit -m "feat(plugin-v2): JSON-RPC envelope, method vocabulary, PluginEnvW
 ### Task 4: `SidecarTransport` actor (bidirectional JSON-RPC over stdio)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarTransport.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarTransportTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarTransport.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarTransportTests.swift`
 
 The transport is *spawn-agnostic*: it is given a write `FileHandle` (child stdin) and a read byte-stream, and does request correlation, timeouts, and ordered notification/inbound-request delivery. The supervisor (Task 5) wires it to a real process; the test wires it to an in-memory pipe pair. This is the one genuinely new wire protocol — implement every hazard row from spec §3.
 
@@ -618,9 +618,9 @@ The transport is *spawn-agnostic*: it is given a write `FileHandle` (child stdin
 // SidecarTransportTests.swift
 import Foundation
 import Testing
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import GallagerPluginProtocol
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 /// A delegate that answers a fixed inbound request and records notifications.
 private actor RecordingDelegate: SidecarTransportDelegate {
@@ -709,7 +709,7 @@ Expected: FAIL — `cannot find 'SidecarTransport' in scope`.
 
 ```swift
 import Foundation
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import GallagerPluginProtocol
 import Logging
 
@@ -728,7 +728,7 @@ public enum TransportError: Error, Equatable {
 public actor SidecarTransport {
     private let writeHandle: FileHandle
     private weak var delegate: (any SidecarTransportDelegate)?
-    private let logger = Logger(label: "com.claudespy.sidecar.transport")
+    private let logger = Logger(label: "com.ctrlx.sidecar.transport")
 
     private var decoder = FrameDecoder()
     private var pending: [String: CheckedContinuation<JSONValue, any Error>] = [:]
@@ -737,7 +737,7 @@ public actor SidecarTransport {
     private var loop: Task<Void, Never>?
 
     // Writes are offloaded to a serial queue so a full stdin pipe never blocks the actor.
-    private let writeQueue = DispatchQueue(label: "com.claudespy.sidecar.write")
+    private let writeQueue = DispatchQueue(label: "com.ctrlx.sidecar.write")
 
     public init(writeHandle: FileHandle, delegate: any SidecarTransportDelegate) {
         self.writeHandle = writeHandle
@@ -856,8 +856,8 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarTransport.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarTransportTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarTransport.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarTransportTests.swift
 git commit -m "feat(plugin-v2): bidirectional JSON-RPC stdio transport actor"
 ```
 
@@ -868,10 +868,10 @@ git commit -m "feat(plugin-v2): bidirectional JSON-RPC stdio transport actor"
 ### Task 5: `SidecarSupervisor` (process lifecycle + crash policy)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarSupervisor.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/PluginRootLayout.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarStderrLog.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarSupervisorTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarSupervisor.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/PluginRootLayout.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarStderrLog.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarSupervisorTests.swift`
 
 The supervisor spawns one child, wires its stdio to a `SidecarTransport`, mirrors stderr to `logs/stderr.log`, and applies the crash policy (spec §5). Tests use a tiny **shell-script sidecar** written to a temp dir (so this task has no dependency on the `EchoPluginSidecar` executable target, which lands in Task 10) — the script speaks just enough framing to echo `initialize`, or aborts on command.
 
@@ -888,9 +888,9 @@ The supervisor spawns one child, wires its stdio to a `SidecarTransport`, mirror
 // SidecarSupervisorTests.swift
 import Foundation
 import Testing
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import GallagerPluginProtocol
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 private actor NoopDelegate: SidecarTransportDelegate {
     func handleNotification(_: String, _: JSONValue?) async {}
@@ -1032,7 +1032,7 @@ public actor SidecarStderrLog {
 
 ```swift
 import Foundation
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import GallagerPluginProtocol
 import Logging
 
@@ -1041,7 +1041,7 @@ public actor SidecarSupervisor {
 
     private let manifest: PluginManifest
     private let layout: PluginRootLayout
-    private let logger = Logger(label: "com.claudespy.sidecar.supervisor")
+    private let logger = Logger(label: "com.ctrlx.sidecar.supervisor")
     private let stderrLog: SidecarStderrLog
 
     private var process: Process?
@@ -1177,8 +1177,8 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/ \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarSupervisorTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/ \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarSupervisorTests.swift
 git commit -m "feat(plugin-v2): sidecar supervisor with crash policy and stderr log"
 ```
 
@@ -1187,14 +1187,14 @@ git commit -m "feat(plugin-v2): sidecar supervisor with crash policy and stderr 
 ### Task 6: `SidecarPluginCore` (PluginCore conformer; the seam)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarPluginCore.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarPluginCoreTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarPluginCore.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarPluginCoreTests.swift`
 
 `SidecarPluginCore` is the only new `PluginCore` conformer. It retains the in-process `PluginHost` (never marshaled), drives each method as an RPC, and acts as the transport's delegate — translating inbound notifications into `host.*` and the inbound `agent_panes` request into `host.agentPanes()`. Tests use a `MockSidecarProcess` (an in-memory `SidecarTransport` peer + a scripted responder) so no real process is needed.
 
 **Interfaces:**
 - Produces: `actor SidecarPluginCore: PluginCore, SidecarTransportDelegate` with `init(manifest: PluginManifest, layout: PluginRootLayout, supervisor: SidecarSupervisor)`. Marshalling per spec §2: `initialize`→`initialize` (env only, via `PluginEnvWire`); `handleIngress`→`translate_event` (an `IngressFrameWire`); `deliverResponse`→`deliver_response`; `refreshProjects`→`refresh_projects`; `commandForLaunch`→`command_for_launch`; `install`/`uninstall`/`installStatus(configRoot:)`→same-named RPCs; `applySettings`→`apply_settings`; `shutdown`→`shutdown` then `supervisor.stop()`. Inbound: `set_projects`→`host.setProjects`, `emit_event`→`host.emit`, `send_text`→`host.sendText`, `send_keys`→`host.sendKeys`, `log`→`host.log`, request `agent_panes`→`host.agentPanes()`.
-- Consumes: Task 4/5 outputs; the existing `PluginEvent`, `AgentResponse`, `AgentProject`, `LaunchCommand`, `PluginInstallStatus`, `InstallResult`, `SettingsResult`, `LogLine`, `IngressFrame` (all already Codable in `ClaudeSpyNetworking`/`GallagerPluginProtocol`).
+- Consumes: Task 4/5 outputs; the existing `PluginEvent`, `AgentResponse`, `AgentProject`, `LaunchCommand`, `PluginInstallStatus`, `InstallResult`, `SettingsResult`, `LogLine`, `IngressFrame` (all already Codable in `CtrlxNetworking`/`GallagerPluginProtocol`).
 
 - [ ] **Step 1: Write the failing test** (marshalling both directions, via `MockSidecarProcess`).
 
@@ -1202,9 +1202,9 @@ git commit -m "feat(plugin-v2): sidecar supervisor with crash policy and stderr 
 // SidecarPluginCoreTests.swift
 import Foundation
 import Testing
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import GallagerPluginProtocol
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 @Suite("SidecarPluginCore marshalling")
 struct SidecarPluginCoreTests {
@@ -1253,7 +1253,7 @@ struct SidecarPluginCoreTests {
 }
 ```
 
-> `MockSidecarProcess` is a small test double in the test target: it owns a `SidecarTransport` peer wired to the core's transport via in-memory `Pipe`s (the Task-4 pattern), exposes `onRequest`/`pushNotification`/`request`, and a `makeCore(manifestID:)` that injects the *app-side* transport into a `SidecarPluginCore` without a real `SidecarSupervisor` spawn (add an internal `init(manifest:layout:transport:)` to `SidecarPluginCore` used only by tests, or a `withInjectedTransport` test seam). `MockPluginHost` already exists in `GallagerPluginProtocolTests`; mirror it (or expose it) for `ClaudeSpyServerFeatureTests`. `JSONValue(encoding:)` is a small test helper that `JSONEncoder`-encodes a `Codable` then decodes to `JSONValue`.
+> `MockSidecarProcess` is a small test double in the test target: it owns a `SidecarTransport` peer wired to the core's transport via in-memory `Pipe`s (the Task-4 pattern), exposes `onRequest`/`pushNotification`/`request`, and a `makeCore(manifestID:)` that injects the *app-side* transport into a `SidecarPluginCore` without a real `SidecarSupervisor` spawn (add an internal `init(manifest:layout:transport:)` to `SidecarPluginCore` used only by tests, or a `withInjectedTransport` test seam). `MockPluginHost` already exists in `GallagerPluginProtocolTests`; mirror it (or expose it) for `CtrlxServerFeatureTests`. `JSONValue(encoding:)` is a small test helper that `JSONEncoder`-encodes a `Codable` then decodes to `JSONValue`.
 
 - [ ] **Step 2: Run, verify fail**
 
@@ -1264,7 +1264,7 @@ Expected: FAIL — `cannot find 'SidecarPluginCore' in scope`.
 
 ```swift
 import Foundation
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import GallagerPluginProtocol
 import Logging
 
@@ -1272,7 +1272,7 @@ public actor SidecarPluginCore: PluginCore, SidecarTransportDelegate {
     private let manifest: PluginManifest
     private let layout: PluginRootLayout
     private let supervisor: SidecarSupervisor
-    private let logger = Logger(label: "com.claudespy.sidecar.core")
+    private let logger = Logger(label: "com.ctrlx.sidecar.core")
 
     private var host: (any PluginHost)?
     private var transport: SidecarTransport?
@@ -1394,7 +1394,7 @@ public actor SidecarPluginCore: PluginCore, SidecarTransportDelegate {
 }
 ```
 
-> Provide the small `JSONValue` ergonomics this uses (`init(encoding: Encodable)`, `decode(_:)`, `.null`, `.objectValue`, `.stringValue`, `.merging(response:)` for the deliver_response param shape) in `ClaudeSpyNetworking/Models/JSONRPC.swift` as a focused extension, each line covered by an assertion already present in these tests. Add `struct IngressFrameWire: Codable { let pluginID; let context: [String:String]; let payload: JSONValue }` to `SidecarWire.swift` (payload carried as nested JSON, mirroring `PluginEnvWire.settings`). Note the production `initialize` must `try await supervisor.startTransport(...)`; the injected-transport test seam skips the spawn.
+> Provide the small `JSONValue` ergonomics this uses (`init(encoding: Encodable)`, `decode(_:)`, `.null`, `.objectValue`, `.stringValue`, `.merging(response:)` for the deliver_response param shape) in `CtrlxNetworking/Models/JSONRPC.swift` as a focused extension, each line covered by an assertion already present in these tests. Add `struct IngressFrameWire: Codable { let pluginID; let context: [String:String]; let payload: JSONValue }` to `SidecarWire.swift` (payload carried as nested JSON, mirroring `PluginEnvWire.settings`). Note the production `initialize` must `try await supervisor.startTransport(...)`; the injected-transport test seam skips the spawn.
 
 - [ ] **Step 4: Run, verify pass**
 
@@ -1404,10 +1404,10 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarPluginCore.swift \
-        ClaudeSpyPackage/Sources/GallagerPluginProtocol/SidecarWire.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarPluginCoreTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarPluginCore.swift \
+        CtrlxPackage/Sources/GallagerPluginProtocol/SidecarWire.swift \
+        CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarPluginCoreTests.swift
 git commit -m "feat(plugin-v2): SidecarPluginCore marshals the PluginCore seam over stdio"
 ```
 
@@ -1418,9 +1418,9 @@ git commit -m "feat(plugin-v2): SidecarPluginCore marshals the PluginCore seam o
 ### Task 7: On-disk `registry.json` store
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistryStore.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/GallagerPaths.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRegistryStoreTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistryStore.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/GallagerPaths.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRegistryStoreTests.swift`
 
 **Interfaces:**
 - Produces:
@@ -1436,7 +1436,7 @@ git commit -m "feat(plugin-v2): SidecarPluginCore marshals the PluginCore seam o
 import Foundation
 import Testing
 import GallagerPluginProtocol
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 @Suite("PluginRegistryStore")
 struct PluginRegistryStoreTests {
@@ -1479,9 +1479,9 @@ struct PluginRegistryStoreTests {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistryStore.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/GallagerPaths.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRegistryStoreTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistryStore.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Plugins/GallagerPaths.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRegistryStoreTests.swift
 git commit -m "feat(plugin-v2): on-disk registry.json store + plugins-dir paths"
 ```
 
@@ -1490,8 +1490,8 @@ git commit -m "feat(plugin-v2): on-disk registry.json store + plugins-dir paths"
 ### Task 8: Teach `PluginRegistry` the `.sidecar` construction path
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistry.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRegistrySidecarTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistry.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRegistrySidecarTests.swift`
 
 `makeCore`'s `.sidecar` branch currently logs a warning and returns nil. Replace it with `SidecarPluginCore` construction, and let the registry register *runtime-discovered* sidecar manifests (url/folder) — not just bundled ones. The registry needs `GallagerPaths` to build the `PluginRootLayout`.
 
@@ -1510,7 +1510,7 @@ git commit -m "feat(plugin-v2): on-disk registry.json store + plugins-dir paths"
 import Foundation
 import Testing
 import GallagerPluginProtocol
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 @MainActor
 @Suite("PluginRegistry sidecar path")
@@ -1573,8 +1573,8 @@ Update `listEntries()` to read `sources[id] ?? .bundled` and emit its `rawValue`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistry.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRegistrySidecarTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistry.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRegistrySidecarTests.swift
 git commit -m "feat(plugin-v2): registry constructs SidecarPluginCore for sidecar runtime"
 ```
 
@@ -1583,9 +1583,9 @@ git commit -m "feat(plugin-v2): registry constructs SidecarPluginCore for sideca
 ### Task 9: Folder-drop discovery + enable sidecars at launch
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift` (discovery only this task; download lands in Task 12/13)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginFolderDropTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift` (discovery only this task; download lands in Task 12/13)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginFolderDropTests.swift`
 
 `setupPluginRuntime` currently enables a hardcoded `["claude-code", "codex"]`. Add: after the bundled enable loop, scan `~/.gallager/plugins/<id>/` for valid `runtime: "sidecar"` manifests, sanitize each `id`, validate the tree, `registry.registerSidecar(..., source: .folder)`, persist a `registry.json` entry, and `registry.enable` them with a `PluginEnv` + `LivePluginHost` (the same construction the bundled loop uses). Tolerate a sidecar that fails init (left disabled, logged) — never block startup.
 
@@ -1600,7 +1600,7 @@ git commit -m "feat(plugin-v2): registry constructs SidecarPluginCore for sideca
 import Foundation
 import Testing
 import GallagerPluginProtocol
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 @Suite("PluginInstaller folder-drop")
 struct PluginFolderDropTests {
@@ -1646,9 +1646,9 @@ struct PluginFolderDropTests {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginFolderDropTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginFolderDropTests.swift
 git commit -m "feat(plugin-v2): discover and enable folder-dropped sidecar plugins at launch"
 ```
 
@@ -1657,17 +1657,17 @@ git commit -m "feat(plugin-v2): discover and enable folder-dropped sidecar plugi
 ### Task 10: `EchoPluginSidecar` executable fixture + first sidecar E2E
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/EchoPluginSidecar/main.swift`
-- Modify: `ClaudeSpyPackage/Package.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginSidecarIngressScenario.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift` (register scenario)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift` (stage the fixture into the plugins dir)
+- Create: `CtrlxPackage/Sources/EchoPluginSidecar/main.swift`
+- Modify: `CtrlxPackage/Package.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginSidecarIngressScenario.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift` (register scenario)
+- Modify: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift` (stage the fixture into the plugins dir)
 
 This is the spec's headline test asset: a *real* out-of-process sidecar that proves the whole pipeline (spawn → JSON-RPC → supervision → ingress over the app-owned socket → `set_projects` → response round-trip). The same `EchoDirective` payload shape the in-process `EchoPluginCore` uses (so scenarios read familiarly), but answered by a separate process.
 
 **Interfaces:**
 - Produces: an executable that, on stdin `Content-Length` frames, answers `initialize` (empty), `translate_event` (decodes the `EchoDirective` from the frame payload and returns the `PluginEvent` it describes), `deliver_response` (drives `send_text`/`send_keys` per the structured response, mirroring `EchoPluginCore`), `refresh_projects` (pushes a `set_projects` notification), `install`/`uninstall`/`install_status`/`apply_settings`/`shutdown` (no-ops/echo). A control field `abort: true` in a `translate_event` payload makes it `abort()` (crash test, Task 18).
-- Consumes: `GallagerPluginProtocol` (`StdioFramer`, `FrameDecoder`, `RPCMessage`, `SidecarRPC`/`HostRPC`, `EchoDirective`) + `ClaudeSpyNetworking`. `EchoDirective` must move from the DEBUG `EchoPluginCore.swift` to a non-DEBUG location in `GallagerPluginProtocol` (so the Release-built executable can use it) — relocate it, keep `EchoPluginCore` referencing it.
+- Consumes: `GallagerPluginProtocol` (`StdioFramer`, `FrameDecoder`, `RPCMessage`, `SidecarRPC`/`HostRPC`, `EchoDirective`) + `CtrlxNetworking`. `EchoDirective` must move from the DEBUG `EchoPluginCore.swift` to a non-DEBUG location in `GallagerPluginProtocol` (so the Release-built executable can use it) — relocate it, keep `EchoPluginCore` referencing it.
 
 - [ ] **Step 1: Write the failing E2E scenario** (the test is the scenario; it fails until the fixture + staging exist).
 
@@ -1681,7 +1681,7 @@ import Foundation
 /// SidecarPluginCore, marshals translate_event to the child, and the returned
 /// PluginEvent surfaces the session on iOS.
 public enum PluginSidecarIngressScenario {
-    public static let scenario = ClaudeSpyE2ELib.scenario(
+    public static let scenario = CtrlxE2ELib.scenario(
         "Plugin Sidecar Ingress", tags: ["plugin", "sidecar", "ingress"]
     ) {
         ClaudeSessionsShowScenario.scenario        // pairing + two panes (${pane1Id})
@@ -1712,7 +1712,7 @@ public enum PluginSidecarIngressScenario {
 // targets:
 .executableTarget(
     name: "EchoPluginSidecar",
-    dependencies: [.gallagerPluginProtocol, .claudeSpyNetworking, .logging],
+    dependencies: [.gallagerPluginProtocol, .ctrlxNetworking, .logging],
     path: "Sources/EchoPluginSidecar")
 ```
   2. Relocate `EchoDirective` out of the `#if DEBUG` block in `GallagerPluginProtocol/EchoPluginCore.swift` into a new always-compiled `GallagerPluginProtocol/EchoDirective.swift`.
@@ -1724,13 +1724,13 @@ public enum PluginSidecarIngressScenario {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/EchoPluginSidecar/ \
-        ClaudeSpyPackage/Sources/GallagerPluginProtocol/EchoDirective.swift \
-        ClaudeSpyPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift \
-        ClaudeSpyPackage/Package.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginSidecarIngressScenario.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift
+git add CtrlxPackage/Sources/EchoPluginSidecar/ \
+        CtrlxPackage/Sources/GallagerPluginProtocol/EchoDirective.swift \
+        CtrlxPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift \
+        CtrlxPackage/Package.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginSidecarIngressScenario.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift \
+        CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift
 git commit -m "test(plugin-v2): real EchoPluginSidecar executable + ingress E2E"
 ```
 
@@ -1741,10 +1741,10 @@ git commit -m "test(plugin-v2): real EchoPluginSidecar executable + ingress E2E"
 ### Task 11: `GALLAGER_INGRESS_SOCK` consumption + sidecar hook install
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/EchoPluginSidecar/main.swift` (consume the env var in its `install`)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift` (per-scenario socket isolation note)
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginSidecarManualLaunchScenario.swift`
-- Test (unit): `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarSpawnEnvTests.swift`
+- Modify: `CtrlxPackage/Sources/EchoPluginSidecar/main.swift` (consume the env var in its `install`)
+- Modify: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift` (per-scenario socket isolation note)
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginSidecarManualLaunchScenario.swift`
+- Test (unit): `CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarSpawnEnvTests.swift`
 
 The supervisor already injects `GALLAGER_INGRESS_SOCK` (Task 5). This task proves a sidecar's `install()` *templates* that path into its agent's hook mechanism (rather than shipping a static `hook.py` that hardcodes the socket), and that a frame written to the spawn-supplied socket routes correctly — the capability the E2E `--gallager-state-root` isolation needs.
 
@@ -1775,11 +1775,11 @@ func injectsSocket() async throws {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/EchoPluginSidecar/main.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginSidecarManualLaunchScenario.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarSpawnEnvTests.swift
+git add CtrlxPackage/Sources/EchoPluginSidecar/main.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginSidecarManualLaunchScenario.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift \
+        CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarSpawnEnvTests.swift
 git commit -m "feat(plugin-v2): sidecars template GALLAGER_INGRESS_SOCK into their hook bridge"
 ```
 
@@ -1792,9 +1792,9 @@ git commit -m "feat(plugin-v2): sidecars template GALLAGER_INGRESS_SOCK into the
 ### Task 12: Manifest fetch (HTTPS, size cap, id sanitization)
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/TrustDetails.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginManifestFetchTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/TrustDetails.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginManifestFetchTests.swift`
 
 **Interfaces:**
 - Produces:
@@ -1829,8 +1829,8 @@ git commit -m "feat(plugin-v2): sidecars template GALLAGER_INGRESS_SOCK into the
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/ \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginManifestFetchTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Distribution/ \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginManifestFetchTests.swift
 git commit -m "feat(plugin-v2): HTTPS manifest fetch with size cap and id sanitization"
 ```
 
@@ -1839,8 +1839,8 @@ git commit -m "feat(plugin-v2): HTTPS manifest fetch with size cap and id saniti
 ### Task 13: Bundle download, SHA-256 verify, zip-slip-hardened unpack, atomic install
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginInstallerTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginInstallerTests.swift`
 
 This is the highest-risk surface (untrusted code from the network). Every hardening step from spec §8.2 is a hard requirement.
 
@@ -1884,8 +1884,8 @@ This is the highest-risk surface (untrusted code from the network). Every harden
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginInstallerTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginInstallerTests.swift
 git commit -m "feat(plugin-v2): hardened bundle download, sha256 verify, zip-slip-safe unpack"
 ```
 
@@ -1894,10 +1894,10 @@ git commit -m "feat(plugin-v2): hardened bundle download, sha256 verify, zip-sli
 ### Task 14: Install / update / uninstall orchestration
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateChecker.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginInstallFlowTests.swift`, `PluginUpdateCheckerTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateChecker.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginInstallFlowTests.swift`, `PluginUpdateCheckerTests.swift`
 
 **Interfaces:**
 - Produces:
@@ -1917,10 +1917,10 @@ git commit -m "feat(plugin-v2): hardened bundle download, sha256 verify, zip-sli
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/ \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginInstallFlowTests.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateCheckerTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Distribution/ \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginInstallFlowTests.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateCheckerTests.swift
 git commit -m "feat(plugin-v2): install/update/uninstall orchestration on the coordinator"
 ```
 
@@ -1929,9 +1929,9 @@ git commit -m "feat(plugin-v2): install/update/uninstall orchestration on the co
 ### Task 15: Settings UI — "Add Plugin from URL…" + trust sheet + sidecar lifecycle rows
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AddPluginSheet.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AgentsSettingsView.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift` (any new symbol, alphabetically)
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Views/AddPluginSheet.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/AgentsSettingsView.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift` (any new symbol, alphabetically)
 - Test: covered by the E2E install-flow check in Task 18 + a SwiftUI compile build; no unit test (view layer, MV pattern).
 
 **Interfaces:**
@@ -1945,9 +1945,9 @@ git commit -m "feat(plugin-v2): install/update/uninstall orchestration on the co
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AddPluginSheet.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AgentsSettingsView.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/AddPluginSheet.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Views/AgentsSettingsView.swift \
+        CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift
 git commit -m "feat(plugin-v2): Add-Plugin-from-URL trust sheet and sidecar lifecycle UI"
 ```
 
@@ -1956,10 +1956,10 @@ git commit -m "feat(plugin-v2): Add-Plugin-from-URL trust sheet and sidecar life
 ### Task 16: CLI verbs `install` / `remove` / `update` + router methods
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/Gallager/Commands/PluginCommands.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` (router callbacks)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/APIRouterPluginV2Tests.swift`
+- Modify: `CtrlxPackage/Sources/Gallager/Commands/PluginCommands.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` (router callbacks)
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/APIRouterPluginV2Tests.swift`
 
 **Interfaces:**
 - Produces:
@@ -1974,11 +1974,11 @@ git commit -m "feat(plugin-v2): Add-Plugin-from-URL trust sheet and sidecar life
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/Gallager/Commands/PluginCommands.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistry.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/APIRouterPluginV2Tests.swift
+git add CtrlxPackage/Sources/Gallager/Commands/PluginCommands.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistry.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/APIRouterPluginV2Tests.swift
 git commit -m "feat(plugin-v2): gallager plugin install/remove/update verbs + router passthrough"
 ```
 
@@ -1989,10 +1989,10 @@ git commit -m "feat(plugin-v2): gallager plugin install/remove/update verbs + ro
 ### Task 17: Optional capabilities — `rich_pane_detection` + `modal_prompts`
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarCapabilities.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarPluginCore.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarCapabilities.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarPluginCore.swift`
 - Modify: the pane-detection call site (`TmuxService.detectAgentPanes` caller, via `AppCoordinator.handlePluginAgentPanes`)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarCapabilitiesTests.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarCapabilitiesTests.swift`
 
 These attach *without* touching the `PluginCore` protocol — they are `SidecarPluginCore`-only RPCs, used only when the manifest declares the capability; absence ⇒ `MethodNotFound` ⇒ "feature unsupported" ⇒ fall back to `process_names`.
 
@@ -2010,10 +2010,10 @@ These attach *without* touching the `PluginCore` protocol — they are `SidecarP
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarCapabilities.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarPluginCore.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/SidecarCapabilitiesTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarCapabilities.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarPluginCore.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/SidecarCapabilitiesTests.swift
 git commit -m "feat(plugin-v2): opt-in rich_pane_detection and modal_prompts capabilities"
 ```
 
@@ -2022,11 +2022,11 @@ git commit -m "feat(plugin-v2): opt-in rich_pane_detection and modal_prompts cap
 ### Task 18: Crash/restart, crash-loop-disable, and response round-trip E2E
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/EchoPluginSidecar/main.swift` (control-payload abort + delivery script)
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginCrashRestartScenario.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginCrashLoopDisableScenario.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginSidecarResponseRoundTripScenario.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift` (register all three)
+- Modify: `CtrlxPackage/Sources/EchoPluginSidecar/main.swift` (control-payload abort + delivery script)
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginCrashRestartScenario.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginCrashLoopDisableScenario.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginSidecarResponseRoundTripScenario.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift` (register all three)
 - Possibly add: a `TestStep` to assert the Settings "disabled / Re-enable" banner.
 
 These are the three scenarios v1 marked v2-only (spec §12).
@@ -2043,10 +2043,10 @@ These are the three scenarios v1 marked v2-only (spec §12).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/EchoPluginSidecar/main.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginCrash*.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/PluginSidecarResponseRoundTripScenario.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift
+git add CtrlxPackage/Sources/EchoPluginSidecar/main.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginCrash*.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/PluginSidecarResponseRoundTripScenario.swift \
+        CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift
 git commit -m "test(plugin-v2): crash-restart, crash-loop-disable, sidecar response round-trip E2E"
 ```
 

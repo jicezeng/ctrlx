@@ -30,6 +30,6 @@
 - `PaneProgressTests`：5/5 通过。
 - `TerminalNotificationParserTests`：38/38 通过。
 - Swift Package 完整编译通过。
-- `ClaudeSpyServer` Debug macOS 构建通过（ad-hoc signing；SwiftLint 未安装警告）。
-- `ClaudeSpy` Debug arm64 iOS Simulator 构建通过（SwiftLint 未安装警告）。
+- `CtrlxServer` Debug macOS 构建通过（ad-hoc signing；SwiftLint 未安装警告）。
+- `Ctrlx` Debug arm64 iOS Simulator 构建通过（SwiftLint 未安装警告）。
 - 尚未完成真实 Codex hook 的端到端验证；当前聚焦测试使用构造的 `.working` 状态。

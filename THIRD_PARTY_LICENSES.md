@@ -8,7 +8,7 @@ authors and contributors.
 > About, iOS Settings → Licenses), grouped by where each project is used
 > (apps & relay, build tools, website). When you change any rows below, mirror
 > the change in `ThirdPartyLicense.all`
-> (`ClaudeSpyPackage/Sources/ClaudeSpyCommon/Constants/ThirdPartyLicenses.swift`).
+> (`CtrlxPackage/Sources/CtrlxCommon/Constants/ThirdPartyLicenses.swift`).
 
 ## Swift packages (apps + relay)
 
@@ -34,7 +34,7 @@ authors and contributors.
 
 Transitive dependencies from the Apple, Vapor, and Point-Free ecosystems are
 Apache-2.0 or MIT; the pinned set is in
-[`ClaudeSpyPackage/Package.resolved`](ClaudeSpyPackage/Package.resolved).
+[`CtrlxPackage/Package.resolved`](CtrlxPackage/Package.resolved).
 
 ## Website
 

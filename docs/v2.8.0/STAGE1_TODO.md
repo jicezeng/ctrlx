@@ -25,11 +25,11 @@
 
 ## Validation
 
-- `swift test --package-path ClaudeSpyPackage --disable-automatic-resolution --filter SessionRename`
+- `swift test --package-path CtrlxPackage --disable-automatic-resolution --filter SessionRename`
   通过：11 tests / 2 suites。
-- macOS `ClaudeSpyServer` Debug 构建、签名和 `codesign --verify --deep --strict`
+- macOS `CtrlxServer` Debug 构建、签名和 `codesign --verify --deep --strict`
   通过。
-- iOS Simulator `ClaudeSpy` Debug 构建通过。
+- iOS Simulator `Ctrlx` Debug 构建通过。
 - macOS 实际交互通过：右键菜单显示 `Rename Session`；双击会话行弹出预填当前
   名称的输入框；提交后旧 session 消失、新 session 保留原 pane ID。
 - 名称冲突、非法名称、部分 window 移动和歧义 linked-session 映射均有回归测试。

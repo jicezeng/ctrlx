@@ -39,7 +39,7 @@ disproportionate to 29ms/245KB), SQLite (overkill), custom SPM build-tool plugin
 
 Commit the data as data and let SPM embed the bytes in code at build time.
 
-1. **Data file:** `ClaudeSpyPackage/Sources/GallagerEmoji/Resources/emoji.tsv`,
+1. **Data file:** `CtrlxPackage/Sources/GallagerEmoji/Resources/emoji.tsv`,
    committed. Same rows as today's literal (glyph, label, `|`-joined keywords,
    group, version — tab-separated), plus a `#`-prefixed header comment naming
    the generator. Line-per-emoji keeps regeneration diffs readable.
@@ -71,7 +71,7 @@ Commit the data as data and let SPM embed the bytes in code at build time.
 ## Outcome (added 2026-07-03, post-implementation)
 
 Implemented through Tasks 1–2 of the plan, then **abandoned during verification**:
-the macOS `ClaudeSpyServer` workspace build fails with `cannot find
+the macOS `CtrlxServer` workspace build fails with `cannot find
 'PackageResources' in scope`. Root cause (Xcode 26.6, confirmed via build-log
 inspection; later verified the dynamicization happens **regardless of
 resources**): when a resource-bearing package
@@ -79,7 +79,7 @@ target is consumed by **two products in the same build graph** — here the app'
 `GallagerCLI` executable product linked by the app target to force its build
 for the copy-into-bundle phase — XCBuild silently ignores `.embedInCode`,
 generates the legacy `Bundle.module` accessor, spawns a
-`ClaudeSpyPackage_GallagerEmoji.bundle` resource-bundle target, and builds the
+`CtrlxPackage_GallagerEmoji.bundle` resource-bundle target, and builds the
 library as a dynamic framework (`PackageFrameworks/`). Even with a compile
 workaround, that packaging would break the single-file CLI at runtime.
 Single-client graphs (iOS app; standalone `swift build`/`swift test`;

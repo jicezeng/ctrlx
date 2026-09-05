@@ -1,6 +1,6 @@
 # omp plugin for CtrlX
 
-A CtrlX **sidecar plugin** that teaches the CtrlX (ClaudeSpy) Mac app to
+A CtrlX **sidecar plugin** that teaches the CtrlX (Ctrlx) Mac app to
 monitor [omp](https://omp.sh) (oh-my-pi — can1357's coding-first fork of pi,
 shipped as a native binary) sessions running in tmux panes: track working /
 done / idle, surface tool-approval prompts as answerable forms, raise the

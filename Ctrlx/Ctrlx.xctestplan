@@ -1,0 +1,37 @@
+{
+  "configurations" : [
+    {
+      "id" : "24499A57-8A8C-49DD-9DF6-FD06943246D4",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:Ctrlx.xcodeproj",
+      "identifier" : "8B41F6442DEDD0D5001A66F9",
+      "name" : "Ctrlx"
+    },
+    "automaticScreenshotLifetime" : "deleteOnSuccess",
+    "userAttachmentLifetime" : "deleteOnSuccess"
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:CtrlxPackage",
+        "identifier" : "CtrlxFeatureTests",
+        "name" : "CtrlxFeatureTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Ctrlx.xcodeproj",
+        "identifier" : "8B41F65B2DEDD0D6001A66F9",
+        "name" : "CtrlxUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

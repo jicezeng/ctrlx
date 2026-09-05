@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Unit Test Script for ClaudeSpy
-# Runs all unit tests in the ClaudeSpyPackage via swift test
+# Unit Test Script for Ctrlx
+# Runs all unit tests in the CtrlxPackage via swift test
 
 set -eo pipefail
 
@@ -10,7 +10,7 @@ set -eo pipefail
 # =====================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PACKAGE_DIR="$PROJECT_ROOT/ClaudeSpyPackage"
+PACKAGE_DIR="$PROJECT_ROOT/CtrlxPackage"
 
 # =====================================================
 # PARSE ARGUMENTS
@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $0 [-- SWIFT_TEST_ARGS...]"
             echo ""
-            echo "Runs all unit tests in ClaudeSpyPackage using swift test."
+            echo "Runs all unit tests in CtrlxPackage using swift test."
             echo ""
             echo "Any arguments after -- are passed through to swift test."
             echo ""

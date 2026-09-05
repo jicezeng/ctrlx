@@ -1,0 +1,493 @@
+import APNSCore
+import CtrlxEncryption
+import CtrlxNetworking
+import Vapor
+
+/// Configures the Vapor application.
+///
+/// `env` overrides the configuration environment (defaults to the process
+/// environment). Unit tests MUST pass their vars here instead of `setenv`:
+/// mutating the process-global `environ` while parallel tests spawn
+/// subprocesses makes `posix_spawn` fail with EFAULT ("Bad address") when the
+/// array is realloc'd mid-spawn.
+public func configure(_ app: Application, env: [String: String]? = nil) async throws {
+    let env = env ?? ProcessInfo.processInfo.environment
+
+    // Configure server. CtrlX configuration is file-driven in the executable;
+    // tests inject an explicit dictionary to keep global process state untouched.
+    app.http.server.configuration.hostname = env["CTRLX_RELAY_BIND_ADDRESS"] ?? "0.0.0.0"
+    if let rawPort = env["CTRLX_RELAY_PORT"], let port = Int(rawPort), (1 ... 65_535).contains(port) {
+        app.http.server.configuration.port = port
+    } else if env["CTRLX_RELAY_PORT"] == nil {
+        app.http.server.configuration.port = 8_080
+    } else {
+        throw RelayConfigurationError.invalidPort(env["CTRLX_RELAY_PORT"] ?? "")
+    }
+
+    // Configure JSON encoder/decoder for dates
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    ContentConfiguration.global.use(encoder: encoder, for: .json)
+
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    ContentConfiguration.global.use(decoder: decoder, for: .json)
+
+    // Initialize core services
+    let dataDirectory = env["DATA_DIRECTORY"].map { URL(fileURLWithPath: $0) }
+    let pairingService = PairingService(dataDirectory: dataDirectory)
+    let connectionHub = ConnectionHub()
+    let metricsService = MetricsService()
+    app.storage[RelayBuildInfoKey.self] = RelayBuildInfo.fromEnvironment(env)
+
+    // Licensing: enabled only when LEMONSQUEEZY_STORE_ID + LEMONSQUEEZY_PRODUCT_ID
+    // are both set. Self-hosted relays leave them unset and run unrestricted.
+    // Misconfiguration (half-set / non-integer) throws here — fail-loud at boot.
+    let licensingConfig = try LicensingConfiguration.fromEnvironment(env)
+    let licenseAPIClient: any LicenseAPIClient
+    if let licensingConfig {
+        licenseAPIClient = LemonSqueezyAPIClient(baseURL: licensingConfig.apiBaseURL)
+    } else {
+        licenseAPIClient = DisabledLicenseAPIClient()
+    }
+    let licensingService = LicensingService(
+        config: licensingConfig,
+        apiClient: licenseAPIClient,
+        metricsService: metricsService,
+        dataDirectory: dataDirectory
+    )
+    if licensingConfig != nil {
+        app.logger.info("Licensing ENABLED — hosted-relay hosts require a trial or license")
+    }
+
+    // Optional server-side minimum-client-version gate (issue #659). Default-off:
+    // self-hosted relays leave MIN_CLIENT_VERSION unset and accept every client.
+    // When set, the relay refuses clients reporting a version below the minimum
+    // (and, if MIN_CLIENT_VERSION_REJECT_UNKNOWN is on, clients reporting none).
+    // A malformed MIN_CLIENT_VERSION throws here — fail-loud at boot rather than
+    // logging the gate as enabled while it silently accepts almost everything.
+    let minClientVersionGate = try MinClientVersionGate.fromEnvironment(env)
+    app.storage[MinClientVersionGateKey.self] = minClientVersionGate
+    if let minClientVersionGate {
+        let unknownNote = minClientVersionGate.rejectUnknown ? " (unknown-version clients also refused)" : ""
+        app.logger.info(
+            "Minimum-client-version gate ENABLED — clients below \(minClientVersionGate.minVersion) are refused\(unknownNote)"
+        )
+    }
+
+    // Optional pairing-pause maintenance switch: when PAIRING_PAUSED_MESSAGE is
+    // set (non-empty after trimming), new pairing registrations are refused and
+    // the value is shown verbatim in the clients' pairing UI. Existing pairings
+    // and all relay traffic are untouched. Absent/empty → off (the default).
+    let pairingPausedMessage = (env["PAIRING_PAUSED_MESSAGE"] ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    app.storage[PairingPausedMessageKey.self] = pairingPausedMessage.isEmpty ? nil : pairingPausedMessage
+    if !pairingPausedMessage.isEmpty {
+        app.logger.info("Pairing PAUSED — new pairing registrations will be refused")
+    }
+
+    // Determine APNs environment from APNS_ENVIRONMENT variable (defaults to development)
+    // Use "production" only when iOS app is distributed via App Store/TestFlight
+    let apnsEnvString = env["APNS_ENVIRONMENT"] ?? "development"
+    let apnsEnvironment: APNSEnvironment = apnsEnvString == "production" ? .production : .development
+
+    let apnsService = await APNsService(
+        pairingService: pairingService,
+        connectionHub: connectionHub,
+        metricsService: metricsService,
+        keyPath: env["APNS_KEY_PATH"],
+        keyId: env["APNS_KEY_ID"],
+        teamId: env["APNS_TEAM_ID"],
+        bundleId: env["APNS_BUNDLE_ID"],
+        environment: apnsEnvironment,
+        e2eLogPath: env["APNS_E2E_LOG_PATH"],
+        processEnvironment: env
+    )
+
+    // Release per-pair badge state when a pair is unpaired (via the API or
+    // `resetState` in tests). Without this hook the entry stays in
+    // `APNsService.lastBadge` for the process lifetime; harmless for the
+    // aggregated total (the pair stops matching the device token), but a small
+    // leak we can avoid by hanging it off the canonical removal path.
+    await pairingService.setOnPairRemoved { [apnsService] pairId in
+        await apnsService.clearBadge(pairId: pairId)
+    }
+
+    // Initialize relay service with all dependencies
+    let relayService = RelayService(
+        pairingService: pairingService,
+        connectionHub: connectionHub,
+        apnsService: apnsService,
+        metricsService: metricsService
+    )
+
+    // Store services in app storage
+    app.storage[PairingServiceKey.self] = pairingService
+    app.storage[ConnectionHubKey.self] = connectionHub
+    app.storage[APNsServiceKey.self] = apnsService
+    app.storage[RelayServiceKey.self] = relayService
+    app.storage[MetricsServiceKey.self] = metricsService
+    app.storage[LicensingServiceKey.self] = licensingService
+    if licensingConfig != nil {
+        let sweepLogger = app.logger
+        // Hourly, not daily: the sweep is the only enforcement for a host that
+        // lapses *while continuously connected* (the register/connect gates only
+        // catch new connections). A once-a-day interval both left up to ~24h of
+        // post-lapse streaming and — because it sleeps before its first run — never
+        // fired at all on a relay that restarts more than once a day (a plausible
+        // deploy cadence). An hourly sweep bounds both. Individual checks are cheap:
+        // `checkEntitlement` only hits LS when a verdict is already `revalidateHours`
+        // stale, so most sweeps are in-memory.
+        let sweepInterval = Duration.seconds(3_600)
+        let sweepTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: sweepInterval)
+                guard !Task.isCancelled else { break }
+                let blocked = await licensingService.sweepBlockedHosts(
+                    pairingService: pairingService,
+                    connectionHub: connectionHub
+                )
+                if !blocked.isEmpty {
+                    sweepLogger.info("Licensing sweep disconnected \(blocked.count) host(s)")
+                }
+            }
+        }
+        await app.storage.setWithAsyncShutdown(LicensingSweepTaskKey.self, to: sweepTask, onShutdown: { $0.cancel() })
+    }
+    // Use ContinuousClock so /metrics uptime is monotonic (immune to wall-clock jumps).
+    app.storage[ProcessStartTimeKey.self] = ContinuousClock.now
+
+    // Bearer token for /metrics endpoint.
+    //   nil  → endpoint disabled (all requests get 401)
+    //   set  → must be at least 32 characters; shorter values fatalError at boot
+    //          to fail-loud rather than ship a brute-forceable production deploy.
+    let rawToken = (env["METRICS_TOKEN"] ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let metricsToken: String?
+    if rawToken.isEmpty {
+        app.logger.warning("METRICS_TOKEN not set — /metrics endpoint will reject all requests")
+        metricsToken = nil
+    } else if rawToken.count < 32 {
+        fatalError(
+            "METRICS_TOKEN must be at least 32 characters (got \(rawToken.count)). " +
+                "Generate with: openssl rand -hex 32"
+        )
+    } else {
+        metricsToken = rawToken
+    }
+    app.storage[MetricsTokenKey.self] = metricsToken
+
+    // Register routes
+    try routes(app)
+}
+
+// MARK: - Storage Keys
+
+struct PairingServiceKey: StorageKey {
+    typealias Value = PairingService
+}
+
+struct ConnectionHubKey: StorageKey {
+    typealias Value = ConnectionHub
+}
+
+struct RelayServiceKey: StorageKey {
+    typealias Value = RelayService
+}
+
+struct APNsServiceKey: StorageKey {
+    typealias Value = APNsService
+}
+
+struct MetricsServiceKey: StorageKey {
+    typealias Value = MetricsService
+}
+
+struct LicensingServiceKey: StorageKey {
+    typealias Value = LicensingService
+}
+
+struct LicensingSweepTaskKey: StorageKey {
+    typealias Value = Task<Void, Never>
+}
+
+struct ProcessStartTimeKey: StorageKey {
+    typealias Value = ContinuousClock.Instant
+}
+
+struct MetricsTokenKey: StorageKey {
+    /// `nil` means the `/metrics` endpoint is disabled (all requests get 401).
+    typealias Value = String?
+}
+
+struct MinClientVersionGateKey: StorageKey {
+    /// `nil` means the minimum-client-version gate is disabled (no
+    /// `MIN_CLIENT_VERSION` in env) and every client is accepted.
+    typealias Value = MinClientVersionGate?
+}
+
+struct PairingPausedMessageKey: StorageKey {
+    /// `nil` means pairing registration is not paused (no `PAIRING_PAUSED_MESSAGE`
+    /// in env); otherwise the operator's user-facing message.
+    typealias Value = String?
+}
+
+struct RelayBuildInfoKey: StorageKey {
+    typealias Value = RelayBuildInfo
+}
+
+enum RelayConfigurationError: Error {
+    case invalidPort(String)
+}
+
+// MARK: - Application Extensions (Internal)
+
+extension Application {
+    var pairingService: PairingService {
+        guard let service = storage[PairingServiceKey.self] else {
+            fatalError("PairingService not configured. Call configure(_:) first.")
+        }
+        return service
+    }
+
+    var connectionHub: ConnectionHub {
+        guard let hub = storage[ConnectionHubKey.self] else {
+            fatalError("ConnectionHub not configured. Call configure(_:) first.")
+        }
+        return hub
+    }
+
+    var relayService: RelayService {
+        guard let service = storage[RelayServiceKey.self] else {
+            fatalError("RelayService not configured. Call configure(_:) first.")
+        }
+        return service
+    }
+
+    var apnsService: APNsService? {
+        storage[APNsServiceKey.self]
+    }
+
+    var metricsService: MetricsService {
+        guard let service = storage[MetricsServiceKey.self] else {
+            fatalError("MetricsService not configured. Call configure(_:) first.")
+        }
+        return service
+    }
+
+    var licensingService: LicensingService {
+        guard let service = storage[LicensingServiceKey.self] else {
+            fatalError("LicensingService not configured. Call configure(_:) first.")
+        }
+        return service
+    }
+
+    /// `nil` when the `/metrics` endpoint is disabled (no `METRICS_TOKEN` in env).
+    var metricsToken: String? {
+        storage[MetricsTokenKey.self] ?? nil
+    }
+
+    /// `nil` when the minimum-client-version gate is disabled (no
+    /// `MIN_CLIENT_VERSION` in env); otherwise the configured gate.
+    var minClientVersionGate: MinClientVersionGate? {
+        storage[MinClientVersionGateKey.self] ?? nil
+    }
+
+    /// Non-nil when the relay is paused for new pairings (`PAIRING_PAUSED_MESSAGE`
+    /// set in env); the value is the user-facing message returned to hosts.
+    var pairingPausedMessage: String? {
+        storage[PairingPausedMessageKey.self] ?? nil
+    }
+
+    var relayBuildInfo: RelayBuildInfo {
+        guard let info = storage[RelayBuildInfoKey.self] else {
+            fatalError("RelayBuildInfo not configured. Call configure(_:) first.")
+        }
+        return info
+    }
+}
+
+// MARK: - Public Application Extensions (for E2E test inspection)
+
+public extension Application {
+    /// Get the number of active pairings
+    var activePairingCount: Int {
+        get async {
+            await pairingService.activePairCount
+        }
+    }
+
+    /// Reset all pairing state (for testing)
+    func resetPairingState() async {
+        await pairingService.resetState()
+        await connectionHub.clearBlockedDeviceTypes()
+    }
+
+    /// Reset all licensing state (for testing).
+    ///
+    /// No in-repo caller today: `ServerDriver` (E2E) wipes `licensing.json`
+    /// directly (a process-boundary reset, since the server runs out-of-process
+    /// there) rather than calling in through this actor. Kept anyway as a
+    /// public test hook mirroring `resetPairingState()` — the in-process path
+    /// a future in-process E2E/integration harness (or a unit test against a
+    /// live `Application`) would need — so it isn't "cleaned up" as unused.
+    func resetLicensingState() async {
+        await licensingService.resetState()
+    }
+
+    /// Check if a host is connected via WebSocket for any active pair
+    var isAnyHostConnected: Bool {
+        get async {
+            let pairs = await pairingService.activePairIds
+            for pairId in pairs where await connectionHub.isHostConnected(pairId: pairId) {
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Disconnect all WebSocket connections for a given device type (for E2E testing)
+    func disconnectDevice(deviceType: String) async {
+        guard let type = DeviceType(rawValue: deviceType) else { return }
+        let affectedPairIds = await connectionHub.disconnectAll(deviceType: type)
+        await notifyPeersOfDisconnect(pairIds: affectedPairIds, deviceType: type)
+    }
+
+    /// Block a device type from connecting and disconnect existing connections (for E2E testing)
+    func blockDevice(deviceType: String) async {
+        guard let type = DeviceType(rawValue: deviceType) else { return }
+        let affectedPairIds = await connectionHub.blockDeviceType(type)
+        await notifyPeersOfDisconnect(pairIds: affectedPairIds, deviceType: type)
+    }
+
+    /// Tell each affected pair's surviving peer that `deviceType` disconnected.
+    ///
+    /// A server-initiated teardown (`disconnectAll(deviceType:)`) removes the connection
+    /// directly, so the socket's `onClose` finds nothing current and stays silent by design.
+    /// This drives the same peer notification a real disconnect would — e.g. so a viewer
+    /// clears its sessions when its host is disconnected.
+    private func notifyPeersOfDisconnect(pairIds: [String], deviceType: DeviceType) async {
+        for pairId in pairIds {
+            await relayService.notifyConnection(pairId: pairId, deviceType: deviceType, connected: false)
+        }
+    }
+
+    /// Unblock a device type, allowing connections again (for E2E testing)
+    func unblockDevice(deviceType: String) async {
+        guard let type = DeviceType(rawValue: deviceType) else { return }
+        await connectionHub.unblockDeviceType(type)
+    }
+
+    /// Check if a viewer is connected via WebSocket for any active pair
+    var isAnyViewerConnected: Bool {
+        get async {
+            let pairs = await pairingService.activePairIds
+            for pairId in pairs where await connectionHub.isViewerConnected(pairId: pairId) {
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Inspect the viewer-side identity stored on the first active pair. Used
+    /// by E2E to "borrow" the real iOS viewer's public key when synthesizing a
+    /// second-host pair completion, so the second host's E2EE session
+    /// establishes successfully against real key material.
+    func firstViewerIdentity() async -> (
+        pairId: String,
+        deviceId: String,
+        deviceName: String,
+        publicKey: String,
+        publicKeyId: String,
+        pushToken: String?
+    )? {
+        let ids = await pairingService.activePairIds
+        for id in ids {
+            if let pair = await pairingService.getPair(pairId: id) {
+                return (
+                    pairId: id,
+                    deviceId: pair.viewerDeviceId,
+                    deviceName: pair.viewerDeviceName,
+                    publicKey: pair.viewerPublicKey,
+                    publicKeyId: pair.viewerPublicKeyId,
+                    pushToken: pair.pushToken
+                )
+            }
+        }
+        return nil
+    }
+
+    /// Complete a pending pair as if a viewer had submitted the code. Used by
+    /// E2E to add a second host's pair without driving the iOS "Add Host" UI:
+    /// pass the real iOS viewer's identity (looked up via
+    /// `firstViewerIdentity()`) so the resulting pair record carries iOS's
+    /// actual public key. Then `registerPushToken` for the same APNs token the
+    /// real iOS already sent, so the relay's badge aggregation sees both pairs
+    /// as siblings of one device.
+    func completePairingAsViewer(
+        code: String,
+        deviceId: String,
+        deviceName: String,
+        publicKey: String,
+        publicKeyId: String,
+        pushToken: String
+    ) async throws -> String {
+        let response = await pairingService.completePairing(
+            code: code,
+            deviceId: deviceId,
+            deviceName: deviceName,
+            publicKey: publicKey,
+            publicKeyId: publicKeyId
+        )
+        switch response {
+        case let .paired(info):
+            await pairingService.registerPushToken(pushToken, for: info.pairId)
+            return info.pairId
+        case let .error(info):
+            throw E2EHelperError.completePairingFailed(info.message)
+        case .registered:
+            throw E2EHelperError.completePairingFailed("Unexpected `registered` response")
+        }
+    }
+
+    /// Inject a push to the relay's `APNsService` as if a host had sent it.
+    /// Used to fire "Mac1's" pushes for a synthesized pair where no real Mac
+    /// host process is running — the badge-aggregation scenarios only care
+    /// that the relay correctly aggregates across two pairs sharing one APNs
+    /// device token. The encrypted body is a placeholder (iOS would decrypt
+    /// nothing real, but the E2E path skips the network entirely).
+    func injectE2EPush(pairId: String, hostBadge: Int?, silent: Bool) async throws {
+        guard let service = apnsService else {
+            throw E2EHelperError.injectPushFailed("APNsService not configured")
+        }
+        let placeholder = EncryptedPayload(
+            ciphertext: Data(),
+            senderKeyId: "e2e-synthetic"
+        )
+        let payload = EncryptedPushPayload(
+            encryptedContent: placeholder,
+            pairId: pairId,
+            badge: hostBadge,
+            silent: silent
+        )
+        await service.sendEncryptedNotificationIfNeeded(
+            payload: payload,
+            pairId: pairId
+        )
+    }
+}
+
+/// Errors thrown by the E2E-only helpers above.
+public enum E2EHelperError: Error, CustomStringConvertible {
+    case completePairingFailed(String)
+    case injectPushFailed(String)
+
+    public var description: String {
+        switch self {
+        case let .completePairingFailed(message):
+            "completePairingAsViewer failed: \(message)"
+        case let .injectPushFailed(message):
+            "injectE2EPush failed: \(message)"
+        }
+    }
+}

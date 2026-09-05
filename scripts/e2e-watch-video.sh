@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# E2E Video Watcher for ClaudeSpy
+# E2E Video Watcher for Ctrlx
 # Plays e2e proof videos (release assets uploaded by e2e-attach-video.sh) in
 # the browser instead of downloading them.
 #

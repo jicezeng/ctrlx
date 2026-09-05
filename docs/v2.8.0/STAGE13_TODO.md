@@ -28,8 +28,8 @@
 
 ## Verification
 
-- `swift build --target ClaudeSpyE2ELib`：通过，包含本地/远程标签和双击 E2E 驱动编译。
-- `xcodebuild` `ClaudeSpyServer` Debug arm64：通过（Apple Development 签名）。
+- `swift build --target CtrlxE2ELib`：通过，包含本地/远程标签和双击 E2E 驱动编译。
+- `xcodebuild` `CtrlxServer` Debug arm64：通过（Apple Development 签名）。
 - `codesign --verify --deep --strict /Applications/Gallager.app`：通过。
 - `/Applications/Gallager.app` 覆盖安装并正常启动。
 - 本机真实交互：双击 window 标签弹出预填名称的重命名输入框，验证通过。

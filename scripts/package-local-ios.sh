@@ -23,15 +23,15 @@ SOURCE_PACKAGES="$LOCAL_BUILD_ROOT/SourcePackages"
 PACKAGE_ROOT="$LOCAL_BUILD_ROOT/package-ios"
 DIST_DIR="$PROJECT_ROOT/dist"
 APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphoneos/CtrlX.app"
-EXTENSION_PATH="$APP_PATH/PlugIns/ClaudeSpyNotificationExtension.appex"
+EXTENSION_PATH="$APP_PATH/PlugIns/CtrlxNotificationExtension.appex"
 IPA_PATH="$DIST_DIR/CtrlX-$VERSION.ipa"
 
 mkdir -p "$DERIVED_DATA" "$SOURCE_PACKAGES" "$DIST_DIR"
 
 log_info "Building CtrlX $VERSION from $PROJECT_ROOT"
 /usr/bin/xcodebuild \
-    -workspace "$PROJECT_ROOT/ClaudeSpy.xcworkspace" \
-    -scheme ClaudeSpy \
+    -workspace "$PROJECT_ROOT/Ctrlx.xcworkspace" \
+    -scheme Ctrlx \
     -configuration Debug \
     -destination 'generic/platform=iOS' \
     -derivedDataPath "$DERIVED_DATA" \

@@ -31,9 +31,9 @@ INFOPLIST_KEY_NSCameraUsageDescription = CtrlX uses the camera only to send a ph
 // ==========================================
 // Entitlements
 // ==========================================
-// AI agents can modify Config/ClaudeSpy.entitlements to add capabilities
-CTRLX_IOS_APP_ENTITLEMENTS = Config/ClaudeSpy.entitlements
-CTRLX_IOS_NOTIFICATION_EXTENSION_ENTITLEMENTS = ClaudeSpyNotificationExtension/ClaudeSpyNotificationExtension.entitlements
+// AI agents can modify Config/Ctrlx.entitlements to add capabilities
+CTRLX_IOS_APP_ENTITLEMENTS = Config/Ctrlx.entitlements
+CTRLX_IOS_NOTIFICATION_EXTENSION_ENTITLEMENTS = CtrlxNotificationExtension/CtrlxNotificationExtension.entitlements
 CODE_SIGN_ENTITLEMENTS = $(CTRLX_IOS_APP_ENTITLEMENTS)
 
 // ==========================================

@@ -1,6 +1,6 @@
 # opencode plugin for CtrlX
 
-A CtrlX **sidecar plugin** that teaches the CtrlX (ClaudeSpy) Mac app to
+A CtrlX **sidecar plugin** that teaches the CtrlX (Ctrlx) Mac app to
 monitor [opencode](https://opencode.ai) sessions running in tmux panes: track
 working / done / idle, raise the attention badge, fire notifications on turn
 completion, render opencode's permission prompts as interactive CtrlX/iOS

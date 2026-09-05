@@ -40,9 +40,9 @@
   `TerminalStreamOwnershipTests` 测试源码以 Swift 6 typecheck 通过。
 - 使用正式 `ConnectionGeneration`、`TerminalStreamRecoveryPolicy` 和
   `TerminalStreamOwnership` 源文件编译运行核心生命周期断言，exit 0。
-- iOS `ClaudeSpyFeature` Debug generic device build 通过。
-- 完整 iOS `ClaudeSpy` Debug generic device build 通过；仅有既有 SwiftLint 未安装警告。
-- macOS `ClaudeSpyServerFeature` Debug arm64 build 通过。
+- iOS `CtrlxFeature` Debug generic device build 通过。
+- 完整 iOS `Ctrlx` Debug generic device build 通过；仅有既有 SwiftLint 未安装警告。
+- macOS `CtrlxServerFeature` Debug arm64 build 通过。
 - 完整 macOS App 已完成源码编译；禁用签名时停在既有 CLI copy/sign build phase，启用签名时
   本机缺少项目默认 Team `XG2WG7U93U` 的 Mac Development 证书，均非 Swift 编译错误。
 - `git diff --check` 通过。

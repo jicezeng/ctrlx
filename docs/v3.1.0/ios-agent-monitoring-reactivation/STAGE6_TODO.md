@@ -22,7 +22,7 @@
 ## Verification
 
 - Agent 后台监控定向测试：11 项通过。
-- `ClaudeSpyPackage` 完整测试：1756 项通过。
+- `CtrlxPackage` 完整测试：1756 项通过。
 - iPhoneOS Debug 构建、签名、深度校验通过。
 - 已覆盖安装并启动到 `ZengJice iPhone`，build `20260818-003000`。
 - 真机验收通过：旧租约到期后开关保持开启，下一次 Agent 输入

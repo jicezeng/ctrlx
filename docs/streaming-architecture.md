@@ -6,7 +6,7 @@ This document describes how terminal data flows from a tmux session on the Mac t
 
 ```mermaid
 graph TB
-    subgraph Mac["Mac (ClaudeSpyServer)"]
+    subgraph Mac["Mac (CtrlxServer)"]
         TMUX[tmux session]
         TCC[TmuxControlClient]
         PPR[PipePaneReader<br/>one per pane]
@@ -21,7 +21,7 @@ graph TB
         RS[RelayService]
     end
 
-    subgraph iOS["iOS (ClaudeSpy)"]
+    subgraph iOS["iOS (Ctrlx)"]
         RC[RelayClient]
         SC[StreamCoordinator]
         TS[TerminalState]
@@ -77,12 +77,12 @@ sequenceDiagram
 ```
 
 **Key Files:**
-- `ClaudeSpyServerFeature/Services/PipePaneReader.swift`
-- `ClaudeSpyServerFeature/Services/TmuxControlClient.swift`
-- `ClaudeSpyServerFeature/Services/TmuxService.swift`
+- `CtrlxServerFeature/Services/PipePaneReader.swift`
+- `CtrlxServerFeature/Services/TmuxControlClient.swift`
+- `CtrlxServerFeature/Services/TmuxService.swift`
 
 **PipePaneReader** is an actor that:
-- Manages a per-pane FIFO (`/tmp/claudespy-pipe-<id>.fifo`) for raw byte delivery. One reader instance per tmux pane lives for the pane's full lifetime — mirror toggling never restarts it
+- Manages a per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`) for raw byte delivery. One reader instance per tmux pane lives for the pane's full lifetime — mirror toggling never restarts it
 - Reads raw PTY bytes via `pipe-pane -O` piped through the FIFO
 - Filters only tmux's `ESC k ... ESC \` title sequences and parses OSC 9/777/9;4/0/2/52 notification, title, clipboard, and progress events
 - Uses AsyncStream + single consumer task for strict FIFO ordering of data chunks
@@ -139,8 +139,8 @@ graph LR
 ```
 
 **Key Files:**
-- `ClaudeSpyServerFeature/Services/PaneStreamManager.swift`
-- `ClaudeSpyServerFeature/Services/PipePaneReader.swift`
+- `CtrlxServerFeature/Services/PaneStreamManager.swift`
+- `CtrlxServerFeature/Services/PipePaneReader.swift`
 
 Subscribers share a single reader. PaneStreamManager uses `TmuxControlClientManager` for commands (capture-pane, pipe-pane attach) and dimension tracking; per-pane state lives in a single `readers: [String: ReaderContext]` dictionary that records the reader, target, dimensions, subscriber set, and latest title.
 
@@ -155,7 +155,7 @@ flowchart LR
     ITV -->|onInput| TS[TmuxService.sendKeys]
 ```
 
-**Key File:** `ClaudeSpyServerFeature/Views/InteractiveTerminalView.swift`
+**Key File:** `CtrlxServerFeature/Views/InteractiveTerminalView.swift`
 
 ### 4. Remote Streaming (Mac → Server)
 
@@ -206,9 +206,9 @@ enum StreamUpdateType {
 ```
 
 **Key Files:**
-- `ClaudeSpyServerFeature/Services/TerminalStreamService.swift`
-- `ClaudeSpyServerFeature/Services/ConnectedViewerManager.swift`
-- `ClaudeSpyServerFeature/Services/DeviceConnection.swift`
+- `CtrlxServerFeature/Services/TerminalStreamService.swift`
+- `CtrlxServerFeature/Services/ConnectedViewerManager.swift`
+- `CtrlxServerFeature/Services/DeviceConnection.swift`
 
 ### 5. External Relay Server
 
@@ -261,9 +261,9 @@ graph TB
 5. Server cannot decrypt—true end-to-end encryption
 
 **Key Files:**
-- `ClaudeSpyExternalServer/Routes/WebSocketController.swift`
-- `ClaudeSpyExternalServer/Services/RelayService.swift`
-- `ClaudeSpyExternalServer/Services/ConnectionHub.swift`
+- `CtrlxExternalServer/Routes/WebSocketController.swift`
+- `CtrlxExternalServer/Services/RelayService.swift`
+- `CtrlxExternalServer/Services/ConnectionHub.swift`
 
 ### 6. iOS Reception
 
@@ -282,7 +282,7 @@ sequenceDiagram
     RC->>SC: onTerminalStream(message)
 ```
 
-**Key File:** `ClaudeSpyFeature/Services/RelayClient.swift`
+**Key File:** `CtrlxFeature/Services/RelayClient.swift`
 
 ### 7. iOS Display
 
@@ -308,8 +308,8 @@ flowchart LR
 ```
 
 **Key Files:**
-- `ClaudeSpyFeature/Views/LiveTerminalView.swift`
-- `ClaudeSpyFeature/Views/TerminalStreamContainerView.swift`
+- `CtrlxFeature/Views/LiveTerminalView.swift`
+- `CtrlxFeature/Views/TerminalStreamContainerView.swift`
 
 ### 8. Connection Liveness & Reconnection
 
@@ -443,7 +443,7 @@ sequenceDiagram
 | Decision | Rationale |
 |----------|-----------|
 | **Hybrid: control mode + pipe-pane** | Control mode for commands/events, pipe-pane for raw PTY bytes. Eliminates octal unescaping, UTF-8 reconstruction, and line-boundary splitting that caused rendering artifacts |
-| **FIFO-based pipe-pane delivery** | Per-pane FIFO (`/tmp/claudespy-pipe-<id>.fifo`) avoids spawning a persistent subprocess; tmux's `cat > fifo` blocks until reader connects |
+| **FIFO-based pipe-pane delivery** | Per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`) avoids spawning a persistent subprocess; tmux's `cat > fifo` blocks until reader connects |
 | **AsyncStream ordering** | Single consumer task per data source (PipePaneReader, TmuxControlClient, TerminalStreamService) prevents reordering that occurs with unstructured `Task {}` per callback |
 | **One persistent reader per pane** | PipePaneReader is created at pane discovery and lives until the pane is removed. Mirror toggling switches its delivery mode (`scanOnly`/`buffering`/`live`) instead of detaching/reattaching `pipe-pane`, eliminating the FIFO swap window where bytes could be lost. All event wiring lives on a single `PipePaneReaderDelegate` so missing a handler is a compile error |
 | **Buffering during initial capture** | PipePaneReader queues raw bytes during the `capture-pane` snapshot, then `flushBuffer()` drains the queue to the delegate in order before switching to live mode — eliminates the gap between capture and live stream |

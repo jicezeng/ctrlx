@@ -1,10 +1,10 @@
-# ClaudeSpy Distributed Architecture Plan
+# Ctrlx Distributed Architecture Plan
 
 ## Current Status (Updated: January 2026)
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 1: Shared Models | ✅ **COMPLETE** | Implemented as `ClaudeSpyNetworking` module (not ClaudeSpyCommon) |
+| Phase 1: Shared Models | ✅ **COMPLETE** | Implemented as `CtrlxNetworking` module (not CtrlxCommon) |
 | Phase 2: External Server | ✅ **COMPLETE** | Full Vapor relay server with pairing, WebSocket, Docker |
 | Docker & Deployment | ✅ **COMPLETE** | Deployed to Hetzner with Caddy reverse proxy |
 | Phase 3: Mac App Updates | ✅ **COMPLETE** | ExternalServerClient, PairingManager, TmuxCommandExecutor, UI |
@@ -14,7 +14,7 @@
 
 ## Overview
 
-Transform ClaudeSpy from a standalone Mac app into a distributed system with three components:
+Transform Ctrlx from a standalone Mac app into a distributed system with three components:
 1. **Mac App** - Receives coding-agent hooks (Claude Code and Codex CLI, behind a shared `CodingAgent` abstraction), forwards to external server, receives commands
 2. **External Server** - Vapor-based relay server, handles device pairing, runs in Docker
 3. **iOS App** - Monitors sessions remotely, sends commands back to Mac
@@ -34,7 +34,7 @@ Transform ClaudeSpy from a standalone Mac app into a distributed system with thr
          ▼                   │   │  WebSocket   │   │                  │
 ┌──────────────────┐         │   │    Hub       │   │         ┌────────┴─────────┐
 │     Mac App      │◄──WS───►│   └──────────────┘   │◄───WS──►│  WebSocket       │
-│  (ClaudeSpy)     │         │   ┌──────────────┐   │         │  Client          │
+│  (Ctrlx)     │         │   ┌──────────────┐   │         │  Client          │
 │                  │         │   │   Session    │   │         │                  │
 │ ┌──────────────┐ │         │   │   State      │   │         │ ┌──────────────┐ │
 │ │ Hook Server  │ │         │   └──────────────┘   │         │ │ Pairing UI   │ │
@@ -85,16 +85,16 @@ Transform ClaudeSpy from a standalone Mac app into a distributed system with thr
 
 ## Phase 1: Shared Models & Infrastructure ✅ COMPLETE
 
-> **Implementation Note:** Networking models were implemented in a dedicated `ClaudeSpyNetworking` module rather than extending `ClaudeSpyCommon`. This provides better separation of concerns and allows the networking models to be used by the Linux-based external server without pulling in macOS/iOS-specific dependencies.
+> **Implementation Note:** Networking models were implemented in a dedicated `CtrlxNetworking` module rather than extending `CtrlxCommon`. This provides better separation of concerns and allows the networking models to be used by the Linux-based external server without pulling in macOS/iOS-specific dependencies.
 
-### 1.1 ClaudeSpyNetworking Module
+### 1.1 CtrlxNetworking Module
 
-**Actual location:** `Sources/ClaudeSpyNetworking/Models/`
+**Actual location:** `Sources/CtrlxNetworking/Models/`
 
 The networking module contains all shared message types for Mac ↔ Server ↔ iOS communication:
 
 ```
-Sources/ClaudeSpyNetworking/
+Sources/CtrlxNetworking/
 ├── Models/
 │   ├── WebSocketMessage.swift   # 16+ message types with JSON serialization
 │   ├── PairingModels.swift      # Pairing flow models
@@ -119,13 +119,13 @@ All types implement `Sendable` for Swift 6 strict concurrency.
 ### 1.2 Package.swift Updates
 
 **Current module structure:**
-- `ClaudeSpyCommon` - Shared UI utilities (SF Symbols, extensions)
-- `ClaudeSpyNetworking` - **Platform-agnostic networking models** (NEW)
-- `ClaudeSpyFeature` - iOS feature module (placeholder)
-- `ClaudeSpyServerFeature` - macOS server feature
-- `ClaudeSpyExternalServer` - Linux-ready relay server executable
+- `CtrlxCommon` - Shared UI utilities (SF Symbols, extensions)
+- `CtrlxNetworking` - **Platform-agnostic networking models** (NEW)
+- `CtrlxFeature` - iOS feature module (placeholder)
+- `CtrlxServerFeature` - macOS server feature
+- `CtrlxExternalServer` - Linux-ready relay server executable
 
-The external server depends on `ClaudeSpyNetworking` (not `ClaudeSpyCommon`) to avoid pulling macOS/iOS dependencies into the Linux build.
+The external server depends on `CtrlxNetworking` (not `CtrlxCommon`) to avoid pulling macOS/iOS dependencies into the Linux build.
 
 ---
 
@@ -134,7 +134,7 @@ The external server depends on `ClaudeSpyNetworking` (not `ClaudeSpyCommon`) to 
 ### 2.1 Server Structure (Implemented)
 
 ```
-Sources/ClaudeSpyExternalServer/
+Sources/CtrlxExternalServer/
 ├── main.swift                    # Vapor async/await entry point
 ├── configure.swift               # Server config, service initialization
 ├── Routes/
@@ -235,7 +235,7 @@ The external server is deployed to **Hetzner** with:
 
 ## Phase 3: Mac App Updates ✅ COMPLETE
 
-> **Implementation:** All components have been implemented in `ClaudeSpyServerFeature`.
+> **Implementation:** All components have been implemented in `CtrlxServerFeature`.
 
 ### 3.1 New Components (Implemented)
 
@@ -327,10 +327,10 @@ var autoConnectToServer: Bool = true
 
 ### 4.1 App Structure (Implemented)
 
-The `ClaudeSpyFeature` module contains all iOS-specific code:
+The `CtrlxFeature` module contains all iOS-specific code:
 
 ```
-Sources/ClaudeSpyFeature/
+Sources/CtrlxFeature/
 ├── Services/
 │   ├── RelayClient.swift         # WebSocket client with reconnection, state management
 │   └── SessionStore.swift        # Observable session state, event handling
@@ -344,7 +344,7 @@ Sources/ClaudeSpyFeature/
     └── IOSSettings.swift         # UserDefaults-backed settings
 ```
 
-The iOS app entry point lives in `ClaudeSpy/ClaudeSpyApp.swift`, which imports `ClaudeSpyFeature`.
+The iOS app entry point lives in `Ctrlx/CtrlxApp.swift`, which imports `CtrlxFeature`.
 
 ### 4.2 Core Views
 
@@ -433,9 +433,9 @@ final class SessionStore {
 ## Implementation Order
 
 ### Week 1: Foundation ✅ COMPLETE
-- [x] Add networking message types (created `ClaudeSpyNetworking` module)
-- [x] Update Package.swift with `ClaudeSpyExternalServer` executable target
-- [x] Create `ClaudeSpyExternalServer` target skeleton
+- [x] Add networking message types (created `CtrlxNetworking` module)
+- [x] Update Package.swift with `CtrlxExternalServer` executable target
+- [x] Create `CtrlxExternalServer` target skeleton
 - [x] Implement basic Vapor app with health endpoint
 
 ### Week 2: External Server Core ✅ COMPLETE
@@ -455,8 +455,8 @@ final class SessionStore {
 - [x] Test Mac ↔ Server communication (builds and passes tests)
 
 ### Week 4: iOS App ✅ COMPLETE
-- [x] Implement RelayClient in `ClaudeSpyFeature`
-- [x] Implement SessionStore in `ClaudeSpyFeature`
+- [x] Implement RelayClient in `CtrlxFeature`
+- [x] Implement SessionStore in `CtrlxFeature`
 - [x] Replace placeholder ContentView with real implementation
 - [x] Create PairingView
 - [x] Create SessionListView and SessionDetailView

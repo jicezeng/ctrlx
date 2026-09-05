@@ -33,8 +33,8 @@
 
 - `swift test --quiet`：1639 tests / 232 suites 全部通过（45.638s）。
 - 65,536-byte live output 聚焦测试确认拆为 8 个 8,192-byte `dataChunk`。
-- macOS `ClaudeSpyServer` Release（arm64、ad-hoc 签名）构建通过。
-- iOS `ClaudeSpy` Debug generic-device 构建通过。
+- macOS `CtrlxServer` Release（arm64、ad-hoc 签名）构建通过。
+- iOS `Ctrlx` Debug generic-device 构建通过。
 - Swift 6.3 Jammy/Linux Release Relay 构建通过；容器 `/health` 返回 `{"status":"ok"}`。
 - Relay 原始 frame、非法密文、snapshot wire round-trip、队列高水位和 feed 合并测试通过。
 - `~/.config/gallager/server/.env.local` 中 `GALLAGER_SOURCE_DIR` 已指向主仓库；文件权限保持 `600`。

@@ -22,7 +22,7 @@ Make the host the source of truth for the iOS app badge:
 
 ### Networking model — `EncryptedPushPayload`
 
-`ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/PushModels.swift`. Add two unencrypted fields:
+`CtrlxPackage/Sources/CtrlxNetworking/Models/PushModels.swift`. Add two unencrypted fields:
 
 ```swift
 public struct EncryptedPushPayload: Codable, Sendable, Equatable {
@@ -49,7 +49,7 @@ Defaults keep existing call sites working (they'll opt in to passing `badge`). T
 
 ### Server — `APNsService`
 
-`ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/APNsService.swift`.
+`CtrlxPackage/Sources/CtrlxExternalServerLib/Services/APNsService.swift`.
 
 `sendEncryptedNotificationIfNeeded(payload:pairId:)` branches on `payload.silent`:
 
@@ -60,12 +60,12 @@ Both paths still skip the send when `connectionHub.isViewerConnected(pairId:)` i
 
 ### Host — `ConnectedViewerManager` & `ConnectedViewer`
 
-`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/ConnectedViewerManager.swift`:
+`CtrlxPackage/Sources/CtrlxServerFeature/Services/ConnectedViewerManager.swift`:
 
 - Add a callback: `var pendingSessionCountProvider: (@Sendable () async -> Int)?`. `AppCoordinator.setupConnectedViewerManager` wires it to `{ winManager.pendingSessionCount }`.
 - New method: `func broadcastBadgeUpdate(badge: Int) async` — for every connected viewer, calls the new `ConnectedViewer.sendBadgeUpdate(badge:)`.
 
-`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/ConnectedViewer.swift`:
+`CtrlxPackage/Sources/CtrlxServerFeature/Services/ConnectedViewer.swift`:
 
 - `sendEncryptedPushNotification(for:)` — read the badge from the new provider and pass it through:
 
@@ -90,7 +90,7 @@ Both paths still skip the send when `connectionHub.isViewerConnected(pairId:)` i
 
 ### Host — triggering the silent push
 
-`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` around line 1080 (`markHandled` command handler):
+`CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` around line 1080 (`markHandled` command handler):
 
 ```swift
 if case .markHandled = command.command {
@@ -104,7 +104,7 @@ if case .markHandled = command.command {
 }
 ```
 
-`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift` `markSelectedSessionsHandledIfActive` — when `stateChanged` is true after marking the local window's sessions, broadcast the new count alongside the existing `pushSessionStateToAll`.
+`CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift` `markSelectedSessionsHandledIfActive` — when `stateChanged` is true after marking the local window's sessions, broadcast the new count alongside the existing `pushSessionStateToAll`.
 
 ### iOS
 

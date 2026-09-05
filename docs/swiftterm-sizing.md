@@ -1,6 +1,6 @@
 # SwiftTerm Terminal Sizing Analysis
 
-This document details how SwiftTerm calculates terminal cell dimensions, view sizing, and internal padding. Understanding these calculations is critical for properly sizing mirror windows in ClaudeSpy.
+This document details how SwiftTerm calculates terminal cell dimensions, view sizing, and internal padding. Understanding these calculations is critical for properly sizing mirror windows in Ctrlx.
 
 > **SwiftTerm Version**: Commit [`6b61f16`](https://github.com/jicezeng/SwiftTerm/tree/6b61f169f1edb31d0beb14b2df5847e757737c12)
 
@@ -37,11 +37,11 @@ func computeFontDimensions() -> CellDimension {
 
 Both values are clamped to a minimum of 1 pixel.
 
-### ClaudeSpy Implementation
+### Ctrlx Implementation
 
 Our `FontMetrics.calculateCellSize()` exactly mirrors this calculation:
 
-**File**: [`ClaudeSpyPackage/Sources/ClaudeSpyCommon/Utilities/FontMetrics.swift`](../ClaudeSpyPackage/Sources/ClaudeSpyCommon/Utilities/FontMetrics.swift)
+**File**: [`CtrlxPackage/Sources/CtrlxCommon/Utilities/FontMetrics.swift`](../CtrlxPackage/Sources/CtrlxCommon/Utilities/FontMetrics.swift)
 
 ## Terminal View Sizing
 
@@ -108,15 +108,15 @@ func setupScroller() {
 SwiftTerm currently defaults to an overlay scroller. Its configured width is still
 included in `getOptimalFrameSize()` while the scroller is visible.
 
-## Why ClaudeSpy Needs a Horizontal Buffer
+## Why Ctrlx Needs a Horizontal Buffer
 
-ClaudeSpy wraps `TerminalView` inside its own `NSScrollView` with overlay scrollers (which don't consume space). However, **SwiftTerm still reserves space for its internal scroller**.
+Ctrlx wraps `TerminalView` inside its own `NSScrollView` with overlay scrollers (which don't consume space). However, **SwiftTerm still reserves space for its internal scroller**.
 
 This creates a mismatch:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│ ClaudeSpy NSScrollView (overlay scrollers)      │
+│ Ctrlx NSScrollView (overlay scrollers)      │
 │ ┌─────────────────────────────────────────────┐ │
 │ │ SwiftTerm TerminalView                      │ │
 │ │ ┌───────────────────────────────────┬─────┐ │ │
@@ -133,14 +133,14 @@ Without compensation, approximately **2 characters** get clipped on the right ed
 
 We add a **20px horizontal buffer** to both the terminal frame and window content size:
 
-**Terminal frame**: [`TerminalContainerView.swift` (lines 132-135)](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TerminalContainerView.swift#L132-L135)
+**Terminal frame**: [`TerminalContainerView.swift` (lines 132-135)](../CtrlxPackage/Sources/CtrlxServerFeature/Views/TerminalContainerView.swift#L132-L135)
 
 ```swift
 let horizontalBuffer: CGFloat = 20
 let width = CGFloat(columns) * cellSize.width + horizontalBuffer
 ```
 
-**Window size**: [`MirrorWindowManager.swift` (lines 45-48)](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift#L45-L48)
+**Window size**: [`MirrorWindowManager.swift` (lines 45-48)](../CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift#L45-L48)
 
 ```swift
 let horizontalBuffer: CGFloat = 20
@@ -178,9 +178,9 @@ Remove our NSScrollView wrapper and let SwiftTerm manage its own scrolling entir
 
 ## Feasibility Analysis: Removing the NSScrollView Wrapper
 
-We investigated whether ClaudeSpy could remove its `NSScrollView` wrapper and use SwiftTerm's native scrolling directly. This would potentially eliminate the horizontal buffer hack entirely.
+We investigated whether Ctrlx could remove its `NSScrollView` wrapper and use SwiftTerm's native scrolling directly. This would potentially eliminate the horizontal buffer hack entirely.
 
-### Current ClaudeSpy Architecture
+### Current Ctrlx Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -206,7 +206,7 @@ We investigated whether ClaudeSpy could remove its `NSScrollView` wrapper and us
 
 ### Why the Wrapper Exists
 
-1. **Top Alignment**: SwiftTerm renders content bottom-up (standard AppKit). ClaudeSpy needs top-alignment.
+1. **Top Alignment**: SwiftTerm renders content bottom-up (standard AppKit). Ctrlx needs top-alignment.
 2. **Overlay Scrollers**: Our NSScrollView uses overlay style (don't consume space).
 3. **Fixed Sizing**: Precise control over terminal dimensions matching tmux pane.
 
@@ -296,8 +296,8 @@ The window adds **110px vertical padding** for:
 - [MacTerminalView.swift](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/Mac/MacTerminalView.swift) - macOS-specific implementation
 - [iOSTerminalView.swift](https://github.com/jicezeng/SwiftTerm/blob/6b61f169f1edb31d0beb14b2df5847e757737c12/Sources/SwiftTerm/iOS/iOSTerminalView.swift) - iOS implementation (for comparison)
 
-### ClaudeSpy Source Files
+### Ctrlx Source Files
 
-- [FontMetrics.swift](../ClaudeSpyPackage/Sources/ClaudeSpyCommon/Utilities/FontMetrics.swift) - Cell size calculation
-- [TerminalContainerView.swift](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TerminalContainerView.swift) - Terminal view wrapper
-- [MirrorWindowManager.swift](../ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift) - Window sizing logic
+- [FontMetrics.swift](../CtrlxPackage/Sources/CtrlxCommon/Utilities/FontMetrics.swift) - Cell size calculation
+- [TerminalContainerView.swift](../CtrlxPackage/Sources/CtrlxServerFeature/Views/TerminalContainerView.swift) - Terminal view wrapper
+- [MirrorWindowManager.swift](../CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift) - Window sizing logic

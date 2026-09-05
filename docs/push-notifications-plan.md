@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the implementation plan for sending push notifications from the ClaudeSpy external server to paired iOS devices. Push notifications will alert users to important coding-agent events (Claude Code or Codex CLI) when the iOS app is not actively connected via WebSocket.
+This document outlines the implementation plan for sending push notifications from the Ctrlx external server to paired iOS devices. Push notifications will alert users to important coding-agent events (Claude Code or Codex CLI) when the iOS app is not actively connected via WebSocket.
 
 > **Note (2026-05):** Notification copy is now rendered against `CodingAgent.displayName` / `shortName`, so the sample strings below that hard-code "Claude Code" should be read as templates. The shipped behavior interpolates the agent name from the event's `agent` field (`"Claude Code"` or `"Codex"`).
 
@@ -28,7 +28,7 @@ Apple now recommends **token-based authentication** (.p8 keys) over certificate-
 **Steps:**
 1. Go to [Apple Developer Keys](https://developer.apple.com/account/resources/authkeys/list)
 2. Click "+" to create a new key
-3. Name it (e.g., "ClaudeSpy Push Notifications")
+3. Name it (e.g., "Ctrlx Push Notifications")
 4. Check "Apple Push Notifications service (APNs)"
 5. Select environment: **Sandbox** for development, **Production** for release
 6. Click "Continue" then "Register"
@@ -46,7 +46,7 @@ Apple now recommends **token-based authentication** (.p8 keys) over certificate-
 #### 1.2 Enable Push Notifications for App ID
 
 1. Go to [Identifiers](https://developer.apple.com/account/resources/identifiers/list)
-2. Select your ClaudeSpy iOS app identifier
+2. Select your Ctrlx iOS app identifier
 3. Enable "Push Notifications" capability
 4. Save changes
 
@@ -54,7 +54,7 @@ Apple now recommends **token-based authentication** (.p8 keys) over certificate-
 
 #### 2.1 Add Push Notification Entitlement
 
-**File:** `Config/ClaudeSpy.entitlements`
+**File:** `Config/Ctrlx.entitlements`
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -71,7 +71,7 @@ Apple now recommends **token-based authentication** (.p8 keys) over certificate-
 
 #### 2.2 Create Push Notification Service
 
-**New file:** `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Services/PushNotificationService.swift`
+**New file:** `CtrlxPackage/Sources/CtrlxFeature/Services/PushNotificationService.swift`
 
 ```swift
 import Foundation
@@ -130,14 +130,14 @@ public final class PushNotificationService: NSObject {
 
 #### 2.3 Update App Entry Point
 
-**Modified file:** `ClaudeSpy/ClaudeSpyApp.swift`
+**Modified file:** `Ctrlx/CtrlxApp.swift`
 
 ```swift
 import SwiftUI
-import ClaudeSpyFeature
+import CtrlxFeature
 
 @main
-struct ClaudeSpyApp: App {
+struct CtrlxApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -183,7 +183,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
 #### 2.4 Update RelayClient to Send Device Token
 
-**Modified file:** `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Services/RelayClient.swift`
+**Modified file:** `CtrlxPackage/Sources/CtrlxFeature/Services/RelayClient.swift`
 
 Add a method to send the device token to the server after connection:
 
@@ -214,7 +214,7 @@ Button("Enable Notifications") {
 
 #### 3.1 Add Push Token Message Types
 
-**Modified file:** `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift`
+**Modified file:** `CtrlxPackage/Sources/CtrlxNetworking/Models/WebSocketMessage.swift`
 
 Add new message types:
 
@@ -247,7 +247,7 @@ public struct PushTokenRegisteredMessage: Codable, Sendable {
 
 #### 4.1 Add APNSwift Dependency
 
-**Modified file:** `ClaudeSpyPackage/Package.swift`
+**Modified file:** `CtrlxPackage/Package.swift`
 
 ```swift
 dependencies: [
@@ -255,11 +255,11 @@ dependencies: [
     .package(url: "https://github.com/vapor/apns.git", from: "4.0.0"),
 ],
 
-// In ClaudeSpyExternalServer target
+// In CtrlxExternalServer target
 .executableTarget(
-    name: "ClaudeSpyExternalServer",
+    name: "CtrlxExternalServer",
     dependencies: [
-        .claudeSpyNetworking,
+        .ctrlxNetworking,
         .vapor,
         .product(name: "VaporAPNS", package: "apns"),
     ]
@@ -268,7 +268,7 @@ dependencies: [
 
 #### 4.2 Create Push Token Storage
 
-**New file:** `ClaudeSpyPackage/Sources/ClaudeSpyExternalServer/Services/PushTokenStore.swift`
+**New file:** `CtrlxPackage/Sources/CtrlxExternalServer/Services/PushTokenStore.swift`
 
 ```swift
 import Foundation
@@ -342,12 +342,12 @@ actor PushTokenStore {
 
 #### 4.3 Create APNs Notification Service
 
-**New file:** `ClaudeSpyPackage/Sources/ClaudeSpyExternalServer/Services/APNsService.swift`
+**New file:** `CtrlxPackage/Sources/CtrlxExternalServer/Services/APNsService.swift`
 
 ```swift
 import APNS
 import APNSCore
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 import Logging
 import VaporAPNS
@@ -371,7 +371,7 @@ actor APNsService {
     ) async {
         self.pushTokenStore = pushTokenStore
         self.connectionHub = connectionHub
-        self.bundleId = bundleId ?? ProcessInfo.processInfo.environment["APNS_BUNDLE_ID"] ?? "com.yourcompany.ClaudeSpy"
+        self.bundleId = bundleId ?? ProcessInfo.processInfo.environment["APNS_BUNDLE_ID"] ?? "com.yourcompany.Ctrlx"
 
         // Get config from environment or parameters
         let resolvedKeyPath = keyPath ?? ProcessInfo.processInfo.environment["APNS_KEY_PATH"]
@@ -493,7 +493,7 @@ struct EmptyPayload: Codable, Sendable {}
 
 #### 4.4 Update RelayService to Trigger Push Notifications
 
-**Modified file:** `ClaudeSpyPackage/Sources/ClaudeSpyExternalServer/Services/RelayService.swift`
+**Modified file:** `CtrlxPackage/Sources/CtrlxExternalServer/Services/RelayService.swift`
 
 Add APNs integration:
 
@@ -535,7 +535,7 @@ actor RelayService {
 
 #### 4.5 Update Configuration
 
-**Modified file:** `ClaudeSpyPackage/Sources/ClaudeSpyExternalServer/configure.swift`
+**Modified file:** `CtrlxPackage/Sources/CtrlxExternalServer/configure.swift`
 
 Initialize APNs service:
 
@@ -583,7 +583,7 @@ services:
       - APNS_KEY_PATH=/secrets/AuthKey.p8
       - APNS_KEY_ID=XXXXXXXXXX
       - APNS_TEAM_ID=YYYYYYYYYY
-      - APNS_BUNDLE_ID=com.yourcompany.ClaudeSpy
+      - APNS_BUNDLE_ID=com.yourcompany.Ctrlx
       - APNS_ENVIRONMENT=production  # or sandbox
     volumes:
       - ./data:/data
@@ -639,7 +639,7 @@ notification, without opening the app:
   local storage; the final answer submits the whole set. Questions with any
   multi-select stay plain tap-to-open (buttons can't express multi-select).
 
-**How it flows** (all types in `ClaudeSpyNetworking/Models/NotificationActionModels.swift`):
+**How it flows** (all types in `CtrlxNetworking/Models/NotificationActionModels.swift`):
 
 1. The Mac's `PluginEventDispatcher` passes the event's `AgentState` to the
    notification sink; for `awaitingPermission` / `awaitingReplies` the
@@ -742,7 +742,7 @@ Common APNs errors to handle:
 
 ## Summary
 
-This plan implements push notifications for ClaudeSpy with:
+This plan implements push notifications for Ctrlx with:
 - **Minimal iOS changes**: Just register for notifications and send token to server
 - **Server-side intelligence**: Decide when to send pushes based on iOS connection state
 - **Event-based notifications**: Only important events trigger pushes

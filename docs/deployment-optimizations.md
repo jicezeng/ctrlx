@@ -40,9 +40,9 @@ This ensures dependency resolution (~3 minutes) is cached for code-only changes.
 # syntax=docker/dockerfile:1.4
 
 RUN --mount=type=cache,target=/build/.build \
-    swift build -c release --product ClaudeSpyExternalServer \
+    swift build -c release --product CtrlxExternalServer \
     -Xswiftc -cross-module-optimization && \
-    cp .build/release/ClaudeSpyExternalServer /tmp/
+    cp .build/release/CtrlxExternalServer /tmp/
 ```
 
 ~~Enable with: `DOCKER_BUILDKIT=1 docker compose build`~~
@@ -60,18 +60,18 @@ Create a separate base image with pre-resolved and pre-compiled dependencies:
 FROM swift:6.0-jammy AS deps
 WORKDIR /build
 COPY Package.swift Package.resolved ./
-RUN mkdir -p Sources/ClaudeSpyNetworking Sources/ClaudeSpyExternalServer && \
-    echo 'public struct Placeholder {}' > Sources/ClaudeSpyNetworking/Placeholder.swift && \
-    echo '@main struct Main { static func main() {} }' > Sources/ClaudeSpyExternalServer/main.swift
+RUN mkdir -p Sources/CtrlxNetworking Sources/CtrlxExternalServer && \
+    echo 'public struct Placeholder {}' > Sources/CtrlxNetworking/Placeholder.swift && \
+    echo '@main struct Main { static func main() {} }' > Sources/CtrlxExternalServer/main.swift
 RUN swift build -c release 2>/dev/null || true
 ```
 
 Push to a registry and use as base:
 
 ```dockerfile
-FROM your-registry/claudespy-deps:latest AS builder
+FROM your-registry/ctrlx-deps:latest AS builder
 COPY Sources ./Sources
-RUN swift build -c release --product ClaudeSpyExternalServer
+RUN swift build -c release --product CtrlxExternalServer
 ```
 
 **Expected improvement:** Code-only deployments could drop to ~1-2 minutes.
@@ -95,8 +95,8 @@ Use a remote Docker build cache (e.g., registry cache or S3):
 
 ```bash
 docker buildx build \
-    --cache-from type=registry,ref=your-registry/claudespy:cache \
-    --cache-to type=registry,ref=your-registry/claudespy:cache,mode=max \
+    --cache-from type=registry,ref=your-registry/ctrlx:cache \
+    --cache-to type=registry,ref=your-registry/ctrlx:cache,mode=max \
     .
 ```
 
@@ -111,8 +111,8 @@ FROM swift:6.0-jammy AS deps
 # ... resolve dependencies
 
 FROM deps AS build-server
-COPY Sources/ClaudeSpyExternalServer ./Sources/ClaudeSpyExternalServer
-RUN swift build -c release --product ClaudeSpyExternalServer
+COPY Sources/CtrlxExternalServer ./Sources/CtrlxExternalServer
+RUN swift build -c release --product CtrlxExternalServer
 
 FROM deps AS build-other
 COPY Sources/OtherTarget ./Sources/OtherTarget
@@ -134,7 +134,7 @@ Consider conditional compilation or separate packages for server-only builds.
 Build a fully static binary to use a smaller runtime image:
 
 ```dockerfile
-RUN swift build -c release --product ClaudeSpyExternalServer \
+RUN swift build -c release --product CtrlxExternalServer \
     --static-swift-stdlib \
     -Xswiftc -cross-module-optimization
 

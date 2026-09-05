@@ -1,0 +1,81 @@
+import Foundation
+
+/// First E2E scenario: Fresh device pairing flow
+public enum FreshPairingScenario {
+    public static let scenario = CtrlxE2ELib.scenario(
+        "Fresh Pairing",
+        tags: ["pairing", "smoke"]
+    ) {
+        // 1. Clean up any previous state
+        TestStep.uninstallIOSApp
+        TestStep.terminateMacApp()
+
+        // 2. Start server on localhost
+        TestStep.startServer
+        TestStep.verifyServerHealth
+
+        // 3. Launch macOS app (must be fresh launch for --e2e-test args to take effect)
+        TestStep.launchMacApp()
+
+        // 4. Launch iOS in simulator
+        TestStep.launchIOSApp()
+        TestStep.iosWaitForElement(.labelContains("pairing code"), timeout: 15)
+        // Clear clipboard so the SwiftUI PasteButton is in a deterministic
+        // disabled state — otherwise baselines depend on whatever happens to
+        // be on the simulator's pasteboard from a prior run.
+        TestStep.iosClearClipboard
+        TestStep.iosScreenshot(label: "ios-pairing-view")
+
+        // 5. Generate pairing code on macOS
+        TestStep.macOpenSettings()
+        TestStep.macWaitForWindow(titled: "General", timeout: 5)
+        TestStep.macSelectSettingsTab("Remote Access")
+        TestStep.wait(seconds: 1)
+        TestStep.macClickButton(titled: "Generate Pairing Code")
+        TestStep.wait(seconds: 1)
+        TestStep.macClickButton(titled: "Copy Code")
+        TestStep.wait(seconds: 0.5)
+        TestStep.macReadClipboard(storeAs: "pairingCode")
+        TestStep.macScreenshot(label: "mac-code-generated", tolerance: 5)
+
+        // 6. Enter code on iOS
+        TestStep.iosType(text: "${pairingCode}")
+
+        // 7. Verify iOS transitioned to main view and connected
+        TestStep.iosWaitForElement(.labelContains("Sessions"), timeout: 15)
+        TestStep.iosWaitForElement(.label("Connected"), timeout: 15)
+        TestStep.iosScreenshot(label: "ios-paired")
+
+        // 8. Verify server state
+        TestStep.verifyServerHasPairings(count: 1)
+
+        // 9. Wait for both host and viewer to connect to relay server.
+        //    "Viewer connected" pins `isViewerConnected` (it matches the
+        //    viewer row's status text or the "1 viewer connected" subtitle —
+        //    both require the flag), but NOT the connection state: the flag
+        //    is set by the viewer's peerHello, which can be processed while
+        //    the headline still shows "Connecting..." (registration ack not
+        //    yet handled), and CI has captured that frame. The Disconnect
+        //    button only renders once the combined state is `.connected`
+        //    (exact AXDescription "Disconnect"; the transient "Connecting..."
+        //    and "Disconnected" texts live in AXValue, so nothing shadows
+        //    the exact label match). Together they pin the steady frame the
+        //    screenshot expects.
+        TestStep.waitForHostConnected(timeout: 15)
+        TestStep.waitForViewerConnected(timeout: 15)
+        TestStep.macWaitForElement(titled: "Viewer connected", timeout: 15)
+        TestStep.macWaitForElementQuery(
+            .allOf([.role("AXButton"), .label("Disconnect")]),
+            timeout: 15
+        )
+
+        // 10. The Paired Viewers cell on Remote Access should now show the
+        //     iOS device's actual name (UIDevice.current.name on the
+        //     simulator contains "iPhone") instead of the old "Viewer"
+        //     placeholder. This guards the rename feature on the default
+        //     pairing path; RenameViewerDeviceScenario covers the custom
+        //     rename round-trip.
+        TestStep.macWaitForElement(titled: "iPhone", timeout: 15)
+        TestStep.macScreenshot(label: "mac-connected", tolerance: 5)
+    }
+}

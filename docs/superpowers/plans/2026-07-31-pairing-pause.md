@@ -15,7 +15,7 @@
 - Env var name: `PAIRING_PAUSED_MESSAGE`. Absent, empty, or whitespace-only (after `.whitespacesAndNewlines` trim) → feature fully OFF, zero behavior change. Set → the trimmed value is the exact user-facing message.
 - Error code constant: `PAIRING_PAUSED` (as `ErrorMessage.pairingPausedCode`).
 - Gate scope: `POST /api/pairing/register` ONLY. `complete`, `status`, `delete`, and all WebSocket traffic must be untouched.
-- Prometheus counter name: `claudespy_paused_pairing_attempts_total`.
+- Prometheus counter name: `ctrlx_paused_pairing_attempts_total`.
 - NEVER `setenv` in tests — inject config via `configure(app, env: [...])` (see `EnvSerializedSuites.swift` doc comment for why).
 - All server test suites that boot a full Vapor app must be nested under `EnvSerializedSuites` (via `extension EnvSerializedSuites { @Suite(..., .serialized) ... }`).
 - Build/test via the XcodeBuildTools `swift-package` skill, never raw `swift test` typed without it. The commands below show the exact invocation the skill should run, from the repo root.
@@ -26,8 +26,8 @@
 ### Task 1: `pausedPairingAttemptsTotal` counter in MetricsService
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift`
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
@@ -35,7 +35,7 @@
 
 - [ ] **Step 1: Write the failing test**
 
-Append inside `struct MetricsServiceTests` in `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift` (after the `licensingCounters` test):
+Append inside `struct MetricsServiceTests` in `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift` (after the `licensingCounters` test):
 
 ```swift
     @Test("incrementPausedPairingAttempts increments by one and renders")
@@ -52,19 +52,19 @@ Append inside `struct MetricsServiceTests` in `ClaudeSpyPackage/Tests/ClaudeSpyE
             uptimeSeconds: 0
         )
         let output = await service.render(snapshot: snapshot, buildVersion: "1.0-test")
-        #expect(output.contains("claudespy_paused_pairing_attempts_total 2"))
-        #expect(output.contains("# TYPE claudespy_paused_pairing_attempts_total counter"))
+        #expect(output.contains("ctrlx_paused_pairing_attempts_total 2"))
+        #expect(output.contains("# TYPE ctrlx_paused_pairing_attempts_total counter"))
     }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter MetricsServiceTests`
+Run: `swift test --package-path CtrlxPackage --filter MetricsServiceTests`
 Expected: compile FAILURE — `value of type 'MetricsService' has no member 'incrementPausedPairingAttempts'` (a compile error is this step's "failing test").
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift`:
+In `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift`:
 
 Add the property after `private(set) var blockedHostAttemptsTotal = 0` (line 21):
 
@@ -80,23 +80,23 @@ Add the method after `incrementBlockedHostAttempts()` (lines 47–49):
     }
 ```
 
-In `render(snapshot:buildVersion:)`, add after the `claudespy_blocked_host_attempts_total` lines (lines 79–81):
+In `render(snapshot:buildVersion:)`, add after the `ctrlx_blocked_host_attempts_total` lines (lines 79–81):
 
 ```swift
-        lines.append("# HELP claudespy_paused_pairing_attempts_total Pairing registrations refused by the pairing-pause switch.")
-        lines.append("# TYPE claudespy_paused_pairing_attempts_total counter")
-        lines.append("claudespy_paused_pairing_attempts_total \(pausedPairingAttemptsTotal)")
+        lines.append("# HELP ctrlx_paused_pairing_attempts_total Pairing registrations refused by the pairing-pause switch.")
+        lines.append("# TYPE ctrlx_paused_pairing_attempts_total counter")
+        lines.append("ctrlx_paused_pairing_attempts_total \(pausedPairingAttemptsTotal)")
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter MetricsServiceTests`
+Run: `swift test --package-path CtrlxPackage --filter MetricsServiceTests`
 Expected: PASS (all MetricsServiceTests, including the new one).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift
 git commit -m "Add paused-pairing-attempts counter to relay metrics"
 ```
 
@@ -105,8 +105,8 @@ git commit -m "Add paused-pairing-attempts counter to relay metrics"
 ### Task 2: Read `PAIRING_PAUSED_MESSAGE` into app storage at boot
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift`
-- Create: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/PairingPauseTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift`
+- Create: `CtrlxPackage/Tests/CtrlxExternalServerTests/PairingPauseTests.swift`
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
@@ -114,14 +114,14 @@ git commit -m "Add paused-pairing-attempts counter to relay metrics"
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/PairingPauseTests.swift`. The suite is nested under `EnvSerializedSuites` (defined in `EnvSerializedSuites.swift` in the same directory) because it boots full Vapor apps. `withApp` comes from `VaporTesting`. The helper injects a temp `DATA_DIRECTORY` so no state files land in a shared location (mirrors `LicenseEndpointTests.withDisabledLicensingApp`).
+Create `CtrlxPackage/Tests/CtrlxExternalServerTests/PairingPauseTests.swift`. The suite is nested under `EnvSerializedSuites` (defined in `EnvSerializedSuites.swift` in the same directory) because it boots full Vapor apps. `withApp` comes from `VaporTesting`. The helper injects a temp `DATA_DIRECTORY` so no state files land in a shared location (mirrors `LicenseEndpointTests.withDisabledLicensingApp`).
 
 ```swift
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 import Testing
 import VaporTesting
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 /// Tests for the PAIRING_PAUSED_MESSAGE maintenance switch (spec:
 /// docs/superpowers/specs/2026-07-31-pairing-pause-design.md).
@@ -139,7 +139,7 @@ extension EnvSerializedSuites {
             _ test: (Application) async throws -> Void
         ) async throws {
             let tempDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("claudespy-pairing-pause-tests-\(UUID().uuidString)")
+                .appendingPathComponent("ctrlx-pairing-pause-tests-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempDir) }
             var env = extraEnv
@@ -175,12 +175,12 @@ extension EnvSerializedSuites {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter PairingPauseTests`
+Run: `swift test --package-path CtrlxPackage --filter PairingPauseTests`
 Expected: compile FAILURE — `value of type 'Application' has no member 'pairingPausedMessage'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift`:
+In `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift`:
 
 Insert after the `minClientVersionGate` block (after line 68, before the `APNS_ENVIRONMENT` comment):
 
@@ -219,13 +219,13 @@ Add the accessor in the internal `extension Application` block, after the `minCl
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter PairingPauseTests`
+Run: `swift test --package-path CtrlxPackage --filter PairingPauseTests`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/PairingPauseTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift CtrlxPackage/Tests/CtrlxExternalServerTests/PairingPauseTests.swift
 git commit -m "Read PAIRING_PAUSED_MESSAGE into relay app storage at boot"
 ```
 
@@ -234,17 +234,17 @@ git commit -m "Read PAIRING_PAUSED_MESSAGE into relay app storage at boot"
 ### Task 3: Pause gate in `registerPairingCode` + shared error code
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/PairingPauseTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxNetworking/Models/WebSocketMessage.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/PairingPauseTests.swift`
 
 **Interfaces:**
 - Consumes: `Application.pairingPausedMessage: String?` (Task 2), `MetricsService.incrementPausedPairingAttempts()` / `pausedPairingAttemptsTotal` (Task 1).
-- Produces: `ErrorMessage.pairingPausedCode` (`public static let`, value `"PAIRING_PAUSED"`) in `ClaudeSpyNetworking` — a shared wire constant; clients never branch on it (they render unknown codes' messages verbatim, which is the whole point).
+- Produces: `ErrorMessage.pairingPausedCode` (`public static let`, value `"PAIRING_PAUSED"`) in `CtrlxNetworking` — a shared wire constant; clients never branch on it (they render unknown codes' messages verbatim, which is the whole point).
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside `struct PairingPauseTests` in `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/PairingPauseTests.swift` (after the `messageBlank` test). The `testPublicKey` constant and the `PairingRegistration`/`PairingCompletion` initializer shapes mirror `LicenseEndpointTests.swift` in the same directory.
+Append inside `struct PairingPauseTests` in `CtrlxPackage/Tests/CtrlxExternalServerTests/PairingPauseTests.swift` (after the `messageBlank` test). The `testPublicKey` constant and the `PairingRegistration`/`PairingCompletion` initializer shapes mirror `LicenseEndpointTests.swift` in the same directory.
 
 ```swift
         private static let testPublicKey = "dGVzdC1tYWMtcHVibGljLWtleS0wMTIzNDU2Nzg5MDEyMw=="
@@ -337,12 +337,12 @@ Append inside `struct PairingPauseTests` in `ClaudeSpyPackage/Tests/ClaudeSpyExt
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter PairingPauseTests`
+Run: `swift test --package-path CtrlxPackage --filter PairingPauseTests`
 Expected: compile FAILURE — `type 'ErrorMessage' has no member 'pairingPausedCode'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift`, add after the `clientTooOld(minVersion:)` factory method's closing brace (the method starting at line 175):
+In `CtrlxPackage/Sources/CtrlxNetworking/Models/WebSocketMessage.swift`, add after the `clientTooOld(minVersion:)` factory method's closing brace (the method starting at line 175):
 
 ```swift
     /// Error code returned by the relay's pairing-pause maintenance switch
@@ -352,7 +352,7 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift`,
     public static let pairingPausedCode = "PAIRING_PAUSED"
 ```
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift`, add at the very top of `registerPairingCode(req:)`, before the `req.content.decode` line (line 19) — the gate needs nothing from the body, so it runs first:
+In `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift`, add at the very top of `registerPairingCode(req:)`, before the `req.content.decode` line (line 19) — the gate needs nothing from the body, so it runs first:
 
 ```swift
         // Operator maintenance switch (PAIRING_PAUSED_MESSAGE): refuse new
@@ -370,18 +370,18 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter PairingPauseTests`
+Run: `swift test --package-path CtrlxPackage --filter PairingPauseTests`
 Expected: PASS (6 tests).
 
 - [ ] **Step 5: Run the networking tests too (shared model touched)**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyNetworkingTests`
+Run: `swift test --package-path CtrlxPackage --filter CtrlxNetworkingTests`
 Expected: PASS (the new constant is additive; nothing should break).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/PairingPauseTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/WebSocketMessage.swift CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift CtrlxPackage/Tests/CtrlxExternalServerTests/PairingPauseTests.swift
 git commit -m "Refuse new pairing registrations when PAIRING_PAUSED_MESSAGE is set"
 ```
 
@@ -390,18 +390,18 @@ git commit -m "Refuse new pairing registrations when PAIRING_PAUSED_MESSAGE is s
 ### Task 4: Operator docs, env examples, full-suite verification
 
 **Files:**
-- Modify: `ClaudeSpyPackage/.env.example`
-- Modify: `ClaudeSpyPackage/.env.staging.example`
+- Modify: `CtrlxPackage/.env.example`
+- Modify: `CtrlxPackage/.env.staging.example`
 - Modify: `docs/self-hosting.md`
 - Modify: `CLAUDE.md`
 
 **Interfaces:**
-- Consumes: the behavior shipped in Tasks 1–3 (documentation only — exact names `PAIRING_PAUSED_MESSAGE`, `PAIRING_PAUSED`, `claudespy_paused_pairing_attempts_total`).
+- Consumes: the behavior shipped in Tasks 1–3 (documentation only — exact names `PAIRING_PAUSED_MESSAGE`, `PAIRING_PAUSED`, `ctrlx_paused_pairing_attempts_total`).
 - Produces: nothing consumed by other tasks.
 
 - [ ] **Step 1: Add the `.env.example` block**
 
-In `ClaudeSpyPackage/.env.example`, insert a new section between the `MIN_CLIENT_VERSION_REJECT_UNKNOWN` block and the `MONITORING (OPTIONAL)` header (i.e. after the commented `# MIN_CLIENT_VERSION_REJECT_UNKNOWN=false` line):
+In `CtrlxPackage/.env.example`, insert a new section between the `MIN_CLIENT_VERSION_REJECT_UNKNOWN` block and the `MONITORING (OPTIONAL)` header (i.e. after the commented `# MIN_CLIENT_VERSION_REJECT_UNKNOWN=false` line):
 
 ```bash
 # ============================================================================
@@ -417,7 +417,7 @@ In `ClaudeSpyPackage/.env.example`, insert a new section between the `MIN_CLIENT
 
 - [ ] **Step 2: Add the `.env.staging.example` entry**
 
-In `ClaudeSpyPackage/.env.staging.example`, insert after the commented `# MIN_CLIENT_VERSION_REJECT_UNKNOWN=false` line (staging file keeps entries terse, matching its MIN_CLIENT_VERSION style):
+In `CtrlxPackage/.env.staging.example`, insert after the commented `# MIN_CLIENT_VERSION_REJECT_UNKNOWN=false` line (staging file keeps entries terse, matching its MIN_CLIENT_VERSION style):
 
 ```bash
 # Pairing pause (optional). Set to refuse NEW pairing registrations with this
@@ -446,7 +446,7 @@ A maintenance switch for server migrations or overload: set `PAIRING_PAUSED_MESS
 
 - Leave it unset (the default) and pairing works normally — self-hosting needs no configuration here.
 - The value is read at boot, so applying a change requires a container recreate (`docker compose up -d`).
-- Refused attempts are counted in the `claudespy_paused_pairing_attempts_total` metric.
+- Refused attempts are counted in the `ctrlx_paused_pairing_attempts_total` metric.
 - On the wire this is a normal pairing `error` response with code `PAIRING_PAUSED`; no minimum client version is required.
 ```
 
@@ -455,17 +455,17 @@ A maintenance switch for server migrations or overload: set `PAIRING_PAUSED_MESS
 In the `**Self-hosting:**` bullet of the Reference Docs list, after the sentence ending "(separate from the peer-to-peer `peerHello` version handshake, which the relay can't read). Enforced in `WebSocketController` for host+viewer connects; unknown-version (pre-reporting) clients allowed unless `rejectUnknown`." append:
 
 ```markdown
- Also documents the **pairing-pause maintenance switch**: `PAIRING_PAUSED_MESSAGE` env var (default-off) makes `PairingController.registerPairingCode` refuse NEW pairings with the operator's text as a normal `.error(ErrorInfo)` (code `PAIRING_PAUSED`) — zero client changes because both apps render unrecognized codes' messages verbatim; register-only (complete/status/WS untouched), counted in `claudespy_paused_pairing_attempts_total`.
+ Also documents the **pairing-pause maintenance switch**: `PAIRING_PAUSED_MESSAGE` env var (default-off) makes `PairingController.registerPairingCode` refuse NEW pairings with the operator's text as a normal `.error(ErrorInfo)` (code `PAIRING_PAUSED`) — zero client changes because both apps render unrecognized codes' messages verbatim; register-only (complete/status/WS untouched), counted in `ctrlx_paused_pairing_attempts_total`.
 ```
 
 - [ ] **Step 5: Run the full external-server test suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyExternalServerTests`
+Run: `swift test --package-path CtrlxPackage --filter CtrlxExternalServerTests`
 Expected: PASS — all suites, including the new PairingPauseTests and MetricsServiceTests additions.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/.env.example ClaudeSpyPackage/.env.staging.example docs/self-hosting.md CLAUDE.md
+git add CtrlxPackage/.env.example CtrlxPackage/.env.staging.example docs/self-hosting.md CLAUDE.md
 git commit -m "Document the PAIRING_PAUSED_MESSAGE pairing-pause switch"
 ```

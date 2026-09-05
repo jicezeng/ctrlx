@@ -28,7 +28,7 @@
 
 - `TerminalWindowNavigationTests`：7/7 通过。
 - 完整 Swift package 测试：1668 tests / 237 suites 通过。
-- macOS `ClaudeSpyServer` Debug 构建通过，产物 `codesign --verify --deep --strict` 通过。
+- macOS `CtrlxServer` Debug 构建通过，产物 `codesign --verify --deep --strict` 通过。
 - `git diff --check` 通过。
 - 全量测试曾触发一次既有 `SidecarSupervisorTests.crashLoopDisables` 并发时序抖动；该用例
   独立连续运行 3 次均通过，随后完整测试通过，且与本阶段修改文件无依赖关系。

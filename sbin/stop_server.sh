@@ -9,5 +9,5 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 source "$SCRIPT_DIR/environment.sh"
 select_ctrlx_environment "$PROJECT_ROOT"
 
-cd "$PROJECT_ROOT/ClaudeSpyPackage"
+cd "$PROJECT_ROOT/CtrlxPackage"
 exec docker compose down

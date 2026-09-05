@@ -25,10 +25,10 @@
 ### Task 1: `StopFinalityDataset` module with committed seed cases
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Package.swift` (Target.Dependency helper extension at line ~63, targets array near line 477)
-- Create: `ClaudeSpyPackage/Sources/StopFinalityDataset/StopFinalityDataset.swift`
-- Create: `ClaudeSpyPackage/Sources/StopFinalityDataset/Resources/seed-cases.json`
-- Test: `ClaudeSpyPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift`
+- Modify: `CtrlxPackage/Package.swift` (Target.Dependency helper extension at line ~63, targets array near line 477)
+- Create: `CtrlxPackage/Sources/StopFinalityDataset/StopFinalityDataset.swift`
+- Create: `CtrlxPackage/Sources/StopFinalityDataset/Resources/seed-cases.json`
+- Test: `CtrlxPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift`
 
 **Interfaces:**
 - Consumes: nothing (leaf module, Foundation only).
@@ -71,7 +71,7 @@ And in the test-target section (near `ClaudeCodePluginCoreTests`, line ~494):
 
 - [ ] **Step 2: Write the failing tests**
 
-`ClaudeSpyPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift`:
+`CtrlxPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift`:
 
 ```swift
 import Foundation
@@ -120,12 +120,12 @@ struct StopFinalityDatasetTests {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run (XcodeBuildTools swift-package skill): `swift test --filter StopFinalityDatasetTests` in `ClaudeSpyPackage/`
+Run (XcodeBuildTools swift-package skill): `swift test --filter StopFinalityDatasetTests` in `CtrlxPackage/`
 Expected: build failure — module `StopFinalityDataset` has no sources yet.
 
 - [ ] **Step 4: Implement the module**
 
-`ClaudeSpyPackage/Sources/StopFinalityDataset/StopFinalityDataset.swift`:
+`CtrlxPackage/Sources/StopFinalityDataset/StopFinalityDataset.swift`:
 
 ```swift
 import Foundation
@@ -206,7 +206,7 @@ public enum StopFinalityDataset {
 
 - [ ] **Step 5: Create the seed resource by porting the 20 existing cases**
 
-Create `ClaudeSpyPackage/Sources/StopFinalityDataset/Resources/seed-cases.json`. Port every case from `ClaudeSpyPackage/Sources/StopFinalityEval/main.swift` lines 29–133 **verbatim** (message text unchanged — these are tuned regression cases; the Swift `\` line-continuations join with a space, so materialize the joined string). The `name` field maps: leading token becomes `id`, remainder becomes `notes`. Full id/expected inventory (all 20 must be present, `source` is `"seed"` for every row):
+Create `CtrlxPackage/Sources/StopFinalityDataset/Resources/seed-cases.json`. Port every case from `CtrlxPackage/Sources/StopFinalityEval/main.swift` lines 29–133 **verbatim** (message text unchanged — these are tuned regression cases; the Swift `\` line-continuations join with a space, so materialize the joined string). The `name` field maps: leading token becomes `id`, remainder becomes `notes`. Full id/expected inventory (all 20 must be present, `source` is `"seed"` for every row):
 
 | id | expected | notes |
 |----|----------|-------|
@@ -260,7 +260,7 @@ Expected: 4 tests PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Package.swift ClaudeSpyPackage/Sources/StopFinalityDataset ClaudeSpyPackage/Tests/StopFinalityDatasetTests
+git add CtrlxPackage/Package.swift CtrlxPackage/Sources/StopFinalityDataset CtrlxPackage/Tests/StopFinalityDatasetTests
 git commit -m "Add StopFinalityDataset module: schema + committed seed cases
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -271,8 +271,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 2: Instruction-injection seam on `StopFinalityClassifier`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift:248-269` (instructions move) and `:230-301` (seam)
-- Test: `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/StopFinalityTests.swift` (append one test)
+- Modify: `CtrlxPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift:248-269` (instructions move) and `:230-301` (seam)
+- Test: `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/StopFinalityTests.swift` (append one test)
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -283,7 +283,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to the `StopFinalityTests` suite in `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/StopFinalityTests.swift`:
+Append to the `StopFinalityTests` suite in `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/StopFinalityTests.swift`:
 
 ```swift
     // The eval suite (StopFinalityEvaluations) hill-climbs candidate
@@ -372,7 +372,7 @@ Expected: all suite tests PASS (existing behavior tests plus the new rubric test
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/StopFinalityTests.swift
+git add CtrlxPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift CtrlxPackage/Tests/ClaudeCodePluginCoreTests/StopFinalityTests.swift
 git commit -m "Extract productionInstructions + classify(message:instructions:) eval seam
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -383,8 +383,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 3: Repoint `StopFinalityEval` at the dataset; add `--verdicts` mode
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/StopFinalityEval/main.swift` (full rewrite)
-- Modify: `ClaudeSpyPackage/Package.swift:477-480` (add dataset dependency, refresh comment)
+- Modify: `CtrlxPackage/Sources/StopFinalityEval/main.swift` (full rewrite)
+- Modify: `CtrlxPackage/Package.swift:477-480` (add dataset dependency, refresh comment)
 
 **Interfaces:**
 - Consumes: `StopFinalityDataset.seeds()/mined()/minedURL/minedPathEnvVar`, `StopFinalityClassifier.liveValue`.
@@ -521,7 +521,7 @@ exit(failures == 0 ? 0 : 2)
 
 - [ ] **Step 3: Verify the scoring mode runs against the real model**
 
-Run: `swift run StopFinalityEval` in `ClaudeSpyPackage/` (Apple Intelligence is available on the daily Mac; first inference loads the model, allow a few minutes total).
+Run: `swift run StopFinalityEval` in `CtrlxPackage/` (Apple Intelligence is available on the daily Mac; first inference loads the model, allow a few minutes total).
 Expected: 20 seed rows print with the summary block; "no mined dataset" NOTE appears. Some FAILs are acceptable at this point (pre-tuning state — record which). Exit code 0 or 2, not 1.
 
 - [ ] **Step 4: Verify --verdicts mode**
@@ -546,7 +546,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Package.swift ClaudeSpyPackage/Sources/StopFinalityEval/main.swift
+git add CtrlxPackage/Package.swift CtrlxPackage/Sources/StopFinalityEval/main.swift
 git commit -m "Repoint StopFinalityEval at the shared dataset; add --verdicts labeling mode
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -558,8 +558,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `scripts/stop-finality-dataset.py`
-- Modify: `ClaudeSpyPackage/Sources/StopFinalityDataset/Resources/seed-cases.json` (append W13)
-- Modify: `ClaudeSpyPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift` (seed count 20 → 21, W13 assertions)
+- Modify: `CtrlxPackage/Sources/StopFinalityDataset/Resources/seed-cases.json` (append W13)
+- Modify: `CtrlxPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift` (seed count 20 → 21, W13 assertions)
 
 **Interfaces:**
 - Consumes: `~/.claude/projects/*/*.jsonl` transcript layout (verified 2026-07-30): each line is JSON with a `type` field; conversation turns are `assistant`/`user`; metadata types observed: `last-prompt`, `mode`, `permission-mode`, `attachment`, `ai-title`, `file-history-snapshot`, `file-history-delta`, plus `summary`/`system` in older files. Assistant entries: `isSidechain: Bool`, `timestamp`, `message.content` = list of blocks (`thinking`/`text`/`tool_use`). User entries: `message.content` is a string (real turn) or a list (real turn if it contains a `text` block; tool_result-only lists are machine turns).
@@ -767,7 +767,7 @@ Expected: W13 prints — most likely `FAIL [seed] W13 expected waiting → got f
 - [ ] **Step 7: Commit**
 
 ```bash
-git add scripts/stop-finality-dataset.py ClaudeSpyPackage/Sources/StopFinalityDataset/Resources/seed-cases.json ClaudeSpyPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift
+git add scripts/stop-finality-dataset.py CtrlxPackage/Sources/StopFinalityDataset/Resources/seed-cases.json CtrlxPackage/Tests/StopFinalityDatasetTests/StopFinalityDatasetTests.swift
 git commit -m "Add transcript mining pipeline; capture 2026-07-30 field failure as seed W13
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -864,7 +864,7 @@ def review(args):
         sys.exit(f"run prelabel first — {len(unlabeled)} rows unlabeled")
     if not VERDICTS.exists():
         sys.exit(
-            "missing on-device verdicts — run:\n  cd ClaudeSpyPackage && "
+            "missing on-device verdicts — run:\n  cd CtrlxPackage && "
             f"swift run StopFinalityEval --verdicts {CANDIDATES} {VERDICTS}"
         )
     verdicts = {json.loads(l)["id"]: json.loads(l)["onDevice"]
@@ -923,7 +923,7 @@ Register both in `main()`:
 
 ```bash
 python3 scripts/stop-finality-dataset.py prelabel
-cd ClaudeSpyPackage && swift run StopFinalityEval --verdicts ~/.gallager/eval/stop-finality-candidates.jsonl ~/.gallager/eval/stop-finality-verdicts.jsonl && cd ..
+cd CtrlxPackage && swift run StopFinalityEval --verdicts ~/.gallager/eval/stop-finality-candidates.jsonl ~/.gallager/eval/stop-finality-verdicts.jsonl && cd ..
 python3 scripts/stop-finality-dataset.py review
 ```
 
@@ -937,7 +937,7 @@ Stop and hand `~/.gallager/eval/stop-finality-contested.json` to the user: they 
 
 ```bash
 python3 scripts/stop-finality-dataset.py finalize
-cd ClaudeSpyPackage && swift run StopFinalityEval
+cd CtrlxPackage && swift run StopFinalityEval
 ```
 
 Expected: finalize prints class counts; the eval now scores seeds **and** mined rows and prints all four tallies. Record the printed tallies — this is the daily-Mac (macOS 26 model) baseline used by the Task 9 cross-check.
@@ -957,8 +957,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 6: `StopFinalityEvaluations` test target on the Evaluations framework
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Package.swift` (test-target section)
-- Create: `ClaudeSpyPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift`
+- Modify: `CtrlxPackage/Package.swift` (test-target section)
+- Create: `CtrlxPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift`
 
 **Interfaces:**
 - Consumes: `StopFinalityClassifier.productionInstructions`, `StopFinalityClassifier.classify(message:instructions:)` (Task 2), `StopFinalityDataset` (Task 1), Evaluations framework (`Evaluation`, `ArrayLoader`, `SampleProtocol`, `ModelSubject`, `EvaluatorProtocol`, `Metric`, `MetricsAggregator`, `EvaluationResult.run(info:)/aggregateValue/groupedSummary/saveJSON`).
@@ -985,7 +985,7 @@ In the test-target section:
 
 - [ ] **Step 2: Write the evaluation suite**
 
-`ClaudeSpyPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift`.
+`CtrlxPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift`.
 
 > **Beta-SDK note for the implementer:** this file is written against the macOS 27 beta Evaluations API as documented at `developer.apple.com/documentation/evaluations` (fetchable via sosumi). It cannot compile on this machine (macOS 26 SDK — `canImport(Evaluations)` is false, so the file is empty here and CI-safe). If spellings drifted in a newer beta, fix them **in this file only, on the beta Mac, against its local SDK** — the shapes to preserve: one exact-match evaluator emitting per-class/per-source metrics, and baseline + candidate evaluations over the identical dataset. If an `EvaluationTrait` initializer is available (`@Test(.evaluation(...))` form), prefer it — it feeds Xcode's evaluation report and comparison view — and read the result via `EvaluationContext.current.result`; the `run(info:)` form below is the documented fallback and produces the same numbers.
 
@@ -1183,7 +1183,7 @@ In the test-target section:
 
 - [ ] **Step 3: Verify it compiles (empty) on this machine and CI stays green**
 
-Run: `swift build --build-tests` in `ClaudeSpyPackage/`
+Run: `swift build --build-tests` in `CtrlxPackage/`
 Expected: builds clean — on the macOS 26 SDK the whole file is compiled out.
 
 Run: `swift test --filter StopFinalityEvaluations`
@@ -1197,7 +1197,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Package.swift ClaudeSpyPackage/Tests/StopFinalityEvaluations
+git add CtrlxPackage/Package.swift CtrlxPackage/Tests/StopFinalityEvaluations
 git commit -m "Add StopFinalityEvaluations suite on Apple's Evaluations framework (macOS 27 beta)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -1289,7 +1289,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 8: Beta-Mac bring-up, baseline run, gate pinning — **REQUIRES THE SECOND MAC (macOS 27 beta)**
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift` (pin gates; fix any beta-SDK API drift — this file only)
+- Modify: `CtrlxPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift` (pin gates; fix any beta-SDK API drift — this file only)
 
 **Interfaces:** consumes everything above; produces pinned `minedFinalRecallGate`/`minedWaitingRecallGate` values and recorded baseline numbers (commit message + `~/.gallager/eval/results/baseline.json`).
 
@@ -1303,7 +1303,7 @@ scp ~/.gallager/eval/stop-finality-mined.json <beta-mac>:.gallager/eval/
 
 - [ ] **Step 2: Build; reconcile beta-SDK drift if any**
 
-On the beta Mac: `swift build --build-tests` in `ClaudeSpyPackage/`.
+On the beta Mac: `swift build --build-tests` in `CtrlxPackage/`.
 If the Evaluations API spellings drifted from the file as written, fix `StopFinalityEvaluations.swift` only (see the beta-SDK note in Task 6) — consult the local SDK headers/docs. If `EvaluationTrait` offers a `@Test(.evaluation(...))` form, adopt it here for the Xcode report and read results via `EvaluationContext.current.result`.
 
 - [ ] **Step 3: Run the baseline**
@@ -1328,7 +1328,7 @@ Expected: mined gates pass at exactly the pinned values; seed gate still red on 
 - [ ] **Step 6: Commit (from the beta Mac, or copy the diff back and commit here)**
 
 ```bash
-git add ClaudeSpyPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift
+git add CtrlxPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift
 git commit -m "Pin mined-set gates from the macOS 27 baseline run
 
 Baseline (macOS 27 beta model, greedy): <paste the six recorded numbers>
@@ -1342,8 +1342,8 @@ git push
 ### Task 9: Hill-climb round 1 — fix W13, promote, cross-check — **REQUIRES THE SECOND MAC + daily Mac**
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift` (candidate text per round)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift` (promotion)
+- Modify: `CtrlxPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift` (candidate text per round)
+- Modify: `CtrlxPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift` (promotion)
 
 **Interfaces:** consumes the Task 8 baseline; produces the new `productionInstructions`.
 
@@ -1386,7 +1386,7 @@ Also run: `swift test --filter StopFinalityTests` (production-path regressions).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift ClaudeSpyPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift
+git add CtrlxPackage/Sources/ClaudeCodePluginCore/StopFinalityClassifier.swift CtrlxPackage/Tests/StopFinalityEvaluations/StopFinalityEvaluations.swift
 git commit -m "Tune stop-finality prompt via Evaluations hill-climb: fix orchestrator false idle
 
 macOS 27 baseline → candidate: <paste before/after numbers>

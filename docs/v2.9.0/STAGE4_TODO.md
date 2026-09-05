@@ -42,7 +42,7 @@
 
 - `swift test` 聚焦 5 个套件：41 tests passed，覆盖 Observation 发布语义、Viewer 纯快照、
   输入指标乱序/上限/取消、动态 feed 批大小、输入顺序和并发 agent 扫描复用。
-- `xcodebuild -scheme ClaudeSpyServer`：完整 macOS Debug 与签名 Release App 构建通过。
+- `xcodebuild -scheme CtrlxServer`：完整 macOS Debug 与签名 Release App 构建通过。
 - SwiftFormat：本 Stage 新增/修改的小型文件通过；大型既有文件仅保留仓库原有格式告警，
   未对无关代码做机械重排。
 - `git diff --check`：通过。

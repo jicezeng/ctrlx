@@ -79,7 +79,7 @@ subscriber who resubscribes resumes with all existing pairs intact — no re-pai
 **Trial-reset abuse:** a wiped host `deviceId` gets a fresh trial. Accepted at this
 scale; revisit only if it shows up in metrics.
 
-## Relay changes (`ClaudeSpyExternalServerLib`)
+## Relay changes (`CtrlxExternalServerLib`)
 
 ### LicensingService (new actor, `Services/LicensingService.swift`)
 
@@ -165,7 +165,7 @@ New counters on `MetricsService`: trial starts, activations, deactivations,
 validation failures (by reason), blocked pairing attempts, blocked/swept
 connections. Surfaces the conversion funnel on the existing Grafana dashboard.
 
-## Wire protocol changes (`ClaudeSpyNetworking`)
+## Wire protocol changes (`CtrlxNetworking`)
 
 - `LicenseStatus` model: `state` (`trial(expiresAt)` / `active(expiresAt?)` /
   `expired` / `none`) plus activation info for UI.
@@ -175,7 +175,7 @@ connections. Surfaces the conversion funnel on the existing Grafana dashboard.
 - All new fields optional / `decodeIfPresent` for cross-host version skew (paired
   Macs on different builds).
 
-## Mac app changes (`ClaudeSpyServerFeature`)
+## Mac app changes (`CtrlxServerFeature`)
 
 - **`LicensingClient`** `@DependencyClient` wrapping the three relay endpoints;
   `inMemory()` test value. License key + instance id stored in Keychain alongside
@@ -200,7 +200,7 @@ connections. Surfaces the conversion funnel on the existing Grafana dashboard.
   closed fires on next launch. Clicking opens Remote Access settings. Uses the
   existing desktop-notification infrastructure.
 
-## iOS app changes (`ClaudeSpyFeature`)
+## iOS app changes (`CtrlxFeature`)
 
 Deliberately minimal: render `hostSubscriptionInactive` as "Host's subscription
 expired" on the affected host row instead of a mute disconnect. No purchase UI, no

@@ -33,7 +33,7 @@
 - `swift test --filter AgentProcessReconciliationTests`：5 tests passed。
 - `swift test --filter PluginRuntimeStatusWiringTests`：14 tests passed。
 - `swift test`：1549 tests / 213 suites passed。
-- `ClaudeSpyServer` Debug macOS build：通过（ad-hoc signing；SwiftLint 未安装警告）。
+- `CtrlxServer` Debug macOS build：通过（ad-hoc signing；SwiftLint 未安装警告）。
 - 本机真实 tmux session 中保留一个 agent window 和一个普通 window，
   再用临时 window 验证：`codex` 进程启动后下一个 10 秒校准周期出现
   agent 图标，进程退出后下一周期恢复普通终端图标；session 与 window

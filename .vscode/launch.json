@@ -4,61 +4,61 @@
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:ClaudeSpy}/ClaudeSpyPackage",
-            "name": "Debug ClaudeSpyExternalServer (ClaudeSpyPackage)",
-            "target": "ClaudeSpyExternalServer",
+            "cwd": "${workspaceFolder:Ctrlx}/CtrlxPackage",
+            "name": "Debug CtrlxExternalServer (CtrlxPackage)",
+            "target": "CtrlxExternalServer",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug ClaudeSpyExternalServer (ClaudeSpyPackage)"
+            "preLaunchTask": "swift: Build Debug CtrlxExternalServer (CtrlxPackage)"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:ClaudeSpy}/ClaudeSpyPackage",
-            "name": "Release ClaudeSpyExternalServer (ClaudeSpyPackage)",
-            "target": "ClaudeSpyExternalServer",
+            "cwd": "${workspaceFolder:Ctrlx}/CtrlxPackage",
+            "name": "Release CtrlxExternalServer (CtrlxPackage)",
+            "target": "CtrlxExternalServer",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release ClaudeSpyExternalServer (ClaudeSpyPackage)"
+            "preLaunchTask": "swift: Build Release CtrlxExternalServer (CtrlxPackage)"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:ClaudeSpy}/ClaudeSpyPackage",
-            "name": "Debug ClaudeSpyE2E (ClaudeSpyPackage)",
-            "target": "ClaudeSpyE2E",
+            "cwd": "${workspaceFolder:Ctrlx}/CtrlxPackage",
+            "name": "Debug CtrlxE2E (CtrlxPackage)",
+            "target": "CtrlxE2E",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug ClaudeSpyE2E (ClaudeSpyPackage)"
+            "preLaunchTask": "swift: Build Debug CtrlxE2E (CtrlxPackage)"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:ClaudeSpy}/ClaudeSpyPackage",
-            "name": "Release ClaudeSpyE2E (ClaudeSpyPackage)",
-            "target": "ClaudeSpyE2E",
+            "cwd": "${workspaceFolder:Ctrlx}/CtrlxPackage",
+            "name": "Release CtrlxE2E (CtrlxPackage)",
+            "target": "CtrlxE2E",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release ClaudeSpyE2E (ClaudeSpyPackage)"
+            "preLaunchTask": "swift: Build Release CtrlxE2E (CtrlxPackage)"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:ClaudeSpy}/ClaudeSpyPackage",
-            "name": "Debug GallagerCLI (ClaudeSpyPackage)",
+            "cwd": "${workspaceFolder:Ctrlx}/CtrlxPackage",
+            "name": "Debug GallagerCLI (CtrlxPackage)",
             "target": "GallagerCLI",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug GallagerCLI (ClaudeSpyPackage)"
+            "preLaunchTask": "swift: Build Debug GallagerCLI (CtrlxPackage)"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:ClaudeSpy}/ClaudeSpyPackage",
-            "name": "Release GallagerCLI (ClaudeSpyPackage)",
+            "cwd": "${workspaceFolder:Ctrlx}/CtrlxPackage",
+            "name": "Release GallagerCLI (CtrlxPackage)",
             "target": "GallagerCLI",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release GallagerCLI (ClaudeSpyPackage)"
+            "preLaunchTask": "swift: Build Release GallagerCLI (CtrlxPackage)"
         }
     ]
 }

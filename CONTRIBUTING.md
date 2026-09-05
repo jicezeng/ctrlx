@@ -14,22 +14,22 @@ Almost all code lives in the Swift package, not the Xcode project:
 
 | Area | Where |
 |---|---|
-| macOS app | `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/` |
-| iOS app | `ClaudeSpyPackage/Sources/ClaudeSpyFeature/` |
-| Shared networking | `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/` |
-| Encryption | `ClaudeSpyPackage/Sources/ClaudeSpyEncryption/` |
-| Relay server | `ClaudeSpyPackage/Sources/ClaudeSpyExternalServer/` |
+| macOS app | `CtrlxPackage/Sources/CtrlxServerFeature/` |
+| iOS app | `CtrlxPackage/Sources/CtrlxFeature/` |
+| Shared networking | `CtrlxPackage/Sources/CtrlxNetworking/` |
+| Encryption | `CtrlxPackage/Sources/CtrlxEncryption/` |
+| Relay server | `CtrlxPackage/Sources/CtrlxExternalServer/` |
 | Sidecar plugins | `plugins/` (Python; see [docs/plugins/sidecar-authoring.md](docs/plugins/sidecar-authoring.md)) |
 
-Internal target names still say "ClaudeSpy" — that's the project's pre-rename
+Internal target names still say "Ctrlx" — that's the project's pre-rename
 name, same codebase.
 
 ## Building and testing
 
 - Requires a recent Xcode (Swift 6.3+ toolchain), macOS 15+, and tmux.
-- Mac app: open `ClaudeSpy.xcworkspace`, scheme `ClaudeSpyServer`.
-  iOS app: scheme `ClaudeSpy`.
-- Unit tests: `swift test` in `ClaudeSpyPackage/`.
+- Mac app: open `Ctrlx.xcworkspace`, scheme `CtrlxServer`.
+  iOS app: scheme `Ctrlx`.
+- Unit tests: `swift test` in `CtrlxPackage/`.
 - End-to-end suite: `./scripts/e2e-test.sh` (see [docs/e2e-testing.md](docs/e2e-testing.md)).
   E2E screenshot baselines are CI-generated — don't commit locally regenerated
   baselines.

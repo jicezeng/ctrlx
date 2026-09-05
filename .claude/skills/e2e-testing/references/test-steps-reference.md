@@ -1,6 +1,6 @@
 # Test Steps Reference
 
-Complete reference for all `TestStep` enum cases defined in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/DSL/TestScenario.swift`.
+Complete reference for all `TestStep` enum cases defined in `CtrlxPackage/Sources/CtrlxE2ELib/DSL/TestScenario.swift`.
 
 ## Instance parameter on macOS steps
 
@@ -226,7 +226,7 @@ The mac defaults (`tolerance: 2%`, `perPixelThreshold: 0.02`) are looser than iO
 ## Tmux Steps
 
 ### `tmuxCreateSession(name: String, width: Int, height: Int)`
-Create a tmux session on the test socket with the given name and initial dimensions. The tmux socket path is managed by the orchestrator (default `/tmp/claudespy-e2e/claudespy-e2e.sock`). The session env sets `DISABLE_AUTO_UPDATE`/`DISABLE_UPDATE_PROMPT`, pins `TMPDIR` to the runner's temp dir (so `injectScript` paths resolve), and points `ZDOTDIR` at the orchestrator's shell-history shim so typed commands never reach the user's `~/.zsh_history`.
+Create a tmux session on the test socket with the given name and initial dimensions. The tmux socket path is managed by the orchestrator (default `/tmp/ctrlx-e2e/ctrlx-e2e.sock`). The session env sets `DISABLE_AUTO_UPDATE`/`DISABLE_UPDATE_PROMPT`, pins `TMPDIR` to the runner's temp dir (so `injectScript` paths resolve), and points `ZDOTDIR` at the orchestrator's shell-history shim so typed commands never reach the user's `~/.zsh_history`.
 
 ### `tmuxStorePaneDimensions(target: String, widthKey: String, heightKey: String)`
 Query a tmux pane's current dimensions and store width/height in the execution context. The `target` uses tmux target format (e.g., `"session-name:0.0"`).
@@ -273,7 +273,7 @@ Negation of `assertStoredContains`. Use to verify a value is *not* present (e.g.
 ## Script Injection
 
 ### `injectScript(name: String)`
-Copy a bundled script from `ClaudeSpyE2ELib/Scenarios/Scripts/` to `$TMPDIR`. The orchestrator removes it automatically when the scenario ends, even on failure. Reference the script in tmux commands as `$TMPDIR/<name>` (the tmux server inherits the orchestrator's `TMPDIR`).
+Copy a bundled script from `CtrlxE2ELib/Scenarios/Scripts/` to `$TMPDIR`. The orchestrator removes it automatically when the scenario ends, even on failure. Reference the script in tmux commands as `$TMPDIR/<name>` (the tmux server inherits the orchestrator's `TMPDIR`).
 
 Use for terminal rendering tests where Python helpers draw deterministic output (tables, emojis, truecolor, kitty keyboard probes, …). Bundled scripts already include `draw_table.py`, `editor_trigger.py`, `emoji_tables.py`, `footer_test.py`, `keystroke_logger.py`, `kitty_keyboard_test.py`, `mouse_test.py`, `truecolor.py`. Add new ones to the same directory and they get bundled as SPM resources automatically.
 

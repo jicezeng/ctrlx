@@ -123,11 +123,11 @@ LOC=$(curl -fsS -o /dev/null -D - \
   "https://api.github.com/repos/gpambrozio/ClaudeSpyTestResults/releases/assets/$ASSET_ID" \
   | tr -d '\r' | sed -n 's/^[Ll]ocation: //p' | head -1)
 ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$LOC")
-mkdir -p "${TMPDIR:-/tmp}/claudespy-e2e"
-cat > "${TMPDIR:-/tmp}/claudespy-e2e/watch-test.html" <<EOF
+mkdir -p "${TMPDIR:-/tmp}/ctrlx-e2e"
+cat > "${TMPDIR:-/tmp}/ctrlx-e2e/watch-test.html" <<EOF
 <!DOCTYPE html><meta charset="utf-8"><script>location.replace("file://$(pwd)/scripts/e2e-video-player.html#src=$ENC&title=pr622-cursor-style-changes.mp4");</script>
 EOF
-open "${TMPDIR:-/tmp}/claudespy-e2e/watch-test.html"
+open "${TMPDIR:-/tmp}/ctrlx-e2e/watch-test.html"
 ```
 
 Expected: default browser opens, page title reads `pr622-cursor-style-changes.mp4`, video autoplays, seeking via the scrubber works. If any of that fails, fix the player before proceeding.
@@ -170,7 +170,7 @@ Create `scripts/e2e-watch-video.sh` with exactly this content:
 ```bash
 #!/bin/bash
 
-# E2E Video Watcher for ClaudeSpy
+# E2E Video Watcher for Ctrlx
 # Plays e2e proof videos (release assets uploaded by e2e-attach-video.sh) in
 # the browser instead of downloading them.
 #
@@ -195,7 +195,7 @@ set -eo pipefail
 # =====================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-E2E_TMPDIR="${TMPDIR:-/tmp}/claudespy-e2e"
+E2E_TMPDIR="${TMPDIR:-/tmp}/ctrlx-e2e"
 SCREENSHOTS_DIR="$E2E_TMPDIR/e2e-screenshots"
 RESULTS_REPO="gpambrozio/ClaudeSpyTestResults"
 RELEASE_TAG="e2e-videos"

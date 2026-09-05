@@ -34,7 +34,7 @@
 ## Verification
 
 - `swift test --skip-update --filter TerminalTextSnapshotTests`：5/5 通过。
-- `xcodebuild -scheme ClaudeSpyFeature -destination 'generic/platform=iOS Simulator' ... build`：
+- `xcodebuild -scheme CtrlxFeature -destination 'generic/platform=iOS Simulator' ... build`：
   通过。
 - 完整 `swift test --skip-update`：1569/1569 通过。
 - `git diff --check`：通过。

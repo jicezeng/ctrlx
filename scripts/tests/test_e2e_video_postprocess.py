@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..",
-    "ClaudeSpyPackage", "Sources", "ClaudeSpyE2ELib", "Scenarios", "Scripts",
+    "CtrlxPackage", "Sources", "CtrlxE2ELib", "Scenarios", "Scripts",
 ))
 import e2e_video_postprocess as vp
 

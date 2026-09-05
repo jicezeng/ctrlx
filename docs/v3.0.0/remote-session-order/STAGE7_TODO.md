@@ -22,7 +22,7 @@
 ## Verification
 
 - `RemoteSessionOrder` 与设置持久化测试：8/8 通过。
-- macOS `ClaudeSpyServer` App target 构建通过。
-- iOS `ClaudeSpy` generic-device App target 构建通过。
+- macOS `CtrlxServer` App target 构建通过。
+- iOS `Ctrlx` generic-device App target 构建通过。
 - Stage 7 review 未发现 P1/P2/P3 问题。
 - 真实 macOS/iOS 拖拽交互保留为安装后的人工验收项，不阻塞源码集成。

@@ -26,7 +26,7 @@
 - 修复前新增的两个回归测试均稳定失败，分别复现旧 socket 抢回路由和
   已连接 transport 无法恢复 Host presence。
 - Relay/Viewer liveness 定向测试：5 项通过。
-- `ClaudeSpyPackage` 完整测试：1759 项、255 个 suite 通过。
+- `CtrlxPackage` 完整测试：1759 项、255 个 suite 通过。
 - iPhoneOS arm64 Debug 无签名构建：通过。
 - `git diff --check`：通过。
 - SwiftLint 未安装；Xcode 仅报告既有 SwiftLint 缺失提示。

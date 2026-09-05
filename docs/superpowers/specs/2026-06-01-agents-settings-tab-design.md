@@ -33,7 +33,7 @@ On the current branch:
   `PluginSettingsMigration` and never updated from the UI again — so edits after first launch
   are silently ineffective.
 - The "Plugin" tab and its manual-install commands still install the **legacy marketplace
-  plugin** whose `hook.py` POSTs to `~/.claudespy-port` — an endpoint this branch deleted. The
+  plugin** whose `hook.py` POSTs to `~/.ctrlx-port` — an endpoint this branch deleted. The
   install "succeeds" and shows a green "Plugin Installed" badge, but no events reach the app.
 - Codex has no equivalent to Claude's multi-folder support: `CodexSettings` has no
   `additionalConfigFolders`, and the scanner reads exactly one `CODEX_HOME`/`~/.codex` root.
@@ -77,7 +77,7 @@ enum PluginInstallStatus: Sendable, Equatable {
 - Conformers updated: `ClaudeCodePluginCore`, `CodexPluginCore`, `EchoPluginCore` (returns
   `.notInstalled`, install is a no-op), and the `gallager plugin call` CLI + `PluginRegistry.callCore`.
 
-The cores shell out via the existing `ProcessRunner` dependency (already in `ClaudeSpyCommon`,
+The cores shell out via the existing `ProcessRunner` dependency (already in `CtrlxCommon`,
 already a dependency of both core modules). The marketplace **source path** (the bundled
 `plugin/gallager` for Claude, `plugin/codex` for Codex) is provided through `PluginEnv` —
 populated by the registry from the app bundle — so install logic is unit-testable against a
@@ -109,7 +109,7 @@ and returns `.agentUnavailable` if absent.
 
 ### 3. Bundled plugins: hook transport → ingress socket
 
-Both bundled hook scripts switch from the removed HTTP path (`~/.claudespy-port`) to the
+Both bundled hook scripts switch from the removed HTTP path (`~/.ctrlx-port`) to the
 ingress socket, reusing the frame-writing Python currently embedded as
 `ClaudeCodeInstaller.bridgeScript`:
 

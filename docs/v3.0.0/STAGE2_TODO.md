@@ -20,7 +20,7 @@
 ## Acceptance
 
 - [x] Mac/iOS 图标只使用 `Brand/CtrlX-AppIcon.png` 派生资产。
-- [x] 普通生产 UI 不显示 Gallager 或 ClaudeSpy 品牌。
+- [x] 普通生产 UI 不显示 Gallager 或 Ctrlx 品牌。
 - [x] About/README 显示 Gallager 来源和非官方声明。
 - [x] CtrlX 不链接 Gallager 的下载、付费 checkout 或更新服务。
 - [x] 16–32 px 仍优先识别为 X；放大后两条滑轨和两个调节节点清晰可辨。

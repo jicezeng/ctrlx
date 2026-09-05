@@ -1,10 +1,10 @@
 # Services Reference
 
-Detailed documentation for ClaudeSpy services. Reference when modifying specific components.
+Detailed documentation for Ctrlx services. Reference when modifying specific components.
 
 ## macOS Services
 
-### AppCoordinator (`ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`)
+### AppCoordinator (`CtrlxServerFeature/Coordinators/AppCoordinator.swift`)
 
 `@Observable @MainActor` central coordinator for all services.
 
@@ -15,7 +15,7 @@ Detailed documentation for ClaudeSpy services. Reference when modifying specific
 - Auto-connects to paired devices on startup
 - Observes system wake for reconnection
 
-### TmuxService (`ClaudeSpyServerFeature/Services/TmuxService.swift`)
+### TmuxService (`CtrlxServerFeature/Services/TmuxService.swift`)
 
 `@Observable @MainActor` class abstracting tmux CLI interactions.
 
@@ -60,7 +60,7 @@ Key files: `EditorOverride.swift` (pure helpers + `EditorOverrideMode`/`VisualPr
 
 `baseEnvironmentVars` (injected via tmux `-e`, so they reach both app-launched and manually-typed `claude`) sets the Claude rendering/update flags **and** the OTEL export vars that point Claude Code at the Mac-local `OTLPReceiver` (`CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_*` → `http://127.0.0.1:<OTLPReceiver.advertisedPort>`; issue #597). No content gates are enabled. The endpoint port is `OTLPReceiver.advertisedPort` — the port the receiver **actually bound** (its preferred port, or a fallback candidate when that was taken), published before any pane can be created, so the bind and the advertisement can't drift. When the receiver failed to bind every candidate, the OTEL block is skipped entirely (no dead endpoints). The property is computed per creation, not cached, so it always reads the settled bind.
 
-### TmuxControlClient (`ClaudeSpyServerFeature/Services/TmuxControlClient.swift`)
+### TmuxControlClient (`CtrlxServerFeature/Services/TmuxControlClient.swift`)
 
 Actor managing a `tmux -C attach -f no-output,ignore-size` control mode connection for commands and event notifications. Live terminal data is delivered separately via `PipePaneReader`.
 
@@ -77,7 +77,7 @@ Actor managing a `tmux -C attach -f no-output,ignore-size` control mode connecti
 - `onSessionChanged(sessionId, name)` - session switched
 - `onExit(reason)` - control mode connection closed
 
-### TmuxControlClientManager (`ClaudeSpyServerFeature/Services/TmuxControlClientManager.swift`)
+### TmuxControlClientManager (`CtrlxServerFeature/Services/TmuxControlClientManager.swift`)
 
 `@Observable @MainActor` managing `TmuxControlClient` instances per session.
 
@@ -91,12 +91,12 @@ Actor managing a `tmux -C attach -f no-output,ignore-size` control mode connecti
 
 Multiple panes in the same session share one control client connection. The control client operates in `no-output` mode — it only handles commands and event notifications.
 
-### PipePaneReader (`ClaudeSpyServerFeature/Services/PipePaneReader.swift`)
+### PipePaneReader (`CtrlxServerFeature/Services/PipePaneReader.swift`)
 
 `actor` managing FIFO-based raw byte delivery from tmux `pipe-pane` for a single pane. One reader instance lives for the pane's full lifetime — mirror toggling never restarts it.
 
 **Features:**
-- Creates per-pane FIFO (`/tmp/claudespy-pipe-<id>.fifo`)
+- Creates per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`)
 - Starts `pipe-pane -O "cat > fifo"` via control mode command
 - Reads raw PTY bytes, filtering tmux `ESC k ... ESC \` title sequences and parsing OSC 9/777/9;4/0/2/52 events
 - AsyncStream + single consumer task for strict FIFO ordering
@@ -114,7 +114,7 @@ Multiple panes in the same session share one control client connection. The cont
 - `flushBuffer()` - drain the queue through the delegate and switch to live mode
 - `stopPipePane()` - clean up FIFO, close file handle (called when the pane disappears)
 
-### PaneStreamManager (`ClaudeSpyServerFeature/Services/PaneStreamManager.swift`)
+### PaneStreamManager (`CtrlxServerFeature/Services/PaneStreamManager.swift`)
 
 `@Observable @MainActor` owning one `PipePaneReader` per known pane and multiplexing its events to subscribers. Conforms to `PipePaneReaderDelegate`, so all event wiring lives in one place.
 
@@ -154,7 +154,7 @@ TmuxControlClient ──%layout-change──→ updateDimensions → subscriber 
 
 **Internal state:** A single `readers: [String: ReaderContext]` dictionary keyed by paneId. Each context holds the reader, target, sessionName, dimensions, subscriber UUIDs, and the latest known title.
 
-### MirrorWindowManager (`ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift`)
+### MirrorWindowManager (`CtrlxServerFeature/Managers/MirrorWindowManager.swift`)
 
 `@Observable @MainActor` managing NSWindow lifecycle.
 
@@ -170,7 +170,7 @@ TmuxControlClient ──%layout-change──→ updateDimensions → subscriber 
   GitWorkbench store's `summary`, kept fresh by the store's own repository
   watcher — so it isn't computed here
 
-### TerminalContainerView (`ClaudeSpyServerFeature/Views/TerminalContainerView.swift`)
+### TerminalContainerView (`CtrlxServerFeature/Views/TerminalContainerView.swift`)
 
 `@Observable @MainActor` bridging SwiftTerm to SwiftUI.
 
@@ -180,9 +180,9 @@ TmuxControlClient ──%layout-change──→ updateDimensions → subscriber 
 - CoreText font metrics for cell size
 - Theme support (DefaultDark/Light, SolarizedDark/Light)
 
-### HookServerService (`ClaudeSpyServerFeature/Hooks/HookServerService.swift`)
+### HookServerService (`CtrlxServerFeature/Hooks/HookServerService.swift`)
 
-`actor` HTTP server on a dynamically allocated port (written to `~/.claudespy-port`). Accepts hook events from both Claude Code and Codex CLI.
+`actor` HTTP server on a dynamically allocated port (written to `~/.ctrlx-port`). Accepts hook events from both Claude Code and Codex CLI.
 
 **Endpoints:**
 - `GET /health` - Health check
@@ -200,7 +200,7 @@ TmuxControlClient ──%layout-change──→ updateDimensions → subscriber 
 
 Codex contributes additional events (`PreCompact`/`PostCompact`, `SubagentStart`, `PermissionRequest`); the server accepts any JSON payload of the right shape and does not validate event names against a Claude-specific enum.
 
-### OTLPReceiver (`ClaudeSpyServerFeature/Telemetry/OTLPReceiver.swift`)
+### OTLPReceiver (`CtrlxServerFeature/Telemetry/OTLPReceiver.swift`)
 
 `actor` — a Mac-local OpenTelemetry receiver that **augments** the hook channel with quantitative, content-free data from a coding agent's OTEL export — Claude Code (issue #597) and Codex (issue #602). One-way push only; nothing is ever sent back into the agent. The receiver/decoder/accumulator are agent-blind; each log record is classified by its event-name namespace (`claude_code.` vs `codex.`) and parsed with that agent's vocabulary into the same `SessionTelemetry`.
 
@@ -221,11 +221,11 @@ Codex contributes additional events (`PreCompact`/`PostCompact`, `SubagentStart`
 
 Two **aggregate** consumers built on the same OTEL stream, surfacing data that outlives a live session.
 
-- **End-of-session recap** — `SessionRecap` (`ClaudeSpyNetworking`) is a snapshot of the session's accumulated telemetry (tokens, cost, commits, active time, tools, lines). `AppCoordinator` stamps it onto `PaneState.recap` when a turn finishes (`doneWorking`) — cleared when a new turn starts (`working`) or the session ends — and pushes a one-shot recap notification on `sessionEnd` (`finalizeEndedSession`, reusing `NotificationSpec` → `handlePluginNotification`). The recap card renders in iOS `SessionInfoView`; the Mac surfaces it via the desktop-notification push. Shared formatting (`recapDetailLine`) lives in `ClaudeSpyCommon`.
+- **End-of-session recap** — `SessionRecap` (`CtrlxNetworking`) is a snapshot of the session's accumulated telemetry (tokens, cost, commits, active time, tools, lines). `AppCoordinator` stamps it onto `PaneState.recap` when a turn finishes (`doneWorking`) — cleared when a new turn starts (`working`) or the session ends — and pushes a one-shot recap notification on `sessionEnd` (`finalizeEndedSession`, reusing `NotificationSpec` → `handlePluginNotification`). The recap card renders in iOS `SessionInfoView`; the Mac surfaces it via the desktop-notification push. Shared formatting (`recapDetailLine`) lives in `CtrlxCommon`.
 - **iOS reply-after-stop summary persistence (issue #707)** — the agent's last-message summary shown in the iOS reply box (`StopResponseView`) rides the transient `AgentState.doneWorking(summary:)`, which viewing the session flips to `.idle` (`markHandled`), so navigating away and back used to lose it. `SessionStore.lastTurnSummaryByPane` caches it per pane with the **same lifecycle as `PaneState.recap`** (set on `doneWorking`, cleared on `working`/session-end) so it survives the handled-flip and re-entry; `SessionDetailService.replyForm` falls back to that cache, then to `recap.summary` for a fresh reconnect where the cache is empty. Telemetry-independent, so it works even when no recap was stamped. (The expanded summary also scrolls within a capped height so a long message isn't cropped.)
-- **Cost/usage overview** — `UsageAggregationStore` (`ClaudeSpyServerFeature/Telemetry/UsageAggregationStore.swift`) is an `actor` persisting per-`(project, day)` totals as JSON under `~/.ctrlx/state/usage-aggregates.json` (so they survive session end **and** app restart). It folds each telemetry snapshot into the bucket as a *delta* against a persisted per-session baseline — cumulative OTEL counters are attributed to the day they occur, with no double-counting across a restart. `overview(asOf:)` builds the wire `UsageOverview` (today totals, a top-N per-project ranking, a per-day trend). It rides the existing `SessionStateMessage` as an optional field (`usageOverview`, `decodeIfPresent`-friendly like `agentProjects`), is shown atop the iOS session list and Mac sidebar as a collapsed one-line "Today" cell (`UsageOverviewView` in `ClaudeSpyCommon` — a disclosure chevron expands it in place to the Projects/Recent-days details, transient state, always starts collapsed), and powers the Mac menu-bar "today" total.
+- **Cost/usage overview** — `UsageAggregationStore` (`CtrlxServerFeature/Telemetry/UsageAggregationStore.swift`) is an `actor` persisting per-`(project, day)` totals as JSON under `~/.ctrlx/state/usage-aggregates.json` (so they survive session end **and** app restart). It folds each telemetry snapshot into the bucket as a *delta* against a persisted per-session baseline — cumulative OTEL counters are attributed to the day they occur, with no double-counting across a restart. `overview(asOf:)` builds the wire `UsageOverview` (today totals, a top-N per-project ranking, a per-day trend). It rides the existing `SessionStateMessage` as an optional field (`usageOverview`, `decodeIfPresent`-friendly like `agentProjects`), is shown atop the iOS session list and Mac sidebar as a collapsed one-line "Today" cell (`UsageOverviewView` in `CtrlxCommon` — a disclosure chevron expands it in place to the Projects/Recent-days details, transient state, always starts collapsed), and powers the Mac menu-bar "today" total.
 
-### ConnectedViewerManager (`ClaudeSpyServerFeature/Services/ConnectedViewerManager.swift`)
+### ConnectedViewerManager (`CtrlxServerFeature/Services/ConnectedViewerManager.swift`)
 
 `@Observable @MainActor` managing connections to all paired Viewer devices.
 
@@ -245,7 +245,7 @@ Two **aggregate** consumers built on the same OTEL stream, surfacing data that o
 - `onSessionStateRequest` - provide current session state
 - `onPartnerKeyReceived` - persist E2EE partner keys
 
-### ConnectedViewer (`ClaudeSpyServerFeature/Services/ConnectedViewer.swift`)
+### ConnectedViewer (`CtrlxServerFeature/Services/ConnectedViewer.swift`)
 
 `@Observable @MainActor` WebSocket connection to a single paired iOS device.
 
@@ -256,7 +256,7 @@ Two **aggregate** consumers built on the same OTEL stream, surfacing data that o
 - Auto-reconnects with exponential backoff
 - Sends/receives all message types (hook events, commands, terminal stream, session state)
 
-### PairingManager (`ClaudeSpyServerFeature/Services/PairingManager.swift`)
+### PairingManager (`CtrlxServerFeature/Services/PairingManager.swift`)
 
 `@Observable @MainActor` managing device pairing.
 
@@ -269,7 +269,7 @@ Two **aggregate** consumers built on the same OTEL stream, surfacing data that o
 - `onDevicePaired` callback triggers connection to newly paired device
 - Partner public keys received via WebSocket after pairing
 
-### TerminalStreamService (`ClaudeSpyServerFeature/Services/TerminalStreamService.swift`)
+### TerminalStreamService (`CtrlxServerFeature/Services/TerminalStreamService.swift`)
 
 `@Observable @MainActor` streaming terminal data to subscribed Viewer devices.
 
@@ -285,7 +285,7 @@ Two **aggregate** consumers built on the same OTEL stream, surfacing data that o
 
 **Message Types:** `initialState`, `dataChunk`, `dimensionChange`, `streamEnd`
 
-### TmuxCommandExecutor (`ClaudeSpyServerFeature/Services/TmuxCommandExecutor.swift`)
+### TmuxCommandExecutor (`CtrlxServerFeature/Services/TmuxCommandExecutor.swift`)
 
 Actor executing commands from iOS devices.
 
@@ -293,7 +293,7 @@ Actor executing commands from iOS devices.
 - Dispatches to `TmuxService` (sendKeys, sendInterrupt, etc.)
 - Returns `CommandResponseMessage` (success/failure)
 
-### PluginService (`ClaudeSpyServerFeature/Services/PluginService.swift`)
+### PluginService (`CtrlxServerFeature/Services/PluginService.swift`)
 
 `@Observable @MainActor` managing Claude Code plugin detection and installation.
 
@@ -303,16 +303,16 @@ Actor executing commands from iOS devices.
 - Installs bundled plugin from app resources
 - First-launch setup flow via `PluginSetupView`
 
-### CodexPluginInstaller (`ClaudeSpyServerFeature/Services/CodexPluginInstaller.swift`)
+### CodexPluginInstaller (`CtrlxServerFeature/Services/CodexPluginInstaller.swift`)
 
 `Sendable struct` (Point-Free `@DependencyClient`) that installs the bundled `gallager` Codex plugin so Codex forwards hook events to the local hook server.
 
-- Locates the bundled marketplace under `~/.claudespy/marketplaces/gallager/` (copied out of the app resources at install time so Codex can re-discover it)
+- Locates the bundled marketplace under `~/.ctrlx/marketplaces/gallager/` (copied out of the app resources at install time so Codex can re-discover it)
 - Registers the marketplace via `codex plugin marketplace add` and installs the plugin via `codex plugin install gallager`
 - Writes hooks at the **global layer** (`~/.codex/hooks.json`) to avoid per-project trust prompts on every repo
 - Exposes `install` / `uninstall` / `isInstalled` closures; surfaced in Settings via `CodexPluginInstallerRow`
 
-### ClaudeProjectScanner (`ClaudeSpyServerFeature/Services/ClaudeProjectScanner.swift`)
+### ClaudeProjectScanner (`CtrlxServerFeature/Services/ClaudeProjectScanner.swift`)
 
 Actor scanning for Claude Code projects.
 
@@ -322,7 +322,7 @@ Actor scanning for Claude Code projects.
 - Tags each result with `agent: .claudeCode`
 - Results merged with `CodexProjectScanner` output by `AppCoordinator.scanProjects()` and sent to iOS for project list display
 
-### CodexProjectScanner (`ClaudeSpyServerFeature/Services/CodexProjectScanner.swift`)
+### CodexProjectScanner (`CtrlxServerFeature/Services/CodexProjectScanner.swift`)
 
 `Sendable struct` (Point-Free `@DependencyClient`) discovering Codex projects.
 
@@ -331,7 +331,7 @@ Actor scanning for Claude Code projects.
 - Groups rollouts by working directory and emits one `ClaudeProjectInfo` per project with `agent: .codex`
 - Output is merged with `ClaudeProjectScanner` results in `AppCoordinator.scanProjects()` and the project-list relay payload, so the iOS picker shows a unified "most recently used" list with a per-row agent badge
 
-### ClaudePathDetector (`ClaudeSpyServerFeature/Services/ClaudePathDetector.swift`)
+### ClaudePathDetector (`CtrlxServerFeature/Services/ClaudePathDetector.swift`)
 
 Static utility detecting the `claude` CLI path.
 
@@ -339,7 +339,7 @@ Static utility detecting the `claude` CLI path.
 - Used by `TerminalLauncher` for auto-running Claude in new sessions
 - The matching `codex` path is resolved against `AppSettings.codexCommandPath` (default `codex`) rather than auto-detection
 
-### TerminalLauncher (`ClaudeSpyServerFeature/Services/TerminalLauncher.swift`)
+### TerminalLauncher (`CtrlxServerFeature/Services/TerminalLauncher.swift`)
 
 `@MainActor` utility for launching tmux sessions in external terminals.
 
@@ -347,7 +347,7 @@ Static utility detecting the `claude` CLI path.
 - Attaches to existing tmux sessions
 - Used from iOS "open in terminal" commands
 
-### DockIconManager (`ClaudeSpyServerFeature/Managers/DockIconManager.swift`)
+### DockIconManager (`CtrlxServerFeature/Managers/DockIconManager.swift`)
 
 `@MainActor` managing dock icon visibility and the dock tile badge.
 
@@ -359,7 +359,7 @@ Static utility detecting the `claude` CLI path.
   `.accessory` transitions, so the manager clears the label before every set
   and re-applies it on policy updates (issue #217)
 
-### SleepPreventionManager (`ClaudeSpyServerFeature/Managers/SleepPreventionManager.swift`)
+### SleepPreventionManager (`CtrlxServerFeature/Managers/SleepPreventionManager.swift`)
 
 `@MainActor` preventing Mac sleep during active sessions.
 
@@ -367,14 +367,14 @@ Static utility detecting the `claude` CLI path.
 - Enabled/disabled via settings toggle
 - Automatically releases when all sessions end
 
-### LoginItemService (`ClaudeSpyServerFeature/Services/LoginItemService.swift`)
+### LoginItemService (`CtrlxServerFeature/Services/LoginItemService.swift`)
 
 Static utility for launch-at-login management.
 
 - Uses `SMAppService.mainApp` for registration
 - Appears in System Settings > General > Login Items
 
-### GitWorkbenchProviderClient (`ClaudeSpyServerFeature/Services/GitWorkbenchProviderClient.swift`)
+### GitWorkbenchProviderClient (`CtrlxServerFeature/Services/GitWorkbenchProviderClient.swift`)
 
 `@Dependency` factory that vends a `GitWorkbenchProvider` for the Git tab (the
 [GitWorkbench](https://github.com/gpambrozio/GitWorkbench) component embedded to
@@ -407,14 +407,14 @@ opens it in its default app.
   handlers (the reveal logic is the shared `revealInFileExplorer`) so the menu
   reaches full parity with the file explorer.
 
-### UpdaterController (`ClaudeSpyServerFeature/Services/UpdaterController.swift`)
+### UpdaterController (`CtrlxServerFeature/Services/UpdaterController.swift`)
 
 `@Observable @MainActor` wrapping Sparkle updater for SwiftUI.
 
 - Exposes `canCheckForUpdates` binding
 - `checkForUpdates()` action
 
-### PluginUpdateManager (`ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift`)
+### PluginUpdateManager (`CtrlxServerFeature/Distribution/PluginUpdateManager.swift`)
 
 `@Observable @MainActor` orchestrating auto-update for URL-installed sidecar
 plugins (spec `docs/superpowers/specs/2026-07-25-plugin-auto-update-design.md`).
@@ -445,7 +445,7 @@ exposed as `coordinator.pluginUpdateManager`.
   "updated to X" with no restart advice; only the busy/deferred path says
   "restart Gallager and your <agent> sessions".
 
-### LayoutStore (`ClaudeSpyServerFeature/Services/LayoutPersistence/LayoutStore.swift`)
+### LayoutStore (`CtrlxServerFeature/Services/LayoutPersistence/LayoutStore.swift`)
 
 `@DependencyClient` that persists per-folder workbench layouts (open file/browser
 tabs, split arrangement, sidebar width) so a session restores its workbench
@@ -467,7 +467,7 @@ last-known layout. See `docs/folder-layout-persistence-plan.md`.
 
 ## iOS Services
 
-### RelayClient (`ClaudeSpyFeature/Services/RelayClient.swift`)
+### RelayClient (`CtrlxFeature/Services/RelayClient.swift`)
 
 `@Observable @MainActor` managing WebSocket from iOS to relay server.
 
@@ -476,7 +476,7 @@ last-known layout. See `docs/folder-layout-persistence-plan.md`.
 - Sends commands (keystroke, cancel, start/stop stream)
 - Auto-reconnects with exponential backoff
 
-### SessionStore (`ClaudeSpyFeature/Services/SessionStore.swift`)
+### SessionStore (`CtrlxFeature/Services/SessionStore.swift`)
 
 `@Observable @MainActor` tracking sessions from Mac.
 
@@ -487,7 +487,7 @@ last-known layout. See `docs/folder-layout-persistence-plan.md`.
 
 ## Utilities
 
-### ProcessRunner (`ClaudeSpyServerFeature/Utilities/ProcessRunner.swift`)
+### ProcessRunner (`CtrlxServerFeature/Utilities/ProcessRunner.swift`)
 
 Actor for external processes.
 
@@ -497,7 +497,7 @@ Actor for external processes.
 
 ## Models
 
-### CodingAgent (`ClaudeSpyNetworking/Models/CodingAgent.swift`)
+### CodingAgent (`CtrlxNetworking/Models/CodingAgent.swift`)
 
 ```swift
 public enum CodingAgent: String, Codable, Sendable, CaseIterable, Hashable {
@@ -514,14 +514,14 @@ Carries display metadata used to render agent-aware UI:
 
 `HookEvent`, `ClaudeSession`, and `ClaudeProjectInfo` all carry an `agent` field that defaults to `.claudeCode` when missing, so older Mac builds and older relay payloads still decode cleanly.
 
-### PaneInfo (`ClaudeSpyServerFeature/Models/PaneInfo.swift`)
+### PaneInfo (`CtrlxServerFeature/Models/PaneInfo.swift`)
 
 ```swift
 id, target, sessionName, windowIndex, paneIndex
 command, currentPath, width, height, isActive
 ```
 
-### AppSettings (`ClaudeSpyServerFeature/Models/Settings.swift`)
+### AppSettings (`CtrlxServerFeature/Models/Settings.swift`)
 
 `@Observable @MainActor` with UserDefaults:
 
@@ -533,7 +533,7 @@ command, currentPath, width, height, isActive
 - **Prompt editor (Ctrl-G):** editorOverrideMode (`ask` / `overrideInGallagerSessions` / `useMyEditor`) — see [Editor Override](#editor-override-ctrl-g)
 - **Plugin:** hasCompletedPluginSetup
 
-### PairedDevice (`ClaudeSpyServerFeature/Models/Settings.swift`)
+### PairedDevice (`CtrlxServerFeature/Models/Settings.swift`)
 
 ```swift
 id, deviceName, partnerPublicKey, partnerPublicKeyId, pairedAt, customName
@@ -553,9 +553,9 @@ APNS_ENVIRONMENT=development  # or "production"
 ```
 
 **Key files:**
-- `ClaudeSpyExternalServer/Services/APNsService.swift`
-- `ClaudeSpyExternalServer/Services/PushTokenStore.swift`
-- `ClaudeSpyFeature/Services/PushNotificationService.swift`
+- `CtrlxExternalServer/Services/APNsService.swift`
+- `CtrlxExternalServer/Services/PushTokenStore.swift`
+- `CtrlxFeature/Services/PushNotificationService.swift`
 
 **Events:** sessionStart, sessionEnd, permissionRequest, stop, notification
 
@@ -571,9 +571,9 @@ See `docs/e2ee-encryption-plan.md` for full design.
 - Storage: Keychain with shared access group
 
 **Key files:**
-- `ClaudeSpyEncryption/E2EEService.swift`
-- `ClaudeSpyEncryption/KeyManager.swift`
-- `ClaudeSpyNotificationExtension/NotificationService.swift`
+- `CtrlxEncryption/E2EEService.swift`
+- `CtrlxEncryption/KeyManager.swift`
+- `CtrlxNotificationExtension/NotificationService.swift`
 
 **Encrypted types:** hookEvent, sessionState, command, commandResponse, terminalStream
 

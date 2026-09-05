@@ -45,7 +45,7 @@ subprocess, so `/usr/bin/env <command>` finds CLIs installed anywhere on the use
 
 ## Architecture
 
-### Component 1 — `LoginShellPath` (new, `ClaudeSpyCommon`, `@Dependency`)
+### Component 1 — `LoginShellPath` (new, `CtrlxCommon`, `@Dependency`)
 
 A `@DependencyClient struct` (mirroring `TmuxBinaryLocator`), macOS-only, exposing:
 

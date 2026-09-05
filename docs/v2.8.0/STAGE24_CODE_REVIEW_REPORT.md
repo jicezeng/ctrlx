@@ -29,7 +29,7 @@
 
 - Stage 24 聚焦测试：32 tests passed。
 - 完整 Swift Package：1647 tests in 233 suites passed。
-- macOS `ClaudeSpyServer` Release 构建通过，iOS `ClaudeSpy` generic-device Debug 构建通过。
+- macOS `CtrlxServer` Release 构建通过，iOS `Ctrlx` generic-device Debug 构建通过。
 - `git diff --check` 通过，编译无新增 Sendable、actor isolation 或数据竞争诊断。
 
 ## Recommendation

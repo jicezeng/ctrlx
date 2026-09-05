@@ -195,7 +195,7 @@ final class PluginRegistry {
 }
 ```
 
-The agent-blind core (`ClaudeSpyServerFeature`) owns the registry and the factory table; the
+The agent-blind core (`CtrlxServerFeature`) owns the registry and the factory table; the
 **dispatcher / runtime stays agent-neutral** — it only ever touches `any PluginCore` and
 `PluginHost`. The factory table is the *only* place that names concrete agent types. This is what
 delivers the v1 promise: the dispatcher, tmux layer, CLI, and iOS never switch on an agent.
@@ -454,7 +454,7 @@ A one-shot migration on first launch of the new version reads the legacy
 schema generality.)
 
 To couple cleanly: the two `Settings` structs live where both the core and the Mac form can see
-them (the per-agent core modules, with `ClaudeSpyServerFeature` importing them, or a shared
+them (the per-agent core modules, with `CtrlxServerFeature` importing them, or a shared
 settings module if that import is undesirable).
 
 ## 12. Project & session lifecycle
@@ -470,7 +470,7 @@ settings module if that import is undesirable).
   `core.commandForLaunch(projectPath:)` and starts the agent in a tmux pane. Commands and args are
   shell-quoted by the app before `tmux send-keys`.
 - **Codex pane↔session correlation.** `CodexPluginCore` keeps its existing correlation file at
-  `~/.claudespy/codex-sessions/<tmux_pane>.json` (written on session start) to map Codex session
+  `~/.ctrlx/codex-sessions/<tmux_pane>.json` (written on session start) to map Codex session
   ids to panes. This is core-internal; the app doesn't know about it.
 
 ## 13. Crash model (v1: accepted)
@@ -515,7 +515,7 @@ Clear actions. The log file is the `host.log()` sink, size-rotated at 5 MB. ~150
 
 This lands as a single flag-day PR.
 
-**Deleted outright:** `CodingAgent` enum; `HookServerService` + `~/.claudespy-port`; `HookEvent`,
+**Deleted outright:** `CodingAgent` enum; `HookServerService` + `~/.ctrlx-port`; `HookEvent`,
 `HookAction`, all `*Body` structs, `CommonHookFields`; the iOS `EventRowView` + `HookAction`/
 `HookEvent` decode paths + `AskUserQuestionKeystrokes`; all `case .claudeCode:`/`case .codex:`
 switches across `AppCoordinator`/`Settings`/`MainView`/`TmuxService`; the repo-root `plugin/`
@@ -537,7 +537,7 @@ own doc (`docs/plugins/claude-code.md`, `docs/plugins/codex.md`) as the normativ
 that core; this system spec stays agent-blind and only defines the `PluginEvent` fields those
 translators populate.
 
-**Order of work:** (1) shared `ClaudeSpyNetworking` types (`AgentResponseRequest`, `AppAction`,
+**Order of work:** (1) shared `CtrlxNetworking` types (`AgentResponseRequest`, `AppAction`,
 `PluginEvent`, presentation + status wire messages). (2) `GallagerPluginProtocol`: `PluginCore`,
 `PluginHost`, `IngressFrame` (+ `plugin_id`), value types. (3) The agent-blind runtime: registry,
 dispatcher, the one ingress `NWListener`, the `PluginHost` implementation, presentation push. (4)
@@ -556,7 +556,7 @@ Three layers (the contract is process-agnostic, so most tests don't care about i
 2. **Contract tests in `GallagerPluginProtocol`**: a `MockPluginHost` drives a core; a test
    `EchoPluginCore` (an in-process `PluginCore` conformer built into the test target) exercises the
    dispatcher and the `PluginHost` callbacks.
-3. **E2E in `ClaudeSpyE2ELib`**: the ingress path is covered end-to-end by the test driver writing
+3. **E2E in `CtrlxE2ELib`**: the ingress path is covered end-to-end by the test driver writing
    self-identifying frames to the **app-owned socket** (the `macSendRawHookPayload` DSL step, now
    targeting `~/.gallager/state/ingress.sock` with a `plugin_id` field) → the app routes to
    `EchoPluginCore.handleIngress` → iOS observes `agent_session_status` / response forms /

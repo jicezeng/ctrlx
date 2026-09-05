@@ -238,7 +238,7 @@ Branch: `plugin-system-v1-in-process`
     `--json-output`) to produce the exact pass/fail triage list. Run `./scripts/e2e-test.sh` (the
     `-derivedDataPath` sandbox fix is in) and iterate to green.
 - **Step 10 (E2E) CODE COMPLETE — ALL BUILDS GREEN (SPM 745 tests, iOS scheme, macOS app scheme,
-  ClaudeSpyE2E exe). E2E RUNTIME RUN still pending (needs interactive GUI/sim session).** Transport
+  CtrlxE2E exe). E2E RUNTIME RUN still pending (needs interactive GUI/sim session).** Transport
   flipped HTTP→ingress socket: new `IngressSocketClient` (AF_UNIX writer of length-prefixed
   `IngressFrame`s); `macSendHookEvent` gained `pluginID` (default "claude-code" → real
   `ClaudeCodePluginCore.handleIngress`, same flow); orchestrator passes `--gallager-state-root <dir>`
@@ -249,9 +249,9 @@ Branch: `plugin-system-v1-in-process`
   `./scripts/e2e-test.sh` in a GUI session and fix any runtime failures (screenshots/AX matches/live
   ingress writes are unverified). This is the last gate to "all e2e pass".**
 - **FLAG-DAY FLIP COMPLETE (Steps 7/8/9) — ALL BUILDS GREEN, 745 unit tests pass.** Verified by ME:
-  `swift build` + full `swift test` (745), iOS scheme `ClaudeSpy` (xcodebuild, green), macOS app scheme
-  `ClaudeSpyServer` (xcodebuild → `Gallager.app`, green). DELETED: `CodingAgent`, `HookServerService`+
-  `~/.claudespy-port`, `HookEvent`/`HookAction`/`*Body`/`CommonHookFields`/`HookEventMessage`+
+  `swift build` + full `swift test` (745), iOS scheme `Ctrlx` (xcodebuild, green), macOS app scheme
+  `CtrlxServer` (xcodebuild → `Gallager.app`, green). DELETED: `CodingAgent`, `HookServerService`+
+  `~/.ctrlx-port`, `HookEvent`/`HookAction`/`*Body`/`CommonHookFields`/`HookEventMessage`+
   `buildNotification` (parsing types MOVED into `ClaudeCodePluginCore`; `CodexPluginCore` depends on it),
   `ClaudeProjectScanner`/`CodexProjectScanner`, legacy `CodexPluginInstaller`+`CodexPluginInstallerRow`,
   iOS `EventRowView`+`AskUserQuestionKeystrokes`, `WebSocketMessage.hookEvent`+`ConnectedViewer.sendHookEvent`.
@@ -264,7 +264,7 @@ Branch: `plugin-system-v1-in-process`
   (1) gated `ProcessRunner.liveValue`/`OutputCollector` behind `#if os(macOS)` (`Process`/NSTask is
   macOS-only; broke the iOS build); (2) cleared all SwiftLint violations the Xcode build phase enforces
   but SPM skips (`Data(x.utf8)`, for-where, statement_position, stale `TODO`s→resolved, number-decimal
-  comment); (3) fixed `ClaudeSpyServer/ClaudeSpyServerApp.swift` (app @main, outside the package) —
+  comment); (3) fixed `CtrlxServer/CtrlxServerApp.swift` (app @main, outside the package) —
   removed deleted-scanner/`HookServerService` E2E injections + `--hook-port-file`, `.claudeSession`→
   `.agentSession`.
   **=> Only Step 10 (E2E) remains: the suite won't pass yet because hook delivery still uses the deleted
@@ -316,7 +316,7 @@ These are tightly coupled (Mac-send + iOS-consume + E2E-transport + renames must
 - **Step 9 (flag-day flip + delete):** replace remaining `CodingAgent` switches with pluginID;
   `TmuxService.detectAgentPanes` uses manifest `process_names` (registry.processNamesByPlugin);
   flip ingestion fully to ingress (stop using HookServerService output); DELETE `HookServerService`+
-  `~/.claudespy-port`, `CodingAgent`, `HookEvent`/`HookAction`/`*Body`/`CommonHookFields` (migrate
+  `~/.ctrlx-port`, `CodingAgent`, `HookEvent`/`HookAction`/`*Body`/`CommonHookFields` (migrate
   parsing into cores first), iOS dead paths, legacy `CodexPluginInstaller`, repo-root `plugin/`.
   Bump `VersionCompatibility` min host+viewer by one breaking increment (e.g. 1.23→2.0); update the
   4 version-mismatch E2E scenarios' expectations.
@@ -348,7 +348,7 @@ These are tightly coupled (Mac-send + iOS-consume + E2E-transport + renames must
     and merging `pluginProjects` into the iOS session-state push. New test:
     `PluginRuntimeStatusWiringTests` (incl. ingress-socket→Echo→dispatcher→session-status round-trip).
 - **PHASE A COMPLETE & GREEN — 745 unit tests pass. `AppCoordinator` still untouched.**
-  Step 3 runtime built additively under `Sources/ClaudeSpyServerFeature/Plugins/`:
+  Step 3 runtime built additively under `Sources/CtrlxServerFeature/Plugins/`:
   - `GallagerPaths` (`~/.gallager/` layout + `--gallager-state-root` override; `ingressSocketPath`,
     `pluginStateDir(id)`, `pluginSettingsPath(id)`, `pluginLogPath(id)`, `registryPath`).
   - `PluginLogSink` (per-plugin file log, 5 MB rotation).
@@ -385,7 +385,7 @@ These are tightly coupled (Mac-send + iOS-consume + E2E-transport + renames must
    - host.onSetProjects → store per-plugin `[AgentProject]`, merge, push via existing session-state.
    - Incoming `agent_response_submission` from iOS → `registry.active[pluginID].deliverResponse(...)`.
 2. Replace the `HookServerService` start with `IngressSocketServer.start()`. Delete HookServerService
-   + `~/.claudespy-port` (Phase B).
+   + `~/.ctrlx-port` (Phase B).
 3. Replace every `CodingAgent` switch (CodingAgent.swift def; AppCoordinator L821/1458/1482;
    Settings.swift L349; MainView L3666/3686; TmuxService L471 detect; SessionListView L803;
    NewSessionContent L148; APIRequestRouter L600; MirrorWindowManager) with pluginID paths.
@@ -401,12 +401,12 @@ These are tightly coupled (Mac-send + iOS-consume + E2E-transport + renames must
     in). 36 tests.
   - `CodexPluginCore`: mirrors ClaudeCode — CodexScanner (`~/.codex/sessions/` rollout parsing),
     CodexTranslator (agent:.codex), CodexKeystrokes, CodexInstaller (socket bridge into
-    `~/.codex/hooks.json`), CodexSessionCorrelation (`~/.claudespy/codex-sessions/<pane>.json`,
+    `~/.codex/hooks.json`), CodexSessionCorrelation (`~/.ctrlx/codex-sessions/<pane>.json`,
     spec §12), CodexSessionsWatcher. ~60 tests.
   - NOTE: Codex installer deliberately uses the socket-bridge model (spec §8.1), NOT the legacy
     `codex plugin marketplace add` CLI flow — Phase B deletes the legacy `CodexPluginInstaller`.
 - **Phase A foundation complete & green (610 unit tests pass).**
-  - Step 1 ✅ shared wire types in `ClaudeSpyNetworking/Models/Plugin/` (AgentResponseRequest,
+  - Step 1 ✅ shared wire types in `CtrlxNetworking/Models/Plugin/` (AgentResponseRequest,
     AgentResponse, PluginEvent, NotificationSpec, ResponseRequestPayload, AppAction,
     AgentProject, PluginPresentation, 4 new `WebSocketMessage` cases + Codable).
   - Step 2 ✅ `GallagerPluginProtocol` module (PluginCore, PluginHost, IngressFrame + codec,
@@ -415,14 +415,14 @@ These are tightly coupled (Mac-send + iOS-consume + E2E-transport + renames must
     (`GallagerPluginProtocolTests`: frame codec, manifest decode, wire round-trips, Echo behavior).
   - Step 4 SCAFFOLD ✅ `ClaudeCodePluginCore` + `CodexPluginCore` targets/products/test targets;
     typed `ClaudeCodeSettings`/`CodexSettings` (real, snake_case, defensive decode) + tests;
-    bundled manifests at `ClaudeSpyServerFeature/PluginBundles/plugins/<id>/plugin.json`
+    bundled manifests at `CtrlxServerFeature/PluginBundles/plugins/<id>/plugin.json`
     (`.copy` rule); cores conform to PluginCore as skeletons (translator/scanner/installer/
     keystrokes are TODO-marked stubs). `ServerFeature` now depends on protocol + both cores.
-  - Prereq ✅ moved `ProcessRunner` → `ClaudeSpyCommon` (cores can't depend on ServerFeature);
-    added `import ClaudeSpyCommon` to TmuxService/CodexPluginInstaller/LayoutDriver(+tests).
+  - Prereq ✅ moved `ProcessRunner` → `CtrlxCommon` (cores can't depend on ServerFeature);
+    added `import CtrlxCommon` to TmuxService/CodexPluginInstaller/LayoutDriver(+tests).
 - **Next:** flesh out core bodies (translator/scanner/keystrokes/installer) with unit tests
   (Step 4); then Step 3 runtime; then Phase B flip (Steps 5–9); then Phase C E2E (Step 10).
-- **Key Phase A decision:** cores REUSE `ClaudeSpyNetworking.HookAction`/`HookEvent`/
+- **Key Phase A decision:** cores REUSE `CtrlxNetworking.HookAction`/`HookEvent`/
   `HookNotificationExtensions`/`isWorking` for parsing+copy now; Phase B physically migrates
   those Claude-specific types INTO `ClaudeCodePluginCore` and deletes the networking copies.
 
@@ -435,7 +435,7 @@ module + one registry entry.
 
 **Done = all of:**
 1. Every numbered step below is implemented faithfully to the spec.
-2. `swift build` and the macOS (`ClaudeSpyServer`) + iOS (`ClaudeSpy`) Xcode builds succeed.
+2. `swift build` and the macOS (`CtrlxServer`) + iOS (`Ctrlx`) Xcode builds succeed.
 3. All unit/integration tests pass (`swift test` across all test targets).
 4. All E2E scenarios pass (old + new) via `scripts/e2e-test.sh`. Old scenarios may be
    edited **only** for the test-architecture change (HTTP hook POST → ingress socket
@@ -479,30 +479,30 @@ Sources/
     ClaudeCodeSettings.swift     typed Codable settings struct
     Resources/plugin.json        manifest + assets/icon.png  (bundled)
   CodexPluginCore/               NEW — Codex agent (macOS)
-    (same shape; keeps ~/.claudespy/codex-sessions/<pane>.json correlation)
+    (same shape; keeps ~/.ctrlx/codex-sessions/<pane>.json correlation)
 ```
 
 Dependency edges:
-- `GallagerPluginProtocol` → `ClaudeSpyNetworking`
-- `ClaudeCodePluginCore` / `CodexPluginCore` → `GallagerPluginProtocol`, `ClaudeSpyNetworking`, `ClaudeSpyCommon`, `Dependencies`
-- `ClaudeSpyServerFeature` → + `GallagerPluginProtocol`, `ClaudeCodePluginCore`, `CodexPluginCore`
-- iOS (`ClaudeSpyFeature`) imports **none** of the above — only `ClaudeSpyNetworking`.
+- `GallagerPluginProtocol` → `CtrlxNetworking`
+- `ClaudeCodePluginCore` / `CodexPluginCore` → `GallagerPluginProtocol`, `CtrlxNetworking`, `CtrlxCommon`, `Dependencies`
+- `CtrlxServerFeature` → + `GallagerPluginProtocol`, `ClaudeCodePluginCore`, `CodexPluginCore`
+- iOS (`CtrlxFeature`) imports **none** of the above — only `CtrlxNetworking`.
 - New targets must not break the Linux relay build: gate macOS-only APIs (FSEvents) with
   `#if os(macOS)`; do not add macOS-only SPM products to their manifest deps.
 - New test targets: `GallagerPluginProtocolTests` (contract + EchoPluginCore),
   `ClaudeCodePluginCoreTests`, `CodexPluginCoreTests`.
 
 The cores ship their manifest/icon via SwiftPM `resources: [.process("Resources")]`, and
-`ClaudeSpyServerFeature` copies them into `Gallager.app/Contents/Resources/plugins/<id>/`
+`CtrlxServerFeature` copies them into `Gallager.app/Contents/Resources/plugins/<id>/`
 at build time (or the registry reads them from each core module's bundle). Decision:
-keep one canonical `Resources/plugins/<id>/` under `ClaudeSpyServerFeature/Resources`
+keep one canonical `Resources/plugins/<id>/` under `CtrlxServerFeature/Resources`
 (the existing `.process("Resources")` target) seeded from the relocated repo `plugin/`
 folders, so pane detection + presentation have a single read path. The hook bridge
 `hook.py` is bundled the same way and installed by `core.install()`.
 
 ## 3. Step-by-step (maps to spec §16 order of work)
 
-### Step 1 — Shared wire types in `ClaudeSpyNetworking` (Phase A) ✅ DONE (compiles)
+### Step 1 — Shared wire types in `CtrlxNetworking` (Phase A) ✅ DONE (compiles)
 - [x] `AgentResponseRequest` (5 cases) + `PromptRequest`, `ReplyAfterStopRequest`,
       `PermissionRequest` (`isAutoApprovable`, suggestions), `AskUserQuestionRequest`,
       `ApprovePlanRequest`. All `Codable, Sendable, Equatable`.
@@ -530,7 +530,7 @@ folders, so pane detection + presentation have a single read path. The hook brid
 - [ ] Value types: `PluginEnv`, `LaunchCommand`, `InstallResult`, `SettingsResult`, `LogLine`, `LogLevel`.
 - [ ] `PluginManifest` + `Runtime` enum (`.inProcess` default; decode tolerant of absent/null).
 
-### Step 3 — Agent-blind runtime in `ClaudeSpyServerFeature` (Phase A, wired in Phase B)
+### Step 3 — Agent-blind runtime in `CtrlxServerFeature` (Phase A, wired in Phase B)
 - [ ] `PluginRegistry` (@MainActor): factory table `["claude-code": …, "codex": …]`,
       `active: [String: any PluginCore]`, manifest loading from Resources, enable/disable.
 - [ ] `PluginEventDispatcher`: consumes every `PluginEvent`, fans out to session status,
@@ -549,7 +549,7 @@ folders, so pane detection + presentation have a single read path. The hook brid
 - [ ] Relocate `ClaudeProjectScanner` (+ defensive parsing) → ClaudeCodeScanner; add FSEvents
       watcher on `~/.claude/projects/` w/ debounce → `host.setProjects`.
 - [ ] Relocate `CodexProjectScanner` → CodexScanner; FSEvents on `~/.codex/sessions/`;
-      keep `~/.claudespy/codex-sessions/<pane>.json` correlation (core-internal).
+      keep `~/.ctrlx/codex-sessions/<pane>.json` correlation (core-internal).
 - [ ] Translator: port `HookAction.from` + `isWorking` + notification copy + which events
       become `.permission`/`.askUserQuestion`/`.approvePlan`/`.prompt`/`.replyAfterStop`,
       and which emit `AppAction` (markdown write → openFileSuggestion; submit →
@@ -613,7 +613,7 @@ folders, so pane detection + presentation have a single read path. The hook brid
 
 ## 4. Rename / delete reference
 
-**Delete:** `CodingAgent`; `HookServerService` + `~/.claudespy-port`; `HookEvent`,
+**Delete:** `CodingAgent`; `HookServerService` + `~/.ctrlx-port`; `HookEvent`,
 `HookAction`, all `*Body`, `CommonHookFields`; iOS `EventRowView` + `HookAction`/`HookEvent`
 decode + `AskUserQuestionKeystrokes`; all `case .claudeCode/.codex` switches; repo-root
 `plugin/` folders (relocate); hardcoded `"Claude Code"` notification copy (incl.

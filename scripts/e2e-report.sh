@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# E2E Test Report Generator for ClaudeSpy
+# E2E Test Report Generator for Ctrlx
 # Runs all e2e scenarios via e2e-test.sh, collects results + screenshots,
 # and pushes a report to the ClaudeSpyTestResults repository.
 

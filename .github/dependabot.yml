@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: swift
-    directory: /ClaudeSpyPackage
+    directory: /CtrlxPackage
     schedule:
       interval: weekly
   - package-ecosystem: npm

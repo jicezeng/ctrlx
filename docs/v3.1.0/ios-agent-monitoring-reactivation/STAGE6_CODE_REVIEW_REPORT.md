@@ -29,7 +29,7 @@
 ## Verification
 
 - Agent 后台监控定向测试：11 项通过
-- `ClaudeSpyPackage` 完整测试：1756 项通过
+- `CtrlxPackage` 完整测试：1756 项通过
 - iPhoneOS Debug 构建、签名和深度校验：通过
 - iPhone 真机 build `20260818-003000`：安装、启动和租约自恢复通过
 - `git diff --check`：通过

@@ -1,6 +1,6 @@
 # Swift Patterns Reference
 
-Code examples and patterns used in ClaudeSpy. Reference this when implementing new features.
+Code examples and patterns used in Ctrlx. Reference this when implementing new features.
 
 ## SwiftUI State Management (MV Pattern)
 
@@ -337,4 +337,4 @@ positionedContent += "\u{1b}[\(cursorY + 1);\(cursorX + 1)H"  // Final cursor
 | Keychain | `keychain-access-groups` | `<array><string>$(AppIdentifierPrefix)bundle.id</string></array>` |
 | Background | `com.apple.developer.background-modes` | `<array><string>mode-name</string></array>` |
 
-Edit `Config/ClaudeSpy.entitlements` to add capabilities.
+Edit `Config/Ctrlx.entitlements` to add capabilities.

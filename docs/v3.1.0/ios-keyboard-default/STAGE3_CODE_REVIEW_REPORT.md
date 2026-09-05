@@ -21,7 +21,7 @@
 
 ## Verification
 
-- `swift test --package-path ClaudeSpyPackage --filter 'Terminal(InputPresentation|KeyboardControlPosition)Tests'`：5 tests passed
+- `swift test --package-path CtrlxPackage --filter 'Terminal(InputPresentation|KeyboardControlPosition)Tests'`：5 tests passed
 - iPhoneOS generic destination build with code signing disabled：passed
 - `git diff --check`：passed
 

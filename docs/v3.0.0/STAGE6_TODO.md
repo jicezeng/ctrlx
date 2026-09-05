@@ -25,7 +25,7 @@
 ## Verification evidence
 
 - Swift：1715 tests / 247 suites passed。
-- Xcode：macOS `ClaudeSpyServer` 与 iOS Simulator `ClaudeSpy` 无签名构建通过。
+- Xcode：macOS `CtrlxServer` 与 iOS Simulator `Ctrlx` 无签名构建通过。
 - Relay：Linux Docker release build 通过；容器 `/health`、`/ready`、`/version`、`/source` 实测通过。
 - Sidecar：OpenCode、Pi、OMP 共 132 个 Python tests 通过。
 - Web：Astro production build 通过。

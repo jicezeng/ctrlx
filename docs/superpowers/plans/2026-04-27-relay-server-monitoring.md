@@ -2,12 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add full observability to the ClaudeSpy relay server on Hetzner — app-level metrics from Vapor, host metrics from `node_exporter`, both pushed to Grafana Cloud, with Discord alerts when something breaks.
+**Goal:** Add full observability to the Ctrlx relay server on Hetzner — app-level metrics from Vapor, host metrics from `node_exporter`, both pushed to Grafana Cloud, with Discord alerts when something breaks.
 
 **Architecture:**
 - Vapor server exposes `GET /metrics` (Prometheus text format), token-protected via `METRICS_TOKEN`. Counters tracked via a new `MetricsService` actor; gauges read live from existing services.
 - Two systemd services on the Hetzner VM: `node_exporter` (host CPU/RAM/disk/net) and `alloy` (scrapes relay + node, pushes to Grafana Cloud Prometheus).
-- All Grafana resources (datasources, dashboards, alert rules, contact points, notification policy) live in repo as YAML/JSON under `ClaudeSpyPackage/monitoring/`, applied via `grizzly`.
+- All Grafana resources (datasources, dashboards, alert rules, contact points, notification policy) live in repo as YAML/JSON under `CtrlxPackage/monitoring/`, applied via `grizzly`.
 - Alerts route to a Discord channel via a Grafana Discord contact point.
 
 **Tech Stack:** Swift 6.1 / Vapor (server), Grafana Alloy + node_exporter (VM agents), Grafana Cloud (free tier, hosted Prometheus + alerting), grizzly (config-as-code CLI), Discord webhooks.
@@ -17,34 +17,34 @@
 ## File Structure
 
 **New / modified Swift files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift` — actor holding counters + Prometheus text rendering
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/MetricsController.swift` — `RouteCollection` for `GET /metrics`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/routes.swift` — register `MetricsController`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift` — instantiate `MetricsService`, read `METRICS_TOKEN`, store in app
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/RelayService.swift` — accept `MetricsService`, increment `messages_relayed_total`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/APNsService.swift` — accept `MetricsService`, increment `push_notifications_total`
-- Create: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift` — unit tests for counters + rendering
-- Create: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsEndpointTests.swift` — integration tests for `/metrics` route + auth
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift` — actor holding counters + Prometheus text rendering
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/MetricsController.swift` — `RouteCollection` for `GET /metrics`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/routes.swift` — register `MetricsController`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift` — instantiate `MetricsService`, read `METRICS_TOKEN`, store in app
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/RelayService.swift` — accept `MetricsService`, increment `messages_relayed_total`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/APNsService.swift` — accept `MetricsService`, increment `push_notifications_total`
+- Create: `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift` — unit tests for counters + rendering
+- Create: `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsEndpointTests.swift` — integration tests for `/metrics` route + auth
 
 **New deployment / config files:**
-- Modify: `ClaudeSpyPackage/docker-compose.yml` — bind port 8080 to 127.0.0.1 only, add `METRICS_TOKEN` env var
-- Modify: `ClaudeSpyPackage/.env.example` — document `METRICS_TOKEN` (create the file if it doesn't exist)
-- Create: `ClaudeSpyPackage/monitoring/agents/node_exporter.service` — systemd unit
-- Create: `ClaudeSpyPackage/monitoring/agents/alloy.service` — systemd unit
-- Create: `ClaudeSpyPackage/monitoring/agents/config.alloy` — Alloy pipeline config
-- Create: `ClaudeSpyPackage/monitoring/agents/install.sh` — idempotent installer for both agents
-- Create: `ClaudeSpyPackage/monitoring/grizzly/.env.example` — Grafana stack URL + service-account token
-- Create: `ClaudeSpyPackage/monitoring/grizzly/contact-points/discord.yaml`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/notification-policies/main.yaml`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/relay-down.yaml`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/high-memory.yaml`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/disk-full.yaml`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/scrape-failed.yaml`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/dashboards/relay.json`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/Makefile` — `apply`, `pull`, `diff` targets
+- Modify: `CtrlxPackage/docker-compose.yml` — bind port 8080 to 127.0.0.1 only, add `METRICS_TOKEN` env var
+- Modify: `CtrlxPackage/.env.example` — document `METRICS_TOKEN` (create the file if it doesn't exist)
+- Create: `CtrlxPackage/monitoring/agents/node_exporter.service` — systemd unit
+- Create: `CtrlxPackage/monitoring/agents/alloy.service` — systemd unit
+- Create: `CtrlxPackage/monitoring/agents/config.alloy` — Alloy pipeline config
+- Create: `CtrlxPackage/monitoring/agents/install.sh` — idempotent installer for both agents
+- Create: `CtrlxPackage/monitoring/grizzly/.env.example` — Grafana stack URL + service-account token
+- Create: `CtrlxPackage/monitoring/grizzly/contact-points/discord.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/notification-policies/main.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/relay-down.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/high-memory.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/disk-full.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/scrape-failed.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/dashboards/relay.json`
+- Create: `CtrlxPackage/monitoring/grizzly/Makefile` — `apply`, `pull`, `diff` targets
 
 **Documentation:**
-- Modify: `ClaudeSpyPackage/.gitignore` — ignore `monitoring/grizzly/.env`
+- Modify: `CtrlxPackage/.gitignore` — ignore `monitoring/grizzly/.env`
 - Modify: `docs/self-hosting.md` — add "Monitoring" section
 - Create: `docs/monitoring.md` — operator runbook
 
@@ -74,16 +74,16 @@ Expected: `nothing to commit, working tree clean`
 ### Task 2: `MetricsService` actor with counters and rendering
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift`
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift`:
 
 ```swift
 import Testing
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 @Suite("MetricsService")
 struct MetricsServiceTests {
@@ -123,25 +123,25 @@ struct MetricsServiceTests {
         let body = await service.render(snapshot: snapshot, buildVersion: "test-1.0")
 
         // Must include HELP and TYPE lines
-        #expect(body.contains("# HELP claudespy_messages_relayed_total"))
-        #expect(body.contains("# TYPE claudespy_messages_relayed_total counter"))
+        #expect(body.contains("# HELP ctrlx_messages_relayed_total"))
+        #expect(body.contains("# TYPE ctrlx_messages_relayed_total counter"))
         // Counter values
-        #expect(body.contains("claudespy_messages_relayed_total 1"))
-        #expect(body.contains("claudespy_push_notifications_total 1"))
+        #expect(body.contains("ctrlx_messages_relayed_total 1"))
+        #expect(body.contains("ctrlx_push_notifications_total 1"))
         // Gauges from snapshot
-        #expect(body.contains("claudespy_active_pairs 3"))
-        #expect(body.contains("claudespy_ws_connections{device_type=\"host\"} 2"))
-        #expect(body.contains("claudespy_ws_connections{device_type=\"viewer\"} 1"))
-        #expect(body.contains("claudespy_uptime_seconds 42"))
+        #expect(body.contains("ctrlx_active_pairs 3"))
+        #expect(body.contains("ctrlx_ws_connections{device_type=\"host\"} 2"))
+        #expect(body.contains("ctrlx_ws_connections{device_type=\"viewer\"} 1"))
+        #expect(body.contains("ctrlx_uptime_seconds 42"))
         // Build info
-        #expect(body.contains("claudespy_build_info{version=\"test-1.0\"} 1"))
+        #expect(body.contains("ctrlx_build_info{version=\"test-1.0\"} 1"))
     }
 }
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Use the `XcodeBuildTools:swift-package` skill to run tests. From `ClaudeSpyPackage/`:
+Use the `XcodeBuildTools:swift-package` skill to run tests. From `CtrlxPackage/`:
 ```
 swift test --filter MetricsServiceTests
 ```
@@ -149,7 +149,7 @@ Expected: FAIL with "cannot find 'MetricsService' in scope".
 
 - [ ] **Step 3: Implement `MetricsService` and `MetricsSnapshot`**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift`:
+Create `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift`:
 
 ```swift
 import Foundation
@@ -181,30 +181,30 @@ actor MetricsService {
     func render(snapshot: MetricsSnapshot, buildVersion: String) -> String {
         var lines: [String] = []
 
-        lines.append("# HELP claudespy_messages_relayed_total Total encrypted messages relayed since process start.")
-        lines.append("# TYPE claudespy_messages_relayed_total counter")
-        lines.append("claudespy_messages_relayed_total \(messagesRelayedTotal)")
+        lines.append("# HELP ctrlx_messages_relayed_total Total encrypted messages relayed since process start.")
+        lines.append("# TYPE ctrlx_messages_relayed_total counter")
+        lines.append("ctrlx_messages_relayed_total \(messagesRelayedTotal)")
 
-        lines.append("# HELP claudespy_push_notifications_total Total push notifications sent to APNs since process start.")
-        lines.append("# TYPE claudespy_push_notifications_total counter")
-        lines.append("claudespy_push_notifications_total \(pushNotificationsTotal)")
+        lines.append("# HELP ctrlx_push_notifications_total Total push notifications sent to APNs since process start.")
+        lines.append("# TYPE ctrlx_push_notifications_total counter")
+        lines.append("ctrlx_push_notifications_total \(pushNotificationsTotal)")
 
-        lines.append("# HELP claudespy_active_pairs Number of currently-paired devices.")
-        lines.append("# TYPE claudespy_active_pairs gauge")
-        lines.append("claudespy_active_pairs \(snapshot.activePairs)")
+        lines.append("# HELP ctrlx_active_pairs Number of currently-paired devices.")
+        lines.append("# TYPE ctrlx_active_pairs gauge")
+        lines.append("ctrlx_active_pairs \(snapshot.activePairs)")
 
-        lines.append("# HELP claudespy_ws_connections Active WebSocket connections by device type.")
-        lines.append("# TYPE claudespy_ws_connections gauge")
-        lines.append("claudespy_ws_connections{device_type=\"host\"} \(snapshot.hostsConnected)")
-        lines.append("claudespy_ws_connections{device_type=\"viewer\"} \(snapshot.viewersConnected)")
+        lines.append("# HELP ctrlx_ws_connections Active WebSocket connections by device type.")
+        lines.append("# TYPE ctrlx_ws_connections gauge")
+        lines.append("ctrlx_ws_connections{device_type=\"host\"} \(snapshot.hostsConnected)")
+        lines.append("ctrlx_ws_connections{device_type=\"viewer\"} \(snapshot.viewersConnected)")
 
-        lines.append("# HELP claudespy_uptime_seconds Process uptime in seconds.")
-        lines.append("# TYPE claudespy_uptime_seconds gauge")
-        lines.append("claudespy_uptime_seconds \(snapshot.uptimeSeconds)")
+        lines.append("# HELP ctrlx_uptime_seconds Process uptime in seconds.")
+        lines.append("# TYPE ctrlx_uptime_seconds gauge")
+        lines.append("ctrlx_uptime_seconds \(snapshot.uptimeSeconds)")
 
-        lines.append("# HELP claudespy_build_info Build version (always 1).")
-        lines.append("# TYPE claudespy_build_info gauge")
-        lines.append("claudespy_build_info{version=\"\(buildVersion)\"} 1")
+        lines.append("# HELP ctrlx_build_info Build version (always 1).")
+        lines.append("# TYPE ctrlx_build_info gauge")
+        lines.append("ctrlx_build_info{version=\"\(buildVersion)\"} 1")
 
         // Prometheus exposition requires trailing newline
         return lines.joined(separator: "\n") + "\n"
@@ -222,8 +222,8 @@ Expected: 4 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift
 git commit -m "Add MetricsService for Prometheus exposition"
 ```
 
@@ -232,8 +232,8 @@ git commit -m "Add MetricsService for Prometheus exposition"
 ### Task 3: Add `connectionCounts` query to `ConnectionHub`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/ConnectionHub.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift` (extend)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/ConnectionHub.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift` (extend)
 
 The `/metrics` handler needs aggregate per-device-type connection counts across all pairs. `ConnectionHub` only exposes per-pair queries today.
 
@@ -242,7 +242,7 @@ The `/metrics` handler needs aggregate per-device-type connection counts across 
 Append to `MetricsServiceTests.swift`:
 
 ```swift
-import ClaudeSpyNetworking
+import CtrlxNetworking
 
 @Suite("ConnectionHub aggregate counts")
 struct ConnectionHubCountsTests {
@@ -265,7 +265,7 @@ Expected: FAIL — `connectionCounts` undefined.
 
 - [ ] **Step 3: Add `connectionCounts()` to `ConnectionHub`**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/ConnectionHub.swift`, add inside the actor (after `isViewerConnected`):
+In `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/ConnectionHub.swift`, add inside the actor (after `isViewerConnected`):
 
 ```swift
     /// Aggregate count of active connections by device type across all pairs.
@@ -290,8 +290,8 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/ConnectionHub.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/ConnectionHub.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift
 git commit -m "Expose aggregate connection counts on ConnectionHub"
 ```
 
@@ -300,8 +300,8 @@ git commit -m "Expose aggregate connection counts on ConnectionHub"
 ### Task 4: Wire `MetricsService` into `RelayService` and `APNsService`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/RelayService.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/APNsService.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/RelayService.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/APNsService.swift`
 
 These services need a reference to `MetricsService` so they can increment counters at message-relay and push-send sites. Use init-injection for both (matches existing pattern).
 
@@ -361,7 +361,7 @@ Open `APNsService.swift`. Add a `metricsService: MetricsService` stored property
 - [ ] **Step 3: Build to confirm compilation**
 
 ```
-swift build --product ClaudeSpyExternalServer
+swift build --product CtrlxExternalServer
 ```
 Expected: build fails — `configure.swift` still calls old initializers. We'll fix in next task.
 
@@ -372,7 +372,7 @@ Expected: build fails — `configure.swift` still calls old initializers. We'll 
 ### Task 5: Instantiate `MetricsService` in `configure.swift`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift`
 
 - [ ] **Step 1: Add storage key + accessor**
 
@@ -442,7 +442,7 @@ In the body of `configure(_:)`, replace the existing `apnsService` and `relaySer
 - [ ] **Step 3: Build to confirm compilation**
 
 ```
-swift build --product ClaudeSpyExternalServer
+swift build --product CtrlxExternalServer
 ```
 Expected: build succeeds.
 
@@ -456,9 +456,9 @@ Expected: all existing tests + new tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/RelayService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/APNsService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/RelayService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/APNsService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift
 git commit -m "Wire MetricsService through Relay and APNs services"
 ```
 
@@ -467,19 +467,19 @@ git commit -m "Wire MetricsService through Relay and APNs services"
 ### Task 6: `MetricsController` route with bearer-token auth
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/MetricsController.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/routes.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsEndpointTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/MetricsController.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/routes.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsEndpointTests.swift`
 
 - [ ] **Step 1: Write failing endpoint tests**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsEndpointTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsEndpointTests.swift`:
 
 ```swift
 import Testing
 import XCTVapor
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 @Suite("Metrics endpoint", .serialized)
 struct MetricsEndpointTests {
@@ -525,10 +525,10 @@ struct MetricsEndpointTests {
             #expect(res.status == .ok)
             #expect(res.headers.contentType?.description.contains("text/plain") == true)
             let body = res.body.string
-            #expect(body.contains("claudespy_active_pairs 0"))
-            #expect(body.contains("claudespy_ws_connections{device_type=\"host\"} 0"))
-            #expect(body.contains("claudespy_messages_relayed_total 0"))
-            #expect(body.contains("claudespy_uptime_seconds"))
+            #expect(body.contains("ctrlx_active_pairs 0"))
+            #expect(body.contains("ctrlx_ws_connections{device_type=\"host\"} 0"))
+            #expect(body.contains("ctrlx_messages_relayed_total 0"))
+            #expect(body.contains("ctrlx_uptime_seconds"))
         }
     }
 }
@@ -543,7 +543,7 @@ Expected: FAIL — no `/metrics` route registered, currently returns 404.
 
 - [ ] **Step 3: Implement `MetricsController`**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/MetricsController.swift`:
+Create `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/MetricsController.swift`:
 
 ```swift
 import Vapor
@@ -650,10 +650,10 @@ Expected: all green.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/MetricsController.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/routes.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsEndpointTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/MetricsController.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/routes.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsEndpointTests.swift
 git commit -m "Add /metrics endpoint with bearer-token auth"
 ```
 
@@ -662,8 +662,8 @@ git commit -m "Add /metrics endpoint with bearer-token auth"
 ### Task 7: Harden docker-compose port binding + document `METRICS_TOKEN`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/docker-compose.yml`
-- Modify or create: `ClaudeSpyPackage/.env.example`
+- Modify: `CtrlxPackage/docker-compose.yml`
+- Modify or create: `CtrlxPackage/.env.example`
 
 - [ ] **Step 1: Restrict port binding to loopback**
 
@@ -693,7 +693,7 @@ In the `environment:` block of the `relay` service in `docker-compose.yml`, add:
 
 - [ ] **Step 3: Document in `.env.example`**
 
-If `ClaudeSpyPackage/.env.example` does not exist, create it with all current env vars documented. If it exists, append:
+If `CtrlxPackage/.env.example` does not exist, create it with all current env vars documented. If it exists, append:
 
 ```bash
 # Bearer token required to scrape GET /metrics. Generate with:
@@ -705,14 +705,14 @@ METRICS_TOKEN=
 - [ ] **Step 4: Verify compose still parses**
 
 ```bash
-cd ClaudeSpyPackage && docker compose config > /dev/null && cd ..
+cd CtrlxPackage && docker compose config > /dev/null && cd ..
 ```
 Expected: no output, exit 0.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/docker-compose.yml ClaudeSpyPackage/.env.example
+git add CtrlxPackage/docker-compose.yml CtrlxPackage/.env.example
 git commit -m "Bind relay port to localhost and add METRICS_TOKEN env"
 ```
 
@@ -723,11 +723,11 @@ git commit -m "Bind relay port to localhost and add METRICS_TOKEN env"
 ### Task 8: `node_exporter` systemd unit
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/agents/node_exporter.service`
+- Create: `CtrlxPackage/monitoring/agents/node_exporter.service`
 
 - [ ] **Step 1: Create the directory and unit**
 
-Create `ClaudeSpyPackage/monitoring/agents/node_exporter.service`:
+Create `CtrlxPackage/monitoring/agents/node_exporter.service`:
 
 ```ini
 [Unit]
@@ -762,7 +762,7 @@ Notes for reviewer: bound to `127.0.0.1` so it's never exposed externally. Defau
 - [ ] **Step 2: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/agents/node_exporter.service
+git add CtrlxPackage/monitoring/agents/node_exporter.service
 git commit -m "Add node_exporter systemd unit"
 ```
 
@@ -771,12 +771,12 @@ git commit -m "Add node_exporter systemd unit"
 ### Task 9: Grafana Alloy systemd unit and config
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/agents/alloy.service`
-- Create: `ClaudeSpyPackage/monitoring/agents/config.alloy`
+- Create: `CtrlxPackage/monitoring/agents/alloy.service`
+- Create: `CtrlxPackage/monitoring/agents/config.alloy`
 
 - [ ] **Step 1: Write the systemd unit**
 
-Create `ClaudeSpyPackage/monitoring/agents/alloy.service`:
+Create `CtrlxPackage/monitoring/agents/alloy.service`:
 
 ```ini
 [Unit]
@@ -801,7 +801,7 @@ WantedBy=multi-user.target
 
 - [ ] **Step 2: Write the Alloy pipeline config**
 
-Create `ClaudeSpyPackage/monitoring/agents/config.alloy`:
+Create `CtrlxPackage/monitoring/agents/config.alloy`:
 
 ```alloy
 // Scrape the Vapor relay's /metrics with bearer auth.
@@ -812,7 +812,7 @@ prometheus.scrape "relay" {
   bearer_token = sys.env("METRICS_TOKEN")
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
 
-  job_name = "claudespy-relay"
+  job_name = "ctrlx-relay"
 }
 
 // Scrape host metrics from node_exporter.
@@ -845,8 +845,8 @@ The `sys.env(...)` calls read variables defined in `/etc/alloy/alloy.env` (manag
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/agents/alloy.service \
-        ClaudeSpyPackage/monitoring/agents/config.alloy
+git add CtrlxPackage/monitoring/agents/alloy.service \
+        CtrlxPackage/monitoring/agents/config.alloy
 git commit -m "Add Grafana Alloy systemd unit and scrape config"
 ```
 
@@ -855,11 +855,11 @@ git commit -m "Add Grafana Alloy systemd unit and scrape config"
 ### Task 10: Idempotent installer script for both agents
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/agents/install.sh`
+- Create: `CtrlxPackage/monitoring/agents/install.sh`
 
 - [ ] **Step 1: Write the installer**
 
-Create `ClaudeSpyPackage/monitoring/agents/install.sh`:
+Create `CtrlxPackage/monitoring/agents/install.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -964,8 +964,8 @@ echo "  curl http://127.0.0.1:9100/metrics | head"
 - [ ] **Step 2: Make it executable and lint**
 
 ```bash
-chmod +x ClaudeSpyPackage/monitoring/agents/install.sh
-shellcheck ClaudeSpyPackage/monitoring/agents/install.sh || true
+chmod +x CtrlxPackage/monitoring/agents/install.sh
+shellcheck CtrlxPackage/monitoring/agents/install.sh || true
 ```
 
 If `shellcheck` is not installed locally, skip the lint — it's a soft check.
@@ -973,7 +973,7 @@ If `shellcheck` is not installed locally, skip the lint — it's a soft check.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/agents/install.sh
+git add CtrlxPackage/monitoring/agents/install.sh
 git commit -m "Add installer script for node_exporter and Alloy"
 ```
 
@@ -981,13 +981,13 @@ git commit -m "Add installer script for node_exporter and Alloy"
 
 ## Phase 3 — Grafana Cloud bootstrap (manual, one-time)
 
-> These tasks are not pure code edits. The output is values that flow into later tasks (`config.alloy`, grizzly env). Record each value into a **password manager entry** named "ClaudeSpy Monitoring" before moving on.
+> These tasks are not pure code edits. The output is values that flow into later tasks (`config.alloy`, grizzly env). Record each value into a **password manager entry** named "Ctrlx Monitoring" before moving on.
 
 ### Task 11: Create Grafana Cloud account + stack
 
 - [ ] **Step 1:** Go to <https://grafana.com/auth/sign-up/create-user> and sign up with `gustavo@gustavo.eng.br`. Free tier — no credit card required.
 
-- [ ] **Step 2:** Create a stack. Pick a region close to Hetzner (e.g. `eu-west` if VM is in Falkenstein/Nuremberg). Suggested name: `claudespy`.
+- [ ] **Step 2:** Create a stack. Pick a region close to Hetzner (e.g. `eu-west` if VM is in Falkenstein/Nuremberg). Suggested name: `ctrlx`.
 
 - [ ] **Step 3:** From the stack overview, click "Send Metrics" → "Hosted Prometheus metrics". Copy:
   - **Remote Write Endpoint** → save as `GRAFANA_PROM_URL` (looks like `https://prometheus-prod-XX-xxx.grafana.net/api/prom/push`)
@@ -995,12 +995,12 @@ git commit -m "Add installer script for node_exporter and Alloy"
 
 - [ ] **Step 4:** Create a Cloud Access Policy:
   - Grafana Cloud Portal → "Access Policies" → "Create access policy"
-  - Name: `claudespy-alloy-write`
+  - Name: `ctrlx-alloy-write`
   - Realms: select your stack
   - Scopes: `metrics:write` only
   - Create token → name `alloy` → no expiry → save token as `GRAFANA_PROM_TOKEN`
 
-- [ ] **Step 5:** Note the stack's Grafana URL (looks like `https://claudespy.grafana.net`) — save as `GRAFANA_URL`.
+- [ ] **Step 5:** Note the stack's Grafana URL (looks like `https://ctrlx.grafana.net`) — save as `GRAFANA_URL`.
 
 ---
 
@@ -1034,7 +1034,7 @@ Save as `METRICS_TOKEN`.
 - [ ] **Step 2:** SSH to the Hetzner VM and put it into the relay's `.env`:
 
 ```bash
-ssh root@$DEPLOY_HOST 'cat >> /opt/claudespy/.env' <<EOF
+ssh root@$DEPLOY_HOST 'cat >> /opt/ctrlx/.env' <<EOF
 METRICS_TOKEN=<paste value>
 EOF
 ```
@@ -1042,15 +1042,15 @@ EOF
 - [ ] **Step 3:** Redeploy the relay so it picks up the new env var (the loopback port binding from Task 7 also lands here):
 
 ```bash
-cd ClaudeSpyPackage && ./deploy.sh deploy
+cd CtrlxPackage && ./deploy.sh deploy
 ```
 
 - [ ] **Step 4:** Verify the endpoint from inside the VM:
 
 ```bash
-ssh root@$DEPLOY_HOST 'curl -fsS -H "Authorization: Bearer $(grep METRICS_TOKEN /opt/claudespy/.env | cut -d= -f2)" http://127.0.0.1:8080/metrics | head -20'
+ssh root@$DEPLOY_HOST 'curl -fsS -H "Authorization: Bearer $(grep METRICS_TOKEN /opt/ctrlx/.env | cut -d= -f2)" http://127.0.0.1:8080/metrics | head -20'
 ```
-Expected: Prometheus text including `claudespy_active_pairs`.
+Expected: Prometheus text including `ctrlx_active_pairs`.
 
 - [ ] **Step 5:** Verify external access is blocked:
 
@@ -1066,7 +1066,7 @@ Expected: connection refused / timeout (not `401`). If you get `401`, port 8080 
 - [ ] **Step 1:** Copy the agents directory to the VM:
 
 ```bash
-scp -r ClaudeSpyPackage/monitoring/agents root@$DEPLOY_HOST:/opt/claudespy-monitoring
+scp -r CtrlxPackage/monitoring/agents root@$DEPLOY_HOST:/opt/ctrlx-monitoring
 ```
 
 - [ ] **Step 2:** Run the installer with the values gathered in Tasks 11 and 13:
@@ -1077,7 +1077,7 @@ ssh root@$DEPLOY_HOST \
   GRAFANA_PROM_URL="<from-task-11>" \
   GRAFANA_PROM_USER="<from-task-11>" \
   GRAFANA_PROM_TOKEN="<from-task-11>" \
-  bash /opt/claudespy-monitoring/install.sh
+  bash /opt/ctrlx-monitoring/install.sh
 ```
 
 - [ ] **Step 3:** Verify both services are running:
@@ -1094,7 +1094,7 @@ ssh root@$DEPLOY_HOST 'journalctl -u alloy -n 50 --no-pager'
 ```
 Expected: no `error` lines for `prometheus.remote_write`. Look for `level=info ... msg="started"`.
 
-- [ ] **Step 5:** In Grafana Cloud UI, open Explore → select your Prometheus datasource → query `claudespy_active_pairs`. Expected: a `0` time series appearing within 1–2 minutes. Also try `node_filesystem_avail_bytes` to confirm node_exporter is flowing.
+- [ ] **Step 5:** In Grafana Cloud UI, open Explore → select your Prometheus datasource → query `ctrlx_active_pairs`. Expected: a `0` time series appearing within 1–2 minutes. Also try `node_filesystem_avail_bytes` to confirm node_exporter is flowing.
 
 If no data appears after 5 minutes, run the troubleshooting block in `docs/monitoring.md` (created in Task 22).
 
@@ -1104,7 +1104,7 @@ If no data appears after 5 minutes, run the troubleshooting block in `docs/monit
 
 ### Task 15: Discord channel + webhook
 
-- [ ] **Step 1:** In Discord, create (or pick) a server you control. Create a private channel `#claudespy-alerts`.
+- [ ] **Step 1:** In Discord, create (or pick) a server you control. Create a private channel `#ctrlx-alerts`.
 
 - [ ] **Step 2:** Channel settings → Integrations → Webhooks → "New Webhook" → name `Grafana`. Copy the URL → save as `DISCORD_WEBHOOK_URL`.
 
@@ -1123,9 +1123,9 @@ Expected: empty 204 response, message visible in the channel.
 ### Task 16: Install grizzly + monitoring directory structure
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/.env.example`
-- Modify: `ClaudeSpyPackage/.gitignore`
-- Create: `ClaudeSpyPackage/monitoring/grizzly/Makefile`
+- Create: `CtrlxPackage/monitoring/grizzly/.env.example`
+- Modify: `CtrlxPackage/.gitignore`
+- Create: `CtrlxPackage/monitoring/grizzly/Makefile`
 
 - [ ] **Step 1: Install grizzly**
 
@@ -1138,24 +1138,24 @@ Expected: prints a 0.x version.
 - [ ] **Step 2: Create directory structure**
 
 ```bash
-mkdir -p ClaudeSpyPackage/monitoring/grizzly/{contact-points,notification-policies,alerts,dashboards}
+mkdir -p CtrlxPackage/monitoring/grizzly/{contact-points,notification-policies,alerts,dashboards}
 ```
 
 - [ ] **Step 3: Write the env example**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/.env.example`:
+Create `CtrlxPackage/monitoring/grizzly/.env.example`:
 
 ```bash
 # Set these before running `make apply`. Source with `set -a; . .env; set +a`.
 export GRAFANA_URL=https://<your-stack>.grafana.net
 export GRAFANA_TOKEN=<service-account-token-from-task-12>
 export DISCORD_WEBHOOK_URL=<from-task-15>
-export ALERT_FOLDER=ClaudeSpy
+export ALERT_FOLDER=Ctrlx
 ```
 
 - [ ] **Step 4: Ignore the real `.env`**
 
-Append to `ClaudeSpyPackage/.gitignore`:
+Append to `CtrlxPackage/.gitignore`:
 
 ```
 monitoring/grizzly/.env
@@ -1163,7 +1163,7 @@ monitoring/grizzly/.env
 
 - [ ] **Step 5: Write the Makefile**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/Makefile`:
+Create `CtrlxPackage/monitoring/grizzly/Makefile`:
 
 ```make
 .PHONY: apply pull diff lint check-env
@@ -1191,7 +1191,7 @@ lint:
 - [ ] **Step 6: Set up your local env**
 
 ```bash
-cd ClaudeSpyPackage/monitoring/grizzly
+cd CtrlxPackage/monitoring/grizzly
 cp .env.example .env
 # edit .env with real values
 set -a; . ./.env; set +a
@@ -1220,9 +1220,9 @@ rm -rf pulled
 - [ ] **Step 9: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/grizzly/.env.example \
-        ClaudeSpyPackage/monitoring/grizzly/Makefile \
-        ClaudeSpyPackage/.gitignore
+git add CtrlxPackage/monitoring/grizzly/.env.example \
+        CtrlxPackage/monitoring/grizzly/Makefile \
+        CtrlxPackage/.gitignore
 git commit -m "Add grizzly bootstrap directory and Makefile"
 ```
 
@@ -1231,11 +1231,11 @@ git commit -m "Add grizzly bootstrap directory and Makefile"
 ### Task 17: Discord contact point
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/contact-points/discord.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/contact-points/discord.yaml`
 
 - [ ] **Step 1: Write the contact point**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/contact-points/discord.yaml`:
+Create `CtrlxPackage/monitoring/grizzly/contact-points/discord.yaml`:
 
 ```yaml
 apiVersion: grizzly.grafana.com/v1alpha1
@@ -1257,19 +1257,19 @@ spec:
 - [ ] **Step 2: Apply just the contact point**
 
 ```bash
-cd ClaudeSpyPackage/monitoring/grizzly
+cd CtrlxPackage/monitoring/grizzly
 grr apply -t AlertContactPoint contact-points/discord.yaml
 ```
 Expected: `added` or `updated`.
 
 - [ ] **Step 3: Send a test alert from the UI**
 
-Grafana UI → Alerting → Contact points → `discord-alerts` → "Test". Expected: a test message lands in `#claudespy-alerts`.
+Grafana UI → Alerting → Contact points → `discord-alerts` → "Test". Expected: a test message lands in `#ctrlx-alerts`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/grizzly/contact-points/discord.yaml
+git add CtrlxPackage/monitoring/grizzly/contact-points/discord.yaml
 git commit -m "Define Discord contact point for alerts"
 ```
 
@@ -1278,11 +1278,11 @@ git commit -m "Define Discord contact point for alerts"
 ### Task 18: Notification policy routing all alerts to Discord
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/notification-policies/main.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/notification-policies/main.yaml`
 
 - [ ] **Step 1: Write the policy**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/notification-policies/main.yaml`:
+Create `CtrlxPackage/monitoring/grizzly/notification-policies/main.yaml`:
 
 ```yaml
 apiVersion: grizzly.grafana.com/v1alpha1
@@ -1317,7 +1317,7 @@ Expected: notification policy added. Confirm in Grafana UI → Alerting → Noti
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/grizzly/notification-policies/main.yaml
+git add CtrlxPackage/monitoring/grizzly/notification-policies/main.yaml
 git commit -m "Route all alerts to Discord contact point"
 ```
 
@@ -1326,17 +1326,17 @@ git commit -m "Route all alerts to Discord contact point"
 ### Task 19: Alert rule — relay-down
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/relay-down.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/relay-down.yaml`
 
 - [ ] **Step 1: Write the rule**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/alerts/relay-down.yaml`. Replace `${PROM_DS_UID}` with the UID captured in Task 16, step 8 — grizzly does **not** substitute non-exported shell vars in YAML, so paste the value directly here, or `export PROM_DS_UID=...` before `make apply`.
+Create `CtrlxPackage/monitoring/grizzly/alerts/relay-down.yaml`. Replace `${PROM_DS_UID}` with the UID captured in Task 16, step 8 — grizzly does **not** substitute non-exported shell vars in YAML, so paste the value directly here, or `export PROM_DS_UID=...` before `make apply`.
 
 ```yaml
 apiVersion: grizzly.grafana.com/v1alpha1
 kind: AlertRuleGroup
 metadata:
-  folder: ClaudeSpy
+  folder: Ctrlx
   name: relay-availability
 spec:
   title: relay-availability
@@ -1350,7 +1350,7 @@ spec:
           relativeTimeRange: { from: 300, to: 0 }
           datasourceUid: ${PROM_DS_UID}
           model:
-            expr: up{job="claudespy-relay"}
+            expr: up{job="ctrlx-relay"}
             instant: true
             refId: A
         - refId: B
@@ -1385,7 +1385,7 @@ Then in Grafana UI → Alerting → Alert rules, find `Relay down`. Click "Previ
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/grizzly/alerts/relay-down.yaml
+git add CtrlxPackage/monitoring/grizzly/alerts/relay-down.yaml
 git commit -m "Add relay-down alert rule"
 ```
 
@@ -1394,17 +1394,17 @@ git commit -m "Add relay-down alert rule"
 ### Task 20: Alert rule — high memory
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/high-memory.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/high-memory.yaml`
 
 - [ ] **Step 1: Write the rule**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/alerts/high-memory.yaml`:
+Create `CtrlxPackage/monitoring/grizzly/alerts/high-memory.yaml`:
 
 ```yaml
 apiVersion: grizzly.grafana.com/v1alpha1
 kind: AlertRuleGroup
 metadata:
-  folder: ClaudeSpy
+  folder: Ctrlx
   name: relay-resources
 spec:
   title: relay-resources
@@ -1454,7 +1454,7 @@ make apply
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/grizzly/alerts/high-memory.yaml
+git add CtrlxPackage/monitoring/grizzly/alerts/high-memory.yaml
 git commit -m "Add high-memory alert rule"
 ```
 
@@ -1463,17 +1463,17 @@ git commit -m "Add high-memory alert rule"
 ### Task 21: Alert rule — disk full
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/disk-full.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/disk-full.yaml`
 
 - [ ] **Step 1: Write the rule**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/alerts/disk-full.yaml`:
+Create `CtrlxPackage/monitoring/grizzly/alerts/disk-full.yaml`:
 
 ```yaml
 apiVersion: grizzly.grafana.com/v1alpha1
 kind: AlertRuleGroup
 metadata:
-  folder: ClaudeSpy
+  folder: Ctrlx
   name: relay-disk
 spec:
   title: relay-disk
@@ -1518,7 +1518,7 @@ spec:
 
 ```bash
 make apply
-git add ClaudeSpyPackage/monitoring/grizzly/alerts/disk-full.yaml
+git add CtrlxPackage/monitoring/grizzly/alerts/disk-full.yaml
 git commit -m "Add disk-full alert rule"
 ```
 
@@ -1527,19 +1527,19 @@ git commit -m "Add disk-full alert rule"
 ### Task 22: Alert rule — unusual usage spike
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/alerts/scrape-failed.yaml`
+- Create: `CtrlxPackage/monitoring/grizzly/alerts/scrape-failed.yaml`
 
 This catches "high usage" by alerting on a sustained relay rate that's far above baseline. Adjust the threshold after you have a week of data.
 
 - [ ] **Step 1: Write the rule**
 
-Create `ClaudeSpyPackage/monitoring/grizzly/alerts/scrape-failed.yaml`:
+Create `CtrlxPackage/monitoring/grizzly/alerts/scrape-failed.yaml`:
 
 ```yaml
 apiVersion: grizzly.grafana.com/v1alpha1
 kind: AlertRuleGroup
 metadata:
-  folder: ClaudeSpy
+  folder: Ctrlx
   name: relay-usage
 spec:
   title: relay-usage
@@ -1554,7 +1554,7 @@ spec:
           datasourceUid: ${PROM_DS_UID}
           model:
             # Messages relayed per second over 5m
-            expr: rate(claudespy_messages_relayed_total[5m])
+            expr: rate(ctrlx_messages_relayed_total[5m])
             instant: true
             refId: A
         - refId: B
@@ -1571,7 +1571,7 @@ spec:
       for: 15m
       annotations:
         summary: "Relay sustained >50 msg/s for 15 minutes"
-        description: "Either legitimate heavy use, a runaway client, or someone abusing the pair. Check `claudespy_active_pairs` and per-pair logs."
+        description: "Either legitimate heavy use, a runaway client, or someone abusing the pair. Check `ctrlx_active_pairs` and per-pair logs."
       labels:
         severity: warning
 ```
@@ -1580,7 +1580,7 @@ spec:
 
 ```bash
 make apply
-git add ClaudeSpyPackage/monitoring/grizzly/alerts/scrape-failed.yaml
+git add CtrlxPackage/monitoring/grizzly/alerts/scrape-failed.yaml
 git commit -m "Add high-relay-rate usage alert"
 ```
 
@@ -1589,23 +1589,23 @@ git commit -m "Add high-relay-rate usage alert"
 ### Task 23: Relay overview dashboard
 
 **Files:**
-- Create: `ClaudeSpyPackage/monitoring/grizzly/dashboards/relay.json`
+- Create: `CtrlxPackage/monitoring/grizzly/dashboards/relay.json`
 
 - [ ] **Step 1: Build the dashboard in the Grafana UI**
 
 Easier than hand-writing JSON. In Grafana → Dashboards → New → New dashboard:
-- Add a **stat panel**: query `claudespy_active_pairs`, title "Active pairs"
-- Add a **stat panel**: query `claudespy_ws_connections`, legend `{{device_type}}`, title "Open connections"
-- Add a **time-series panel**: query `rate(claudespy_messages_relayed_total[5m])`, title "Messages/sec relayed"
-- Add a **time-series panel**: query `rate(claudespy_push_notifications_total[5m])`, title "Push notifications/sec"
+- Add a **stat panel**: query `ctrlx_active_pairs`, title "Active pairs"
+- Add a **stat panel**: query `ctrlx_ws_connections`, legend `{{device_type}}`, title "Open connections"
+- Add a **time-series panel**: query `rate(ctrlx_messages_relayed_total[5m])`, title "Messages/sec relayed"
+- Add a **time-series panel**: query `rate(ctrlx_push_notifications_total[5m])`, title "Push notifications/sec"
 - Add a **time-series panel**: query `100 * (1 - node_memory_MemAvailable_bytes{instance="hetzner-1"} / node_memory_MemTotal_bytes{instance="hetzner-1"})`, title "Memory %"
 - Add a **time-series panel**: query `100 * (1 - node_filesystem_avail_bytes{instance="hetzner-1",mountpoint="/"} / node_filesystem_size_bytes{instance="hetzner-1",mountpoint="/"})`, title "Disk %"
-- Save as `ClaudeSpy / Relay overview` in the `ClaudeSpy` folder.
+- Save as `Ctrlx / Relay overview` in the `Ctrlx` folder.
 
 - [ ] **Step 2: Pull the dashboard JSON via grizzly**
 
 ```bash
-cd ClaudeSpyPackage/monitoring/grizzly
+cd CtrlxPackage/monitoring/grizzly
 mkdir -p pulled
 grr pull -t Dashboard -d ./pulled
 mv ./pulled/dashboards/*.json dashboards/relay.json
@@ -1622,7 +1622,7 @@ Expected: `unchanged` for the dashboard (the pulled JSON matches what's in Grafa
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/monitoring/grizzly/dashboards/relay.json
+git add CtrlxPackage/monitoring/grizzly/dashboards/relay.json
 git commit -m "Add relay overview dashboard"
 ```
 
@@ -1637,15 +1637,15 @@ In Grafana → Alerting → Alert rules. All 4 rules should show "Normal" state.
 - [ ] **Step 2: Trigger relay-down on purpose**
 
 ```bash
-ssh root@$DEPLOY_HOST 'docker stop claudespy-relay'
+ssh root@$DEPLOY_HOST 'docker stop ctrlx-relay'
 ```
 
-Wait 3 minutes. Expected: a Discord notification arrives in `#claudespy-alerts`.
+Wait 3 minutes. Expected: a Discord notification arrives in `#ctrlx-alerts`.
 
 - [ ] **Step 3: Restore relay**
 
 ```bash
-ssh root@$DEPLOY_HOST 'docker start claudespy-relay'
+ssh root@$DEPLOY_HOST 'docker start ctrlx-relay'
 ```
 
 Wait 1–2 minutes. Expected: a "resolved" Discord notification arrives.
@@ -1710,15 +1710,15 @@ Create `docs/monitoring.md`:
 ## Stack
 - **Source:** Vapor `/metrics` (token-protected) + `node_exporter` on the VM
 - **Collector:** Grafana Alloy (systemd) on the VM, push to Grafana Cloud Prometheus
-- **Storage / UI:** Grafana Cloud free tier (`claudespy.grafana.net`)
-- **Alerts:** Discord webhook → `#claudespy-alerts`
-- **Config-as-code:** `ClaudeSpyPackage/monitoring/grizzly/` applied via `grr apply`
+- **Storage / UI:** Grafana Cloud free tier (`ctrlx.grafana.net`)
+- **Alerts:** Discord webhook → `#ctrlx-alerts`
+- **Config-as-code:** `CtrlxPackage/monitoring/grizzly/` applied via `grr apply`
 
 ## Daily life
 
 ### Re-apply after editing alerts/dashboards
 ```bash
-cd ClaudeSpyPackage/monitoring/grizzly
+cd CtrlxPackage/monitoring/grizzly
 set -a; . ./.env; set +a
 make diff   # see what would change
 make apply  # actually apply
@@ -1741,7 +1741,7 @@ ssh root@$DEPLOY_HOST 'journalctl -u alloy -n 100 --no-pager'
 Common causes: bad `GRAFANA_PROM_TOKEN`, expired access policy, network egress blocked.
 
 ### `/metrics` returns 401 from Alloy
-The token in `/etc/alloy/alloy.env` does not match `METRICS_TOKEN` in `/opt/claudespy/.env`. Re-run `install.sh` with the correct value.
+The token in `/etc/alloy/alloy.env` does not match `METRICS_TOKEN` in `/opt/ctrlx/.env`. Re-run `install.sh` with the correct value.
 
 ### node_exporter shows no data
 ```bash
@@ -1760,7 +1760,7 @@ Test the contact point in Grafana UI (Alerting → Contact points → `discord-a
 ## Rotating the metrics token
 
 1. Generate a new value: `openssl rand -hex 32`.
-2. Update `/opt/claudespy/.env` on the VM and restart relay: `docker compose up -d relay`.
+2. Update `/opt/ctrlx/.env` on the VM and restart relay: `docker compose up -d relay`.
 3. Update `/etc/alloy/alloy.env` and restart Alloy: `systemctl restart alloy`.
 
 ## Free-tier limits
@@ -1791,5 +1791,5 @@ git commit -m "Add monitoring runbook"
 ## Open follow-ups (out of scope for this plan)
 
 - Bake `git rev-parse --short HEAD` into `buildVersion` at Docker build time via build arg (currently hard-coded `"dev"`).
-- Add a `claudespy_websocket_close_total{reason}` counter once we want to alert on abnormal disconnect rates.
+- Add a `ctrlx_websocket_close_total{reason}` counter once we want to alert on abnormal disconnect rates.
 - Move `/metrics` to a separate port if the bearer-token approach proves annoying — see Vapor's secondary HTTP server pattern.

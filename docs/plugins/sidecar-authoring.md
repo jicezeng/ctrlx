@@ -1,7 +1,7 @@
 # Sidecar Plugin Authoring Guide
 
 This is the durable external contract for building a v2 sidecar plugin for Gallager
-(ClaudeSpy Mac app). A sidecar plugin is a standalone executable that Gallager spawns
+(Ctrlx Mac app). A sidecar plugin is a standalone executable that Gallager spawns
 as a child process and communicates with over stdio using JSON-RPC.
 
 > **Authoring shortcut:** the `gallager` Claude Code plugin bundles a
@@ -11,10 +11,10 @@ as a child process and communicates with over stdio using JSON-RPC.
 > guided path.
 
 **Key source files** (read these if you need more detail):
-- `ClaudeSpyPackage/Sources/GallagerPluginProtocol/Manifest.swift` — manifest schema
-- `ClaudeSpyPackage/Sources/GallagerPluginProtocol/SidecarWire.swift` — RPC vocabulary + framing
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/Sidecar/SidecarSupervisor.swift` — spawn, crash policy
-- `ClaudeSpyPackage/Sources/GallagerPluginProtocol/IngressFrame.swift` — hook ingress frame
+- `CtrlxPackage/Sources/GallagerPluginProtocol/Manifest.swift` — manifest schema
+- `CtrlxPackage/Sources/GallagerPluginProtocol/SidecarWire.swift` — RPC vocabulary + framing
+- `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/Sidecar/SidecarSupervisor.swift` — spawn, crash policy
+- `CtrlxPackage/Sources/GallagerPluginProtocol/IngressFrame.swift` — hook ingress frame
 - `plugin/ctrlx/scripts/hook.py` — reference hook bridge implementation
 
 ---

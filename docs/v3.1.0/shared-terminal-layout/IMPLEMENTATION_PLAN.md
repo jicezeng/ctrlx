@@ -30,7 +30,7 @@ and pixel dimensions are intentionally excluded.
 
 ## Implementation
 
-1. Add the shared layout model to `ClaudeSpyNetworking` and carry it in the
+1. Add the shared layout model to `CtrlxNetworking` and carry it in the
    existing encrypted `SessionStateMessage`.
 2. Store canonical layouts in `MirrorWindowManager`; prune dead sessions and
    reject missing/duplicate Window IDs.

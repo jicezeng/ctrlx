@@ -22,8 +22,8 @@
 ## Verification
 
 - `RemoteHostOrder` 与设置持久化测试：4/4 通过。
-- macOS `ClaudeSpyServer` App target 构建通过。
-- iOS `ClaudeSpy` generic-device App target 构建通过。
+- macOS `CtrlxServer` App target 构建通过。
+- iOS `Ctrlx` generic-device App target 构建通过。
 - `git diff --check` 通过。
 - 首版 iOS Section header 自定义拖放真机验收失败，已改为 Manage Hosts 原生 List 重排。
 - 修复版 iOS Manage Hosts 原生拖拽已通过真机验收。

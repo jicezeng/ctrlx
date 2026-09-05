@@ -37,7 +37,7 @@ plugin keeps running old code everywhere.
 
 ### PluginUpdateManager (new)
 
-`ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift`
+`CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateManager.swift`
 — `@MainActor @Observable`, created by `AppCoordinator` at boot, exposed to
 SwiftUI via `@Environment`. Injected at init:
 

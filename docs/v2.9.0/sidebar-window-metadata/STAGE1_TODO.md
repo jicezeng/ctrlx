@@ -31,6 +31,6 @@
 ## Verification
 
 - `SessionSortDataForLocalSessionTests` 与 `SidebarAppearanceSettingsTests`：12/12 通过。
-- macOS `ClaudeSpyServer` Debug 构建通过（arm64，使用本机开发签名）。
+- macOS `CtrlxServer` Debug 构建通过（arm64，使用本机开发签名）。
 - `git diff --check` 通过。
 - 构建环境未安装 SwiftLint；Xcode 构建脚本仅报告该已知 warning，不影响构建。

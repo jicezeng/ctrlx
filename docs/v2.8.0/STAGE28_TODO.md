@@ -37,7 +37,7 @@ tmux 将 `--set` 继续解析为选项并返回 `command send-keys: invalid flag
 
 - `LocalKeystrokeInputTests`：14/14 通过。
 - 完整 Swift package：1661/1661 通过（236 suites）。
-- macOS `ClaudeSpyServer` Debug 构建及严格签名校验通过。
+- macOS `CtrlxServer` Debug 构建及严格签名校验通过。
 - 本机 Mac App 已覆盖为 Stage 28 验证版；替换前后 tmux session 列表一致。
 - `git diff --check` 通过。
 - 独立 tmux socket 集成测试确认 `sudo scutil --set HostName -n` 完整进入 pane。

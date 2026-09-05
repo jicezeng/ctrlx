@@ -1,0 +1,39 @@
+import Foundation
+
+/// E2E scenario: Disconnect iOS, unpair from macOS, reconnect iOS gets INVALID_PAIR
+public enum DisconnectIOSUnpairMacOSScenario {
+    public static let scenario = CtrlxE2ELib.scenario(
+        "Disconnect iOS, Unpair macOS",
+        tags: ["unpair", "reconnect"]
+    ) {
+        // 1. Establish a fresh pairing
+        FreshPairingScenario.scenario
+
+        // 2. Server: block the viewer (iOS) from reconnecting and disconnect it.
+        //    This prevents auto-reconnection so the unpair truly happens while iOS is offline.
+        TestStep.serverBlockDevice(.viewer)
+        TestStep.wait(seconds: 1)
+        TestStep.iosScreenshot(label: "ios-after-disconnect")
+
+        // 3. macOS: trigger unpair via test HTTP endpoint
+        // (SwiftUI Menu creates native NSMenu popups invisible to the accessibility tree)
+        TestStep.macUnpair()
+        // Wait for the server to process the unpair and for the macOS UI to
+        // settle (Generate button reappears) before taking the screenshot.
+        TestStep.waitForNoPairings(timeout: 15)
+        TestStep.macWaitForElement(titled: "Generate Pairing Code", timeout: 5)
+        TestStep.macScreenshot(label: "mac-after-unpair")
+
+        // 4. Verify server has 0 pairings (while iOS is still blocked)
+        TestStep.verifyServerHasPairings(count: 0)
+
+        // 5. Unblock iOS so it can reconnect. The server will reject it with INVALID_PAIR
+        //    since the pairing was removed, causing iOS to clean up its pairing data.
+        TestStep.serverUnblockDevice(.viewer)
+        TestStep.iosWaitForElement(.labelContains("pairing code"), timeout: 30)
+        // Clear clipboard so the SwiftUI PasteButton is in a deterministic
+        // disabled state — the previous pairing may have left a code on the board.
+        TestStep.iosClearClipboard
+        TestStep.iosScreenshot(label: "ios-invalid-pair-cleanup")
+    }
+}

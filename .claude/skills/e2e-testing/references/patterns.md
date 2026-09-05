@@ -1,13 +1,13 @@
 # Common E2E Scenario Patterns
 
-Patterns extracted from existing scenarios in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/`.
+Patterns extracted from existing scenarios in `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/`.
 
 ## Pattern: Standard Setup (Server + Both Apps)
 
 Most scenarios need the server running and both apps launched. The `FreshPairingScenario` handles this:
 
 ```swift
-public static let scenario = ClaudeSpyE2ELib.scenario("My Scenario", tags: ["mytag"]) {
+public static let scenario = CtrlxE2ELib.scenario("My Scenario", tags: ["mytag"]) {
     // Reuse full pairing flow (includes server start, both app launches, pairing, verification)
     FreshPairingScenario.scenario
 
@@ -47,7 +47,7 @@ TestStep.launchMacApp()
 For scenarios that don't need iOS or the relay server, tag with `"macos-only"` and use tmux directly. Use `Shortcut.macOnlySetup` to handle app launch and Panes window setup:
 
 ```swift
-public static let scenario = ClaudeSpyE2ELib.scenario("My macOS Test", tags: ["macos-only"]) {
+public static let scenario = CtrlxE2ELib.scenario("My macOS Test", tags: ["macos-only"]) {
     TestStep.tmuxCreateSession(name: "test-session", width: 80, height: 24)
 
     Shortcut.macOnlySetup  // Launches app + opens Panes window (1000x600, sidebar 250)
@@ -76,7 +76,7 @@ For scenarios that only need the Panes window (app already running), use `Shortc
 Every macOS step accepts an `instance:` parameter. Instance `0` is the primary app; `1+` are additional instances. Use `Shortcut.twoMacPairing` to get both up and paired, then drive them independently:
 
 ```swift
-public static let scenario = ClaudeSpyE2ELib.scenario("My Two-Mac Test", tags: ["pairing"]) {
+public static let scenario = CtrlxE2ELib.scenario("My Two-Mac Test", tags: ["pairing"]) {
     Shortcut.twoMacPairing
     Shortcut.openPanesWindow()           // host (instance 0)
     Shortcut.openPanesWindow(instance: 1) // viewer
@@ -232,7 +232,7 @@ Other supported event types include `Stop`, `Notification`, `PermissionRequest`,
 
 ## Pattern: Script Injection for Terminal Rendering Tests
 
-For scenarios that need deterministic terminal output (tables, emojis, true-color, kitty keyboard probes), put a Python helper in `ClaudeSpyE2ELib/Scenarios/Scripts/` and inject it:
+For scenarios that need deterministic terminal output (tables, emojis, true-color, kitty keyboard probes), put a Python helper in `CtrlxE2ELib/Scenarios/Scripts/` and inject it:
 
 ```swift
 TestStep.injectScript(name: "emoji_tables.py")

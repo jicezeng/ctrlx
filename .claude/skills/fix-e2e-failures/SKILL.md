@@ -100,7 +100,7 @@ For each failed scenario, walk through **every** entry in `failedSteps[]`:
 
    `.universal`-scope step failures (assertions, server, tmux, generic helpers) capture every running platform, so expect multiple images. `.ios`/`.macOS(N)`-scope step failures capture only the targeted platform.
 
-5. **The scenario source** — find it in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/` and read the relevant steps around each failure point.
+5. **The scenario source** — find it in `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/` and read the relevant steps around each failure point.
 
 ## Step 4: Ask the User How to Proceed
 
@@ -188,7 +188,7 @@ When the user confirms the UI change is intentional:
 - The E2E tests require Accessibility and Screen Recording permissions for the terminal running them.
 - Always use `--skip-build` when re-running tests if you haven't changed compiled code, to save time.
 - If you changed Swift source code or after checking out from git, drop `--skip-build` so the changes get compiled.
-- Screenshot baselines live in `E2ETests/` with numbered prefixes matching scenario registration order in `ClaudeSpyE2ECommand.swift`.
+- Screenshot baselines live in `E2ETests/` with numbered prefixes matching scenario registration order in `CtrlxE2ECommand.swift`.
 - The `--scenario` flag accepts the human-readable scenario name (e.g., "Fresh Pairing", "Empty State New Session").
 - **Screenshot mismatches are non-fatal.** A single scenario run can report multiple failed screenshots; treat every entry in `failedSteps[]` as something to resolve, not just the first one.
 - **Baselines are not automatically regenerated** — If existing baselines are present, the test compares against them and fails on mismatch. To regenerate baselines, you must either delete the baseline directory first (`rm -rf E2ETests/<scenario-directory>/`) so the next run creates fresh baselines, or run with `--no-compare` to skip all screenshot comparisons (the test still takes screenshots but won't fail on mismatches).

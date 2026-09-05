@@ -246,7 +246,7 @@ end tell
 **Tmux** (isolated socket — never your real sessions):
 
 ```bash
-SOCK="/tmp/claudespy-e2e/claudespy-e2e.sock"
+SOCK="/tmp/ctrlx-e2e/ctrlx-e2e.sock"
 tmux -S "$SOCK" list-sessions
 tmux -S "$SOCK" send-keys -t "session:0.0" "echo hi" Enter
 tmux -S "$SOCK" capture-pane -t "session:0.0" -p
@@ -254,7 +254,7 @@ tmux -S "$SOCK" capture-pane -t "session:0.0" -p
 
 ## Coexistence with the production app
 
-The e2e instance runs alongside your real Gallager without interference: it has its own tmux socket (`/tmp/claudespy-e2e/claudespy-e2e.sock`), its own hook port file (`~/.claudespy-port-test`), in-memory PreferencesService and SecretsService (no UserDefaults/Keychain pollution), and a separate process you target by `--e2e-test` PID. Your normal Gallager is safe; AppleScript/`pkill -f "Gallager.*--e2e-test"` never touches it.
+The e2e instance runs alongside your real Gallager without interference: it has its own tmux socket (`/tmp/ctrlx-e2e/ctrlx-e2e.sock`), its own hook port file (`~/.ctrlx-port-test`), in-memory PreferencesService and SecretsService (no UserDefaults/Keychain pollution), and a separate process you target by `--e2e-test` PID. Your normal Gallager is safe; AppleScript/`pkill -f "Gallager.*--e2e-test"` never touches it.
 
 ## Reference
 

@@ -420,35 +420,35 @@ struct TrustedTerminalTextMacro: Codable, Equatable, Identifiable, Sendable {
 
 ### 新增
 
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Models/TerminalShortcutItemID.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Models/TerminalShortcutConfiguration.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Models/TrustedTerminalTextMacro.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Services/TerminalPaneInputEndpoint.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/TerminalShortcutBar.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/TerminalShortcutsSettingsView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/TrustedTerminalTextMacroEditor.swift`
-- 对应 `ClaudeSpyFeatureTests` 聚焦测试。
+- `CtrlxPackage/Sources/CtrlxFeature/Models/TerminalShortcutItemID.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Models/TerminalShortcutConfiguration.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Models/TrustedTerminalTextMacro.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Services/TerminalPaneInputEndpoint.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/TerminalShortcutBar.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/TerminalShortcutsSettingsView.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/TrustedTerminalTextMacroEditor.swift`
+- 对应 `CtrlxFeatureTests` 聚焦测试。
 
 ### 修改
 
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Models/IOSSettings.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/ContentView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/LiveTerminalView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/WindowLayoutView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/InteractiveTerminalView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/TerminalKeyboardBar.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift`（仅新增实际使用的 symbol）。
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TmuxService.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TerminalContainerView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/InteractiveTerminalView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/TerminalFeedCoalescer.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/TerminalTransportMetrics.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Models/IOSSettings.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/ContentView.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/LiveTerminalView.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/WindowLayoutView.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/InteractiveTerminalView.swift`
+- `CtrlxPackage/Sources/CtrlxFeature/Views/TerminalKeyboardBar.swift`
+- `CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift`（仅新增实际使用的 symbol）。
+- `CtrlxPackage/Sources/CtrlxServerFeature/Services/TmuxService.swift`
+- `CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift`
+- `CtrlxPackage/Sources/CtrlxServerFeature/Views/TerminalContainerView.swift`
+- `CtrlxPackage/Sources/CtrlxServerFeature/Views/InteractiveTerminalView.swift`
+- `CtrlxPackage/Sources/CtrlxCommon/Services/TerminalFeedCoalescer.swift`
+- `CtrlxPackage/Sources/CtrlxCommon/Services/TerminalTransportMetrics.swift`
 
 ### Stage 1–3 原则上不修改
 
-- `ClaudeSpyNetworking` command/wire model。
-- `ClaudeSpyExternalServer` 和 Relay Docker 部署。
+- `CtrlxNetworking` command/wire model。
+- `CtrlxExternalServer` 和 Relay Docker 部署。
 - macOS Host `TmuxService`、`PaneStreamManager` 和 tmux 配置。
 - Push notification、Agent plugin 和 Action Catalog 尚未实现的部分。
 

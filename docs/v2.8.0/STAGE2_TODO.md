@@ -28,8 +28,8 @@
 ## Validation
 
 - `swift test --filter TerminalStream`：5 tests 通过。
-- iOS Simulator `ClaudeSpy` Debug 构建通过。
+- iOS Simulator `Ctrlx` Debug 构建通过。
 - iPhone Debug 真机构建、签名、安装和启动通过。
-- macOS `ClaudeSpyServer` Debug 构建和本地签名通过。
+- macOS `CtrlxServer` Debug 构建和本地签名通过。
 - 待在 iPhone 和 Mac viewer 的真实 terminal 页面制造 relay / 网络短断，验收
   页面内自动恢复与输入顺序。

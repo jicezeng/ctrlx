@@ -42,7 +42,7 @@ Session 的 Window，也会让失效 split 状态无法被清理。
 
 - 61 项相关 Swift Testing 测试通过。
 - 隔离 socket 的真实 tmux 创建三 Window、交换、刷新和清理测试通过。
-- macOS `ClaudeSpyServer` Debug 构建通过，签名校验通过。
+- macOS `CtrlxServer` Debug 构建通过，签名校验通过。
 - 本机覆盖安装并启动成功，真实 App E2E 已覆盖标签前置/末尾重排、Session 往返持久化及跨 pane 拖拽；
   重排后的 tmux 顺序断言均通过。
 - `git diff --check` 通过。

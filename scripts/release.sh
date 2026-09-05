@@ -5,8 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$PROJECT_ROOT/Config/Shared-Base.xcconfig"
-WORKSPACE="$PROJECT_ROOT/ClaudeSpy.xcworkspace"
-SCHEME="ClaudeSpyServer"
+WORKSPACE="$PROJECT_ROOT/Ctrlx.xcworkspace"
+SCHEME="CtrlxServer"
 EXPORT_OPTIONS="$SCRIPT_DIR/export-options.plist"
 
 # shellcheck source=scripts/common.sh

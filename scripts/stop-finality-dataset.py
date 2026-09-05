@@ -213,7 +213,7 @@ def review(args):
         sys.exit(f"run prelabel first — {len(unlabeled)} rows unlabeled")
     if not VERDICTS.exists():
         sys.exit(
-            "missing on-device verdicts — run:\n  cd ClaudeSpyPackage && "
+            "missing on-device verdicts — run:\n  cd CtrlxPackage && "
             f"swift run StopFinalityEval --verdicts {CANDIDATES} {VERDICTS}"
         )
     verdicts = {json.loads(l)["id"]: json.loads(l)["onDevice"]

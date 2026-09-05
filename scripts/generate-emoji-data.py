@@ -15,7 +15,7 @@ Run it whenever you want to refresh the emoji set:
 
     python3 scripts/generate-emoji-data.py
 
-It rewrites ``ClaudeSpyPackage/Sources/GallagerEmoji/EmojiData.swift`` in place.
+It rewrites ``CtrlxPackage/Sources/GallagerEmoji/EmojiData.swift`` in place.
 The output is deterministic (sorted by group then CLDR display order) so
 re-running with the same upstream data produces no diff.
 """
@@ -79,7 +79,7 @@ EXTRA_KEYWORDS = {
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_PATH = os.path.join(
     REPO_ROOT,
-    "ClaudeSpyPackage",
+    "CtrlxPackage",
     "Sources",
     "GallagerEmoji",
     "EmojiData.swift",

@@ -6,17 +6,17 @@
 
 **Architecture:** Two coordinated changes. (A) Relay: `LicensingService.checkEntitlement` becomes side-effect-free (new `.preTrial` allowed state); a new `startTrialIfNeeded` is called from `PairingController.completePairing`. (B) Mac: a new `TrialStatusToolbarItem` view renders a pill + buy/activate popover over the existing `LicenseManager`, gated on `settings.isPaired`, wired into `MainView`'s toolbar.
 
-**Tech Stack:** Swift 6.3, Vapor (relay), SwiftUI + Point-Free Dependencies (Mac), Swift Testing + VaporTesting, ClaudeSpyE2ELib (E2E).
+**Tech Stack:** Swift 6.3, Vapor (relay), SwiftUI + Point-Free Dependencies (Mac), Swift Testing + VaporTesting, CtrlxE2ELib (E2E).
 
 ## Global Constraints
 
-- SF Symbols only via `Symbols` enum (`ClaudeSpyCommon/UI/Symbols.swift`) — never string literals. (project rule)
+- SF Symbols only via `Symbols` enum (`CtrlxCommon/UI/Symbols.swift`) — never string literals. (project rule)
 - No ViewModels; use `@State`/`@Observable`/`@Environment`/`@Dependency`. (project rule)
 - All licensing *logic* stays in `LicensingService` (relay) and `LicenseManager` (Mac) — views/controllers add no new licensing logic. (design)
 - Trial "urgent" threshold = **`daysLeft <= 2`** → orange (matches the existing Settings License section). (design)
 - No wire-format change → **no `VersionCompatibility` bump.** (design)
 - Relay tests run under `EnvSerializedSuites` and must stay hermetic against a local `.env` (licensing-disabled tests force `LEMONSQUEEZY_*` to empty). (existing convention)
-- Run relay tests with: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyExternalServerTests` (use the `XcodeBuildTools:swift-package` skill; pipe through `xcsift`).
+- Run relay tests with: `swift test --package-path CtrlxPackage --filter CtrlxExternalServerTests` (use the `XcodeBuildTools:swift-package` skill; pipe through `xcsift`).
 
 ---
 
@@ -25,11 +25,11 @@
 Move trial-start from first-touch `checkEntitlement` (fires at register + WS connect) to the `complete` endpoint. `checkEntitlement` becomes a pure gate returning a new `.preTrial` (allowed) state for a device with no trial and no activation.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift:40-50` (Entitlement enum), `:143-185` (checkEntitlement + trialEntitlement)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift:45-56` (completePairing)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift` (actor-level)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift` (endpoint-level)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEnforcementWebSocketTests.swift:232-256` (`makePair` helper)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift:40-50` (Entitlement enum), `:143-185` (checkEntitlement + trialEntitlement)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift:45-56` (completePairing)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift` (actor-level)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift` (endpoint-level)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEnforcementWebSocketTests.swift:232-256` (`makePair` helper)
 
 **Interfaces:**
 - Produces: `LicensingService.Entitlement.preTrial` (case, `isAllowed == true`); `func startTrialIfNeeded(hostDeviceId: String)` (actor method, sync, idempotent, no-op when licensing disabled / activation exists / trial exists).
@@ -280,17 +280,17 @@ await app.licensingService.startTrialIfNeeded(hostDeviceId: "host-device")
 
 - [ ] **Step 6: Run the full relay suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyExternalServerTests`
+Run: `swift test --package-path CtrlxPackage --filter CtrlxExternalServerTests`
 Expected: PASS, 0 failures (the previously-green count plus the one net-new endpoint test).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEnforcementWebSocketTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEnforcementWebSocketTests.swift
 git commit -m "relay: start the free trial on viewer pairing, not on register/first-touch"
 ```
 
@@ -301,22 +301,22 @@ git commit -m "relay: start the free trial on viewer pairing, not on register/fi
 A pure, unit-testable mapping from license state to badge appearance, plus the SF Symbol the badge uses.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift:47` (add `hourglass`)
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift` (helper only in this task)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/TrialBadgeAppearanceTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift:47` (add `hourglass`)
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Views/TrialStatusToolbarItem.swift` (helper only in this task)
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/TrialBadgeAppearanceTests.swift`
 
 **Interfaces:**
-- Produces: `enum TrialBadgeAppearance: Equatable { case trial(daysLeft: Int, urgent: Bool); case expired }` and `func trialBadgeAppearance(state: LicenseStatus.State?, trialDaysLeft: Int?) -> TrialBadgeAppearance?` (returns `nil` when the badge should be hidden). Both `internal`, in `ClaudeSpyServerFeature`, macOS-only.
+- Produces: `enum TrialBadgeAppearance: Equatable { case trial(daysLeft: Int, urgent: Bool); case expired }` and `func trialBadgeAppearance(state: LicenseStatus.State?, trialDaysLeft: Int?) -> TrialBadgeAppearance?` (returns `nil` when the badge should be hidden). Both `internal`, in `CtrlxServerFeature`, macOS-only.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/TrialBadgeAppearanceTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxServerFeatureTests/TrialBadgeAppearanceTests.swift`:
 
 ```swift
 #if os(macOS)
-    import ClaudeSpyNetworking
+    import CtrlxNetworking
     import Testing
-    @testable import ClaudeSpyServerFeature
+    @testable import CtrlxServerFeature
 
     @Suite("trialBadgeAppearance")
     struct TrialBadgeAppearanceTests {
@@ -350,12 +350,12 @@ Create `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/TrialBadgeAppearanceT
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter TrialBadgeAppearanceTests`
+Run: `swift test --package-path CtrlxPackage --filter TrialBadgeAppearanceTests`
 Expected: FAIL to build — `trialBadgeAppearance` / `TrialBadgeAppearance` are undefined.
 
 - [ ] **Step 3: Add the `hourglass` symbol**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift`, add next to `exclamationmarkTriangle` (`:47`):
+In `CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift`, add next to `exclamationmarkTriangle` (`:47`):
 
 ```swift
     case hourglass = "hourglass"
@@ -363,11 +363,11 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift`, add next to `exc
 
 - [ ] **Step 4: Create the helper**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift`:
+Create `CtrlxPackage/Sources/CtrlxServerFeature/Views/TrialStatusToolbarItem.swift`:
 
 ```swift
 #if os(macOS)
-    import ClaudeSpyNetworking
+    import CtrlxNetworking
     import SwiftUI
 
     /// Pure mapping from license state to toolbar-badge appearance. Kept free of
@@ -398,15 +398,15 @@ Create `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TrialStatusToolbar
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter TrialBadgeAppearanceTests`
+Run: `swift test --package-path CtrlxPackage --filter TrialBadgeAppearanceTests`
 Expected: PASS (4 tests).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/TrialBadgeAppearanceTests.swift
+git add CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Views/TrialStatusToolbarItem.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/TrialBadgeAppearanceTests.swift
 git commit -m "mac: trial-badge appearance helper + hourglass symbol"
 ```
 
@@ -417,7 +417,7 @@ git commit -m "mac: trial-badge appearance helper + hourglass symbol"
 Add the badge button and its buy/activate popover to the file created in Task 2. Uses the existing `LicenseManager` for all logic; adds no licensing logic.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/TrialStatusToolbarItem.swift`
 
 **Interfaces:**
 - Consumes: `trialBadgeAppearance(state:trialDaysLeft:)`, `TrialBadgeAppearance` (Task 2); `LicenseManager` (`status`, `trialDaysLeft`, `licenseKeyField`, `actionState`, `activate()`); `AppSettings.isPaired`; `URLOpener.openInDefaultBrowser(_:)`; `LicensingLinks.checkout`; `Symbols.hourglass`, `Symbols.exclamationmarkTriangle`.
@@ -425,7 +425,7 @@ Add the badge button and its buy/activate popover to the file created in Task 2.
 
 - [ ] **Step 1: Add the view to `TrialStatusToolbarItem.swift`**
 
-Insert above the `#endif` in `TrialStatusToolbarItem.swift`, adding the imports `ClaudeSpyCommon` and `Dependencies` at the top of the file (keep the existing `ClaudeSpyNetworking` and `SwiftUI` imports):
+Insert above the `#endif` in `TrialStatusToolbarItem.swift`, adding the imports `CtrlxCommon` and `Dependencies` at the top of the file (keep the existing `CtrlxNetworking` and `SwiftUI` imports):
 
 ```swift
     struct TrialStatusToolbarItem: View {
@@ -553,13 +553,13 @@ Insert above the `#endif` in `TrialStatusToolbarItem.swift`, adding the imports 
 
 - [ ] **Step 2: Build the package to verify it compiles**
 
-Run: `swift build --package-path ClaudeSpyPackage`
+Run: `swift build --package-path CtrlxPackage`
 Expected: Build succeeds, 0 errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/TrialStatusToolbarItem.swift
 git commit -m "mac: TrialStatusToolbarItem badge + buy/activate popover"
 ```
 
@@ -570,9 +570,9 @@ git commit -m "mac: TrialStatusToolbarItem badge + buy/activate popover"
 Make the badge appear: place it left of the Disconnect capsule, inject `LicenseManager` into the panes window, and refresh license status when a viewer pairs so the badge shows promptly.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift:1765-1769` (toolbar), `:11-18` (environment/dependency)
-- Modify: `ClaudeSpyServer/ClaudeSpyServerApp.swift:379-390` (panes window environment)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` (`connectToNewlyPairedViewer`)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift:1765-1769` (toolbar), `:11-18` (environment/dependency)
+- Modify: `CtrlxServer/CtrlxServerApp.swift:379-390` (panes window environment)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` (`connectToNewlyPairedViewer`)
 
 **Interfaces:**
 - Consumes: `TrialStatusToolbarItem` (Task 3); `AppCoordinator.licenseManager` (`:36`); `LicenseManager.refreshStatus()`.
@@ -595,7 +595,7 @@ In `MainView.swift`, in `toolbarContent` (`:1766`), add a new item BEFORE the ex
 
 - [ ] **Step 2: Inject `LicenseManager` into the panes window**
 
-In `ClaudeSpyServer/ClaudeSpyServerApp.swift`, add to the `Window("Panes", id: "panes")` modifier chain (after `:389`, alongside the other `.environment(...)` calls):
+In `CtrlxServer/CtrlxServerApp.swift`, add to the `Window("Panes", id: "panes")` modifier chain (after `:389`, alongside the other `.environment(...)` calls):
 
 ```swift
                 .environment(coordinator.licenseManager)
@@ -615,7 +615,7 @@ In `AppCoordinator.swift`, find `connectToNewlyPairedViewer(_:)` (the single met
 
 - [ ] **Step 4: Build the macOS app**
 
-Build the `ClaudeSpyServer` scheme for macOS (use the `XcodeBuildTools:xcodebuild` skill).
+Build the `CtrlxServer` scheme for macOS (use the `XcodeBuildTools:xcodebuild` skill).
 Expected: Build succeeds, 0 errors.
 
 - [ ] **Step 5: Manual verification**
@@ -625,9 +625,9 @@ Launch the app paired to the hosted (or staging) relay on a trial. Confirm: a pi
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift \
-        ClaudeSpyServer/ClaudeSpyServerApp.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift \
+        CtrlxServer/CtrlxServerApp.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift
 git commit -m "mac: show trial-status badge in the panes toolbar + refresh on pairing"
 ```
 
@@ -638,15 +638,15 @@ git commit -m "mac: show trial-status badge in the panes toolbar + refresh on pa
 Add a deterministic license-state override for E2E and a scenario that exercises the badge + popover. Scenario authoring uses the repo's E2E skill.
 
 **Files:**
-- Modify: `ClaudeSpyServer/ClaudeSpyServerApp.swift` (E2E `prepareDependencies` block near `:173`, inside the `--e2e-test` branch)
-- Create: an E2E scenario file under `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/` and register it in `allScenarios` (`ClaudeSpyE2ELib/Scenarios/ScenarioShortcuts.swift`)
+- Modify: `CtrlxServer/CtrlxServerApp.swift` (E2E `prepareDependencies` block near `:173`, inside the `--e2e-test` branch)
+- Create: an E2E scenario file under `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/` and register it in `allScenarios` (`CtrlxE2ELib/Scenarios/ScenarioShortcuts.swift`)
 
 **Interfaces:**
 - Consumes: launch arg `--e2e-license-state <trial|expired|none>`; AX identifiers from Task 3 (`trial-status-badge`, `trial-popover-buy`, `trial-popover-license-key`, `trial-popover-activate`).
 
 - [ ] **Step 1: Add the E2E license-state override**
 
-In `ClaudeSpyServerApp.swift`, inside the `prepareDependencies { … }` block used for `--e2e-test` (near `:173`), add a `LicensingClient` override driven by a launch arg:
+In `CtrlxServerApp.swift`, inside the `prepareDependencies { … }` block used for `--e2e-test` (near `:173`), add a `LicensingClient` override driven by a launch arg:
 
 ```swift
                 // E2E: deterministic license status for the toolbar trial badge.
@@ -672,7 +672,7 @@ In `ClaudeSpyServerApp.swift`, inside the `prepareDependencies { … }` block us
                 }
 ```
 
-Ensure `ClaudeSpyNetworking` and the `LicensingClient` type are in scope in this file (add imports if the build reports them missing).
+Ensure `CtrlxNetworking` and the `LicensingClient` type are in scope in this file (add imports if the build reports them missing).
 
 - [ ] **Step 2: Author the scenario with the E2E skill**
 
@@ -692,8 +692,8 @@ Expected: PASS; screenshots show the badge with the countdown and the populated 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyServer/ClaudeSpyServerApp.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/
+git add CtrlxServer/CtrlxServerApp.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/
 git commit -m "e2e: trial-status toolbar badge + popover scenario"
 ```
 

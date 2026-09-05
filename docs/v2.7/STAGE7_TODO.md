@@ -22,7 +22,7 @@
 
 ## Validation
 
-- Xcode `ClaudeSpyServer` Debug arm64 构建通过。
+- Xcode `CtrlxServer` Debug arm64 构建通过。
 - SwiftPM 已编译新增测试及相关测试源码；整包测试在链接无关 E2E 可执行文件时
   因磁盘空间不足失败，当前 Xcode scheme 未包含该单元测试 target，未伪报为测试通过。
 - 本机验证版已签名、安装并通过代码签名校验；真机视觉验收通过。

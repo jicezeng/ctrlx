@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-PACKAGE_ROOT="$PROJECT_ROOT/ClaudeSpyPackage"
+PACKAGE_ROOT="$PROJECT_ROOT/CtrlxPackage"
 
 for candidate in .env.local .env.production .env.development .env.test; do
     if [ -f "$PACKAGE_ROOT/$candidate" ]; then

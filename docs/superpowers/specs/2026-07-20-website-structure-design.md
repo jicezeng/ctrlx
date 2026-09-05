@@ -109,7 +109,7 @@ real HTML that renders without JS and is crawlable, with proper per-page
 
 Mirrors the `updates.gallager.app` pattern (#666):
 
-- `ClaudeSpyPackage/caddy/website.caddy`: vhost for `gallager.app` +
+- `CtrlxPackage/caddy/website.caddy`: vhost for `gallager.app` +
   `www.gallager.app` (www 308-redirects to apex), `root /opt/gallager-website`,
   `file_server`, long-lived `Cache-Control` for hashed `/_astro/*` assets and
   `/fonts/*`.

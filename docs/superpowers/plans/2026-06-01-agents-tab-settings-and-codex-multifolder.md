@@ -21,40 +21,40 @@
 ## File Structure
 
 **Modify (logic):**
-- `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeSettings.swift` — add `closePaneOnSessionEnd`.
-- `ClaudeSpyPackage/Sources/CodexPluginCore/CodexSettings.swift` — add `closePaneOnSessionEnd` + `additionalConfigFolders`.
-- `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift` + `ClaudeCodePluginCore.swift` — thread close-pane pref into `.sessionEnded`.
-- `ClaudeSpyPackage/Sources/CodexPluginCore/CodexTranslator.swift` + `CodexPluginCore.swift` — same; plus multi-folder scan/watch.
-- `ClaudeSpyPackage/Sources/CodexPluginCore/CodexScanner.swift` — already supports a single root; add a multi-root convenience.
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` — drop the app-side close-pane check; add Agents-tab support methods; extend `PluginSettingsMigration` call.
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginSettingsMigration.swift` — seed new fields from raw UserDefaults.
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/Settings.swift` (`AppSettings`) — delete the per-agent fields.
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/SettingsView.swift` — rename tab; remove General per-agent sections; drop the deleted helpers.
+- `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeSettings.swift` — add `closePaneOnSessionEnd`.
+- `CtrlxPackage/Sources/CodexPluginCore/CodexSettings.swift` — add `closePaneOnSessionEnd` + `additionalConfigFolders`.
+- `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift` + `ClaudeCodePluginCore.swift` — thread close-pane pref into `.sessionEnded`.
+- `CtrlxPackage/Sources/CodexPluginCore/CodexTranslator.swift` + `CodexPluginCore.swift` — same; plus multi-folder scan/watch.
+- `CtrlxPackage/Sources/CodexPluginCore/CodexScanner.swift` — already supports a single root; add a multi-root convenience.
+- `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` — drop the app-side close-pane check; add Agents-tab support methods; extend `PluginSettingsMigration` call.
+- `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginSettingsMigration.swift` — seed new fields from raw UserDefaults.
+- `CtrlxPackage/Sources/CtrlxServerFeature/Models/Settings.swift` (`AppSettings`) — delete the per-agent fields.
+- `CtrlxPackage/Sources/CtrlxServerFeature/Views/SettingsView.swift` — rename tab; remove General per-agent sections; drop the deleted helpers.
 
 **Create:**
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AgentsSettingsView.swift` — the new tab (segmented + per-agent form + folder rows).
+- `CtrlxPackage/Sources/CtrlxServerFeature/Views/AgentsSettingsView.swift` — the new tab (segmented + per-agent form + folder rows).
 
 **Delete:**
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/PluginSettingsView.swift`
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/PluginService.swift`
+- `CtrlxPackage/Sources/CtrlxServerFeature/Views/PluginSettingsView.swift`
+- `CtrlxPackage/Sources/CtrlxServerFeature/Services/PluginService.swift`
 - The `ClaudeFolderRow` + `CustomFolderPluginSetupView` views (currently in `SettingsView.swift` / their own files) and `PluginFailureDetailsButton.swift`.
 
-**Tests:** new/updated under `ClaudeCodePluginCoreTests`, `CodexPluginCoreTests`, `ClaudeSpyServerFeatureTests`, plus an e2e scenario in `ClaudeSpyE2ELib`.
+**Tests:** new/updated under `ClaudeCodePluginCoreTests`, `CodexPluginCoreTests`, `CtrlxServerFeatureTests`, plus an e2e scenario in `CtrlxE2ELib`.
 
 ---
 
 ## Task 1: Add settings fields (closePane both; additionalConfigFolders for Codex)
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeSettings.swift`, `ClaudeSpyPackage/Sources/CodexPluginCore/CodexSettings.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeSettingsTests.swift`, `ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexSettingsTests.swift`
+- Modify: `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeSettings.swift`, `CtrlxPackage/Sources/CodexPluginCore/CodexSettings.swift`
+- Test: `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeSettingsTests.swift`, `CtrlxPackage/Tests/CodexPluginCoreTests/CodexSettingsTests.swift`
 
 - [ ] **Step 1: Write failing round-trip tests.** In each settings test file add a case asserting the new key(s) decode with the documented snake_case name and default, and survive an encode→decode round-trip:
   - Claude: `close_pane_on_session_end` (default `false`).
   - Codex: `close_pane_on_session_end` (default `false`) and `additional_config_folders` (default `[]`).
   Assert decoding empty data yields the defaults, and decoding JSON with the keys present yields the values.
 
-- [ ] **Step 2: Run** `cd ClaudeSpyPackage && swift test --filter ClaudeCodeSettings 2>&1 | tail -15` and `--filter CodexSettings` → FAIL (members don't exist).
+- [ ] **Step 2: Run** `cd CtrlxPackage && swift test --filter ClaudeCodeSettings 2>&1 | tail -15` and `--filter CodexSettings` → FAIL (members don't exist).
 
 - [ ] **Step 3: Implement.** In `ClaudeCodeSettings`, add the property, init param (default `false`), `CodingKeys` case, and `decodeIfPresent` line:
   ```swift
@@ -82,9 +82,9 @@
 **Context:** Today `ClaudeCodeTranslator.appActions(...)` and `CodexTranslator.appActions(...)` emit `.sessionEnded(sessionID:, closePaneEligible: body.reason == .promptInputExit)`, and the app ANDs the user pref at `AppCoordinator.swift:880` (`guard closePaneEligible, settings.closePaneOnSessionEnd`). We move the pref into the core and make the app honor the flag alone.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift`, `ClaudeCodePluginCore.swift`
-- Modify: `ClaudeSpyPackage/Sources/CodexPluginCore/CodexTranslator.swift`, `CodexPluginCore.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`
+- Modify: `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift`, `ClaudeCodePluginCore.swift`
+- Modify: `CtrlxPackage/Sources/CodexPluginCore/CodexTranslator.swift`, `CodexPluginCore.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift`
 - Test: `ClaudeCodeTranslatorTests`, `CodexTranslatorTests`
 
 - [ ] **Step 1: Write failing tests.** In each translator test, add cases: with `closePaneOnSessionEnd: true` AND a clean prompt-exit session-end → `.sessionEnded(closePaneEligible: true)`; with `closePaneOnSessionEnd: false` and the same clean exit → `.sessionEnded(closePaneEligible: false)`; with `true` but a non-clean reason → `closePaneEligible: false`.
@@ -112,7 +112,7 @@
   ```
   (Keep the yolo-reset that happens for every session-end, before this guard, unchanged.)
 
-- [ ] **Step 5: Run** the translator filters → PASS, then `swift build --target ClaudeSpyServerFeature` → PASS.
+- [ ] **Step 5: Run** the translator filters → PASS, then `swift build --target CtrlxServerFeature` → PASS.
 
 - [ ] **Step 6: Commit** `git commit -m "feat(plugin): per-agent close-pane folds into core eligibility; app honors flag"`.
 
@@ -123,8 +123,8 @@
 **Context:** `ClaudeCodePluginCore` already scans `settings.additionalConfigFolders` (see its scanner call). `CodexPluginCore.refreshProjects` scans only `CodexScanner.defaultSessionsRoot()`, and watches one root. Generalize to `{default} ∪ settings.additionalConfigFolders` (each folder is a `CODEX_HOME` root; its sessions live at `<root>/sessions`).
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/CodexPluginCore/CodexScanner.swift` (add a multi-root helper), `CodexPluginCore.swift` (scan + watch each root)
-- Test: `ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexScannerTests.swift` (or a new `CodexMultiFolderTests`)
+- Modify: `CtrlxPackage/Sources/CodexPluginCore/CodexScanner.swift` (add a multi-root helper), `CodexPluginCore.swift` (scan + watch each root)
+- Test: `CtrlxPackage/Tests/CodexPluginCoreTests/CodexScannerTests.swift` (or a new `CodexMultiFolderTests`)
 
 - [ ] **Step 1: Write a failing test.** Build two temp fixture roots, each with `sessions/YYYY/MM/DD/rollout-*.jsonl` referencing distinct `cwd`s, and assert that scanning the SET of roots returns the union of projects (deduped by path, most-recently-used wins when the same project appears in both). Use the existing `CodexScanner.scan(sessionsRoot:home:)` per root and merge, OR the new helper from Step 3.
 
@@ -175,8 +175,8 @@
 The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `settings.json` with live `applySettings`, and drive per-folder install/status — all through `AppCoordinator` (the one type holding the registry). Add these `@MainActor` methods.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/AgentsSettingsSupportTests.swift` (new)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/AgentsSettingsSupportTests.swift` (new)
 
 - [ ] **Step 1: Write failing tests** for the settings load/save round-trip and the install-status passthrough, using an in-memory registry/core. Minimum: `pluginSettingsData(id:)` returns what `setPluginSettings(id:_:)` wrote; `installStatus(id:configRoot:)` returns the enabled core's status. (If wiring a full registry in a unit test is heavy, assert the smaller, pure pieces — e.g. the plugin-list accessor sorts/maps correctly — and rely on the e2e scenario in Task 8 for the integration path. Prefer at least one real round-trip test for `setPluginSettings`→`pluginSettingsData`.)
 
@@ -237,7 +237,7 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
   ```
   Notes: confirm `PluginManifest` exposes a display name (`name`/`displayName`); use whichever exists. `applySettings` returns `SettingsResult` — the UI can later surface `.error`; for now discard. Keep `paths` (the existing `GallagerPaths`) as already stored on the coordinator.
 
-- [ ] **Step 4: Run** the new filter → PASS; `swift build --target ClaudeSpyServerFeature` → PASS.
+- [ ] **Step 4: Run** the new filter → PASS; `swift build --target CtrlxServerFeature` → PASS.
 
 - [ ] **Step 5: Commit** `git commit -m "feat(plugin): AppCoordinator API for Agents tab settings + per-folder install"`.
 
@@ -246,8 +246,8 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
 ## Task 5: The Agents settings tab (segmented + per-agent form + folder rows)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AgentsSettingsView.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/SettingsView.swift` (tab enum + the tab item)
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Views/AgentsSettingsView.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/SettingsView.swift` (tab enum + the tab item)
 - Reference (read, don't keep): the existing `PluginSettingsView.swift` and `ClaudeFolderRow` for patterns (status badges, install button states).
 
 - [ ] **Step 1: Rename the tab.** In `SettingsView.swift`, rename `SettingsTab.plugin` → `.agents`, change the tab `Label("Plugin", symbol: .puzzlepiece)` → `Label("Agents", symbol: .puzzlepiece)` (keep the symbol or pick another existing one from `Symbols`), and the `.tag(SettingsTab.plugin)` → `.tag(SettingsTab.agents)`. Point the tab's content at `AgentsSettingsView()` instead of `PluginSettingsView()`.
@@ -262,7 +262,7 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
   - The folder row is a small subview owning `@State var status: PluginInstallStatus = .notInstalled` and `@State var busy = false`; `.task(id:)` calls `coordinator.pluginInstallStatus(id:configRoot:)`; the Install button sets `busy`, calls `coordinator.installPlugin(...)`, then re-queries status; Uninstall mirrors it. This generalizes today's `ClaudeFolderRow` but is driven by `AppCoordinator`/the core, not `PluginService`. Map statuses to UI: `.installed(v)` → green "Installed v…" + Uninstall; `.notInstalled` → Install button; `.agentUnavailable` → "Agent not found" (disabled). Surface install errors inline (reuse the structured failure presentation pattern from `PluginFailureDetailsButton` if you keep a slimmed copy, or a simple `.help`/inline `Text`).
   - Use `Symbols.*` for any SF Symbols (never string literals) — add new cases to `Symbols.swift` if needed.
 
-- [ ] **Step 3: Build the macOS app target** to typecheck the view: `swift build --target ClaudeSpyServerFeature 2>&1 | tail -20` → PASS. (SwiftUI views are validated by compilation + the e2e scenario in Task 8; no unit test required for the view itself.)
+- [ ] **Step 3: Build the macOS app target** to typecheck the view: `swift build --target CtrlxServerFeature 2>&1 | tail -20` → PASS. (SwiftUI views are validated by compilation + the e2e scenario in Task 8; no unit test required for the view itself.)
 
 - [ ] **Step 4: Commit** `git commit -m "feat(agents): new Agents settings tab (segmented, per-agent settings + per-folder install)"`.
 
@@ -271,14 +271,14 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
 ## Task 6: Remove General-tab per-agent sections + delete legacy plugin UI/service
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/SettingsView.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/SettingsView.swift`
 - Delete: `PluginSettingsView.swift`, `Services/PluginService.swift`, `Views/PluginFailureDetailsButton.swift`, and the `ClaudeFolderRow` + `CustomFolderPluginSetupView` views (wherever they live).
 
 - [ ] **Step 1: Remove General sections.** In `SettingsView.swift`'s General tab, delete the `Section("Claude Code")`, `Section("Codex CLI")`, and `Section("Project Folders")` blocks (and the `ClaudeFolderRow`/`CustomFolderPluginSetupView` usages + `pluginSetupFolder`/`pluginStatusRefreshID` state and the `browseForClaudeFolder`/`browseForClaude`/`browseForCodex` helpers if now unused). Keep the tmux/terminal/other General sections. If `browseForClaude`/`browseForCodex` are reused by the Agents tab, MOVE them to `AgentsSettingsView.swift` instead of deleting.
 
 - [ ] **Step 2: Delete legacy files.** `git rm` `PluginSettingsView.swift`, `PluginService.swift`, `PluginFailureDetailsButton.swift`, and the `ClaudeFolderRow`/`CustomFolderPluginSetupView` definitions/files. Remove any remaining references (e.g. the `PluginService` environment injection if one exists — search `PluginService(` and `pluginService`).
 
-- [ ] **Step 3: Build** `swift build --target ClaudeSpyServerFeature 2>&1 | tail -20` → PASS. Fix every reference the deletions surface (this is the integration step for the UI removal).
+- [ ] **Step 3: Build** `swift build --target CtrlxServerFeature 2>&1 | tail -20` → PASS. Fix every reference the deletions surface (this is the integration step for the UI removal).
 
 - [ ] **Step 4: Commit** `git commit -m "refactor(settings): remove General per-agent sections + legacy plugin UI/service"`.
 
@@ -289,8 +289,8 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
 **Context:** With the General-tab bindings gone (Task 6), the `AppSettings` per-agent fields are unused. Delete them and have the one-shot migration seed the new per-plugin fields directly from the raw legacy UserDefaults keys (so deletion doesn't break the seeding).
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginSettingsMigration.swift`, `AppCoordinator.swift` (the migration call site ~line 388), `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/Settings.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginSettingsMigrationTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginSettingsMigration.swift`, `AppCoordinator.swift` (the migration call site ~line 388), `CtrlxPackage/Sources/CtrlxServerFeature/Models/Settings.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginSettingsMigrationTests.swift`
 
 - [ ] **Step 1: Update the migration test.** Assert that, given legacy UserDefaults keys (claude/codex command path + auto-run, `additionalClaudeFolders`, `closePaneOnSessionEnd`), `runIfNeeded` seeds `ClaudeCodeSettings(commandPath, autoRun, closePaneOnSessionEnd, additionalConfigFolders)` and `CodexSettings(commandPath, autoRun, closePaneOnSessionEnd)` into the respective settings.json (still guarded by the done-flag, still `writeIfAbsent`). Run → FAIL.
 
@@ -301,7 +301,7 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
 
 - [ ] **Step 3: Delete the AppSettings agent fields.** In `Settings.swift` remove `claudeCommandPath`, `autoRunClaudeInProjects`, `codexCommandPath`, `autoRunCodexInProjects`, `closePaneOnSessionEnd`, `additionalClaudeFolders` (properties, `didSet`s, init loads, `CodingKeys`, and the `addClaudeFolder`/`removeClaudeFolder` helpers if now unused). Keep the raw `Keys` constants the migration still needs (or move those literals into the migration). Confirm nothing else in `Sources/` reads these (grep first).
 
-- [ ] **Step 4: Build + test** `swift build --target ClaudeSpyServerFeature` and `swift test --filter PluginSettingsMigration` → PASS. Fix any remaining references.
+- [ ] **Step 4: Build + test** `swift build --target CtrlxServerFeature` and `swift test --filter PluginSettingsMigration` → PASS. Fix any remaining references.
 
 - [ ] **Step 5: Commit** `git commit -m "feat(settings): migrate new per-agent fields; delete legacy AppSettings agent fields"`.
 
@@ -310,16 +310,16 @@ The Agents tab (a SwiftUI view) must list plugins, read/write each plugin's `set
 ## Task 8: e2e scenario + full build/test + Release
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/AgentsSettingsTabScenario.swift` (+ register in `allScenarios`)
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/AgentsSettingsTabScenario.swift` (+ register in `allScenarios`)
 - Verify: full `swift test`, e2e suite, Release build.
 
 - [ ] **Step 1: Write an Agents-tab e2e scenario** (follow the e2e DSL patterns; use the `e2e-testing` skill conventions). Cover: open Settings → Agents tab; segmented switch Claude↔Codex; the per-agent settings render; a config-folder row shows install status and the Install button drives a (faked) install that flips the row to installed; and the General tab no longer shows the removed Claude/Codex/Project-Folders sections. Drive install via the `ProcessRunner` dependency stubbed in e2e mode so no real `claude`/`codex` runs. Take screenshots at key points. Register the scenario.
 
 - [ ] **Step 2: Run the new scenario** `./scripts/e2e-test.sh --scenario AgentsSettingsTab` (or the repo's invocation) and visually verify each screenshot per the project's e2e rules (no `compare:false`; verify baselines). Iterate until green.
 
-- [ ] **Step 3: Full unit suite** `cd ClaudeSpyPackage && swift test 2>&1 | tail -20` → 0 failures.
+- [ ] **Step 3: Full unit suite** `cd CtrlxPackage && swift test 2>&1 | tail -20` → 0 failures.
 
-- [ ] **Step 4: macOS Release build** `xcodebuild -workspace ClaudeSpy.xcworkspace -scheme ClaudeSpyServer -configuration Release -destination 'platform=macOS' -skipMacroValidation -skipPackagePluginValidation build 2>&1 | tee ${TMPDIR:-/tmp}/p2_build.log | xcsift --format toon --warnings` → success, 0 errors.
+- [ ] **Step 4: macOS Release build** `xcodebuild -workspace Ctrlx.xcworkspace -scheme CtrlxServer -configuration Release -destination 'platform=macOS' -skipMacroValidation -skipPackagePluginValidation build 2>&1 | tee ${TMPDIR:-/tmp}/p2_build.log | xcsift --format toon --warnings` → success, 0 errors.
 
 - [ ] **Step 5: Verification items (spec).** With a real `claude`/`codex` on PATH (if available): from the Agents tab (or `gallager plugin call codex install --config-root <tmp CODEX_HOME>`), confirm (a) Codex install honors `CODEX_HOME` (the plugin lands under the chosen root); (b) reinstalling over an older `gallager` actually updates to `1.1.0`. If either fails, file a follow-up and (for upgrade) add the uninstall-then-install fallback in the relevant `*CLIInstaller.install`.
 

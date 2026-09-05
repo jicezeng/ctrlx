@@ -38,7 +38,7 @@
 - 聚焦回归：18 tests / 5 suites 通过，覆盖 bootstrap 合并与顺序、stream ownership、
   固定节拍批处理，以及 Viewer 布局变化下的 Host 尺寸锁定。
 - 完整测试：1605 tests / 224 suites 通过。
-- macOS Release：`ClaudeSpyServer` arm64 构建通过；产物为 `Gallager.app` 2.7 (40)，
+- macOS Release：`CtrlxServer` arm64 构建通过；产物为 `Gallager.app` 2.7 (40)，
   主程序与 `GallagerCLI` 均为 arm64，CLI `ping` 返回 `pong`。
 - 签名与映像：Apple Development 深度签名、DMG CRC 及只读挂载校验均通过；
   `Gallager-2.7-zengjice.dmg` SHA-256 为

@@ -25,8 +25,8 @@ check_absent \
 check_absent \
   "production UI still presents the old product name" \
   '(Text|Label|Button|navigationTitle|windowTitle|defaultTitle)\("(Gallager|ClaudeSpy)"' \
-  ClaudeSpy ClaudeSpyServer ClaudeSpyPackage/Sources/ClaudeSpyFeature \
-  ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views
+  Ctrlx CtrlxServer CtrlxPackage/Sources/CtrlxFeature \
+  CtrlxPackage/Sources/CtrlxServerFeature/Views
 
 if [ "$failed" -ne 0 ]; then
   exit 1

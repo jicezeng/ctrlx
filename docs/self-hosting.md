@@ -21,7 +21,7 @@ cd CtrlX
 ./sbin/start_server.sh
 ```
 
-`auto-env.sh` creates `ClaudeSpyPackage/.env.local` and assigns a deterministic
+`auto-env.sh` creates `CtrlxPackage/.env.local` and assigns a deterministic
 worktree-specific port. Stop the Relay with `./sbin/stop_server.sh`.
 
 Configuration is zero-parameter and follows one priority list:
@@ -31,7 +31,7 @@ Configuration is zero-parameter and follows one priority list:
 ```
 
 Only the first existing file is loaded. Lower-priority files are not merged.
-Copy one of the committed `ClaudeSpyPackage/.env.*.example` templates to the
+Copy one of the committed `CtrlxPackage/.env.*.example` templates to the
 matching active filename. Active files and APNs private keys are Git-ignored.
 
 ## Production
@@ -45,7 +45,7 @@ matching active filename. Active files and APNs private keys are Git-ignored.
 5. Start through a shell that exports the selected file, or use the repository
    deployment script from a clean primary worktree.
 
-The generic Caddy configuration is `ClaudeSpyPackage/caddy/ctrlx.caddy`. It
+The generic Caddy configuration is `CtrlxPackage/caddy/ctrlx.caddy`. It
 expects `CTRLX_RELAY_HOST` in Caddy's own service environment and proxies to
 `127.0.0.1:8080`. No public domain is hard-coded in the source tree.
 

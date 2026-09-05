@@ -12,22 +12,22 @@ Last updated: 2026-05-22
 > The sections below are kept as the historical research / planning record. For the current code shape, see:
 > - `docs/architecture.md` — `CodingAgent` abstraction in the service overview
 > - `docs/services-reference.md` — `CodingAgent`, `CodexProjectScanner`, `CodexPluginInstaller` reference entries
-> - `ClaudeSpyNetworking/Models/CodingAgent.swift` — the enum itself
+> - `CtrlxNetworking/Models/CodingAgent.swift` — the enum itself
 >
 > Implementation notes vs. the plan below:
-> - **CodexHookInstaller was renamed to `CodexPluginInstaller`**, and install/uninstall now go through `codex plugin install gallager` against a bundled marketplace at `~/.claudespy/marketplaces/gallager/` (instead of writing `~/.codex/hooks.json` directly). The bridge script is shipped via the same `gallager` plugin that backs Claude Code.
+> - **CodexHookInstaller was renamed to `CodexPluginInstaller`**, and install/uninstall now go through `codex plugin install gallager` against a bundled marketplace at `~/.ctrlx/marketplaces/gallager/` (instead of writing `~/.codex/hooks.json` directly). The bridge script is shipped via the same `gallager` plugin that backs Claude Code.
 > - **Out of scope (deferred):** type renames (`ClaudeProjectInfo` → `AgentProjectInfo` etc.), `codex exec --json` streaming firehose, embedded OpenTelemetry collector, and auto-install on first launch.
 
 ## 1. Goal
 
-Add first-class support for OpenAI's **Codex CLI** (`github.com/openai/codex`) alongside the existing Claude Code integration, so that ClaudeSpy can:
+Add first-class support for OpenAI's **Codex CLI** (`github.com/openai/codex`) alongside the existing Claude Code integration, so that Ctrlx can:
 
 - Discover Codex projects on the user's machine the same way it discovers Claude Code projects.
 - Auto-launch Codex sessions into managed tmux panes.
 - Ingest lifecycle events (SessionStart, PreToolUse, PostToolUse, Stop, etc.) and surface them in the Mac and iOS UIs.
 - Correlate a running `codex` process to a tmux pane and a known project.
 
-This is positioned as a **second backend behind a `CodingAgent` abstraction**, not a fork or a parallel app. The app's identity stays "ClaudeSpy" for now; whether to rebrand is out of scope.
+This is positioned as a **second backend behind a `CodingAgent` abstraction**, not a fork or a parallel app. The app's identity stays "Ctrlx" for now; whether to rebrand is out of scope.
 
 ## 2. Background: how Claude Code is wired in today
 
@@ -101,7 +101,7 @@ Only `type = "command"` runs today; `type = "prompt"` and `type = "agent"` parse
 ## 4. What ports cleanly
 
 1. **Hook HTTP endpoint.** The existing `HookEvent` decoder handles the snake_case payload shape directly; only the event-name enum needs to grow.
-2. **Hook bridge script.** `plugin/gallager/scripts/hook.py` reads stdin, looks up the local port from `~/.claudespy-port`, POSTs to `/api/hooks`. The same script can be the Codex hook target — no Codex-specific code needed in it.
+2. **Hook bridge script.** `plugin/gallager/scripts/hook.py` reads stdin, looks up the local port from `~/.ctrlx-port`, POSTs to `/api/hooks`. The same script can be the Codex hook target — no Codex-specific code needed in it.
 3. **8 of 10 hook events overlap exactly** (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, PreCompact, Stop, SubagentStop, PermissionRequest). PostCompact and SubagentStart are additive.
 4. **Tmux process detection.** `TmuxService.swift:399-403` already walks the process tree; adding `codex` / `codex exec` to the candidate set is one-line work.
 5. **Headless observation channel** (`codex exec --json`) is available as a future enhancement without any trust prompts — useful for CI / scheduled-agent use cases.
@@ -126,7 +126,7 @@ The work is structured so each phase is **independently shippable** — none of 
 
 **Goal:** every Claude-specific identifier that crosses module boundaries grows an agent-aware variant. No behavior change.
 
-1. Add `CodingAgent` enum (cases `.claudeCode`, `.codex`) in `ClaudeSpyNetworking` — `Sendable`, `Codable`, stable raw values.
+1. Add `CodingAgent` enum (cases `.claudeCode`, `.codex`) in `CtrlxNetworking` — `Sendable`, `Codable`, stable raw values.
 2. Rename network/model types:
    - `ClaudeProjectInfo` → `AgentProjectInfo` with `agent: CodingAgent` field (default `.claudeCode` for back-compat decoders — but per project-memory rule **no Codable back-compat shims**; since all components deploy together, do a flag-day rename).
    - `ClaudeSession` → `AgentSession` with `agent: CodingAgent`.
@@ -155,7 +155,7 @@ The work is structured so each phase is **independently shippable** — none of 
 
 ### Phase 3 — Codex hook ingestion + auto-start
 
-**Goal:** when the user launches a Codex project from ClaudeSpy, lifecycle events flow into the UI just like Claude Code's.
+**Goal:** when the user launches a Codex project from Ctrlx, lifecycle events flow into the UI just like Claude Code's.
 
 1. **Hook installer for Codex.** Write `~/.codex/hooks.json` pointing every supported event at the existing Python bridge:
    ```json
@@ -177,7 +177,7 @@ The work is structured so each phase is **independently shippable** — none of 
    Install at the **global** layer to avoid per-project trust prompts.
 2. **Bridge script change.** Update `plugin/gallager/scripts/hook.py` to read `CODEX_*` env vars when present (Codex sets a different env vocabulary than Claude Code) and pass an explicit `agent=codex` query param to `/api/hooks`. Read `tmuxPane` from `$TMUX_PANE` regardless of agent.
 3. **HookEvent extension.** Add Codex-only events (`PostCompact`, `SubagentStart`) to `HookAction`. Map `PermissionRequest` → existing "needs attention" pathway, gated by agent kind so Claude Code keeps using `Notification`.
-4. **SessionStart sidecar.** Have the bridge script, on `SessionStart`, write `~/.claudespy/codex-sessions/<tmux_pane>.json` with `{session_id, cwd, pid, started_at}`. The Mac app reads this to correlate.
+4. **SessionStart sidecar.** Have the bridge script, on `SessionStart`, write `~/.ctrlx/codex-sessions/<tmux_pane>.json` with `{session_id, cwd, pid, started_at}`. The Mac app reads this to correlate.
 5. **Auto-start.** Extend `AppCoordinator.swift:798-829` so the constructed tmux command uses `codexCommandPath` when `project.agent == .codex`. Add `codex` (and `codex exec`) to the descendant-process matcher in `TmuxService.swift:399-403`.
 6. **Window naming.** Mirror the existing "claude" window name convention with "codex" for Codex projects (`AppCoordinator.swift:1450`, `TmuxService.swift:2301`).
 
@@ -197,7 +197,7 @@ Out of scope for v1, but worth tracking:
 
 - **App-server-protocol stream** (`codex exec --json` or a long-running app-server connection): gives token-by-token deltas and command-exec streams. Useful for a richer "what is Codex doing right now" view than discrete hooks provide.
 - ~~**OpenTelemetry**~~ — **shipped (issue #602).** Not an embedded collector: app-launched Codex panes are pointed at the existing Mac-local `OTLPReceiver` via `-c otel.…` launch overrides (Codex doesn't read `OTEL_*`), surfacing a per-session token meter, per-turn latency, model, and the approval/sandbox-mode chip. Logs-only (the channel that carries `conversation.id`), `log_user_prompt = false`, ephemeral (never writes the user's global config). See `docs/services-reference.md` → **OTLPReceiver** and `CodexOtelConfig`. Spike caveats below.
-- **Codex-as-MCP-server** (`codex mcp`): would let ClaudeSpy *drive* a Codex session, not just observe one.
+- **Codex-as-MCP-server** (`codex mcp`): would let Ctrlx *drive* a Codex session, not just observe one.
 
 #### Codex OTEL — verified assumptions & spike caveats (issue #602)
 
@@ -221,7 +221,7 @@ Verified against the codex-rs source while implementing:
 
 - **Codex release cadence.** Multiple releases per week; hook schema is GA but auxiliary surfaces (async hooks, prompt/agent hook types) are in flux. Pin documentation reads to a known version when implementing, and add a "tested against" badge in the Codex scanner.
 - **SQLite state.db**: tempting for fast scans but undocumented. Avoid for v1.
-- **Trust prompt UX**: easy to underestimate. First-time users will get a Codex-side prompt that ClaudeSpy didn't generate — clear in-app messaging is essential to avoid confused bug reports.
+- **Trust prompt UX**: easy to underestimate. First-time users will get a Codex-side prompt that Ctrlx didn't generate — clear in-app messaging is essential to avoid confused bug reports.
 - **Naming refactor blast radius**: Phase 1 touches a lot of files. Land it as one focused PR, not interleaved with feature work.
 
 ## 9. References

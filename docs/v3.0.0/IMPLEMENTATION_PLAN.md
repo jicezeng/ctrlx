@@ -16,7 +16,7 @@
 身份、本地数据、CLI、socket、Relay、更新通道和遥测命名，同时保留现有 tmux、Mac、iOS、
 E2EE 与 Relay 行为。
 
-内部 `ClaudeSpy*` 模块、源码目录和测试 target 首轮不重命名。它们不是用户身份，机械重命名
+内部 `Ctrlx*` 模块、源码目录和测试 target 首轮不重命名。它们不是用户身份，机械重命名
 会制造大量无价值冲突并显著增加 upstream 同步风险。
 
 ## 2. 固定身份
@@ -112,7 +112,7 @@ E2EE 与 Relay 行为。
 - 不在本阶段加入支付、账号、订阅或闭源控制面。
 - 不发布 TestFlight/App Store；Apple 条款与 AGPL 的法律结论需单独完成。
 - 不自动迁移 Gallager 配对、Keychain、插件、配置或 tmux metadata。
-- 不为了品牌重命名 `ClaudeSpy*` 内部 Swift module、target 和源码目录。
+- 不为了品牌重命名 `Ctrlx*` 内部 Swift module、target 和源码目录。
 - 不伪造尚未创建的 GitHub repository、DNS、TLS、APNs 或 Sparkle 凭据。
 
 ## 6. 依赖与阻塞项

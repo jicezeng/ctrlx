@@ -4,7 +4,7 @@
 
 **Goal:** The macOS menu bar dropdown lists terminal-only tmux sessions (local and remote) alongside agent sessions, a pinned terminal-only session counts in the pending badge, and every "Set State" mutation path emits the iOS badge-decrease push.
 
-**Architecture:** A new `TerminalOnlySession` value + two collection helpers in `ClaudeSpyNetworking` (grouping panes into terminal-only session rows, and the badge count) feed `MenuBarExtraView` (rows), `MirrorWindowManager.pendingSessionCount` (local badge), and `ClaudeSpyServerApp.totalPendingSessionCount` (remote badge half, applied per host). Three existing "Set State" mutation paths gain the badge-decrease broadcast.
+**Architecture:** A new `TerminalOnlySession` value + two collection helpers in `CtrlxNetworking` (grouping panes into terminal-only session rows, and the badge count) feed `MenuBarExtraView` (rows), `MirrorWindowManager.pendingSessionCount` (local badge), and `CtrlxServerApp.totalPendingSessionCount` (remote badge half, applied per host). Three existing "Set State" mutation paths gain the badge-decrease broadcast.
 
 **Tech Stack:** Swift 6.3, SwiftUI (MV, no ViewModels), Swift Testing (`@Test`/`#expect`), Point-Free Dependencies (tests only).
 
@@ -14,7 +14,7 @@
 
 - Swift 6.3+, Swift Concurrency only (no GCD); all cross-boundary types `Sendable`.
 - SF Symbols only via the `Symbols` enum (`Symbols.terminal` already exists).
-- Build/test ONLY via XcodeBuildTools skills: `swift-package` for package tests, `xcodebuild` for the `ClaudeSpyServer` scheme. Never raw `swift`/`xcodebuild` in Bash.
+- Build/test ONLY via XcodeBuildTools skills: `swift-package` for package tests, `xcodebuild` for the `CtrlxServer` scheme. Never raw `swift`/`xcodebuild` in Bash.
 - A `PostToolUse` swiftformat hook rewrites edited Swift files — re-read a file if an edit is reported as amended.
 - No wire-format changes in this plan (no new Codable fields), so no `VersionCompatibility` bump.
 - The badge invariant: **badge number == number of bell rows in the dropdown**, in both override directions.
@@ -22,13 +22,13 @@
 
 ---
 
-### Task 1: `TerminalOnlySession` + collection helpers in ClaudeSpyNetworking
+### Task 1: `TerminalOnlySession` + collection helpers in CtrlxNetworking
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/PaneStateCollections.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/TerminalOnlySessionTests.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift:370-379` (adopt helper)
-- Modify (test): `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiringTests.swift` (add one test after `pendingSessionCountHonorsOverride`, which ends near line 407)
+- Create: `CtrlxPackage/Sources/CtrlxNetworking/Models/PaneStateCollections.swift`
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/TerminalOnlySessionTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift:370-379` (adopt helper)
+- Modify (test): `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeStatusWiringTests.swift` (add one test after `pendingSessionCountHonorsOverride`, which ends near line 407)
 
 **Interfaces:**
 - Consumes: `PaneState` (fields `sessionName`, `windowIndex`, `paneIndex`, `isActive`, `isWindowActive`, `agentSession`, `cliSessionState`, `displayedState`), `CLISessionState`.
@@ -38,12 +38,12 @@
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/TerminalOnlySessionTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxNetworkingTests/TerminalOnlySessionTests.swift`:
 
 ```swift
 import Foundation
 import Testing
-@testable import ClaudeSpyNetworking
+@testable import CtrlxNetworking
 
 @Suite("TerminalOnlySession grouping")
 struct TerminalOnlySessionGroupingTests {
@@ -161,12 +161,12 @@ struct PendingSessionCountTests {
 
 - [ ] **Step 2: Run the new tests to verify they fail**
 
-Use the `XcodeBuildTools:swift-package` skill to run tests for package `ClaudeSpyPackage`, filter `TerminalOnlySessionGroupingTests`/`PendingSessionCountTests`.
+Use the `XcodeBuildTools:swift-package` skill to run tests for package `CtrlxPackage`, filter `TerminalOnlySessionGroupingTests`/`PendingSessionCountTests`.
 Expected: build FAILURE — `terminalOnlySessions()`/`pendingSessionCount` don't exist yet.
 
 - [ ] **Step 3: Implement the helpers**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/PaneStateCollections.swift`:
+Create `CtrlxPackage/Sources/CtrlxNetworking/Models/PaneStateCollections.swift`:
 
 ```swift
 import Foundation
@@ -252,7 +252,7 @@ Same `swift-package` invocation as Step 2. Expected: all 7 new tests PASS.
 
 - [ ] **Step 5: Adopt the helper in `MirrorWindowManager.pendingSessionCount`**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift` replace the property (currently lines 370-379) with:
+In `CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift` replace the property (currently lines 370-379) with:
 
 ```swift
     /// Number of sessions that need user attention: agent panes displayed as
@@ -267,7 +267,7 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager
 
 - [ ] **Step 6: Add the wiring test for the terminal-only half**
 
-In `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiringTests.swift`, directly after the `pendingSessionCountHonorsOverride` test (ends near line 407), add:
+In `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeStatusWiringTests.swift`, directly after the `pendingSessionCountHonorsOverride` test (ends near line 407), add:
 
 ```swift
         @Test("a pinned terminal-only session counts once; unpinning drops the count and reports the decrease")
@@ -305,16 +305,16 @@ In `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiring
 
 - [ ] **Step 7: Run both affected suites**
 
-Via `swift-package` skill: run `ClaudeSpyNetworkingTests` (filter `TerminalOnlySession`/`PendingSessionCount` plus the existing `PaneStateDisplayedStateTests`) and `ClaudeSpyServerFeatureTests` (filter `PluginRuntimeStatusWiringTests`).
+Via `swift-package` skill: run `CtrlxNetworkingTests` (filter `TerminalOnlySession`/`PendingSessionCount` plus the existing `PaneStateDisplayedStateTests`) and `CtrlxServerFeatureTests` (filter `PluginRuntimeStatusWiringTests`).
 Expected: PASS, including the pre-existing `pendingSessionCountHonorsOverride` (the helper must not change agent-half semantics).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/PaneStateCollections.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/TerminalOnlySessionTests.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiringTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/PaneStateCollections.swift \
+        CtrlxPackage/Tests/CtrlxNetworkingTests/TerminalOnlySessionTests.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeStatusWiringTests.swift
 git commit -m "Add TerminalOnlySession grouping + shared pending count helper (#702)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -325,8 +325,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 2: Remote plumbing — `SessionStore.terminalOnlySessions(for:)` + per-host badge half
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/SessionStore.swift:103-108` (add method after `panes(for:)`)
-- Modify: `ClaudeSpyServer/ClaudeSpyServerApp.swift:597-610` (`totalPendingSessionCount`)
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/Services/SessionStore.swift:103-108` (add method after `panes(for:)`)
+- Modify: `CtrlxServer/CtrlxServerApp.swift:597-610` (`totalPendingSessionCount`)
 
 **Interfaces:**
 - Consumes: `Collection.pendingSessionCount`, `Collection.terminalOnlySessions()`, `TerminalOnlySession` (Task 1); `SessionStore.paneStates: [PaneKey: PaneState]`.
@@ -334,7 +334,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Add the per-host accessor to `SessionStore`**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/SessionStore.swift`, after `panes(for:)` (line 108), add:
+In `CtrlxPackage/Sources/CtrlxCommon/Services/SessionStore.swift`, after `panes(for:)` (line 108), add:
 
 ```swift
     /// Terminal-only tmux sessions on a host (no agent session in any pane),
@@ -348,11 +348,11 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/SessionStore.swift`, after
     }
 ```
 
-(`SessionStore.swift` already imports `ClaudeSpyNetworking`.)
+(`SessionStore.swift` already imports `CtrlxNetworking`.)
 
 - [ ] **Step 2: Make the remote badge half override-aware and per-host**
 
-In `ClaudeSpyServer/ClaudeSpyServerApp.swift` replace `totalPendingSessionCount` (lines 597-610) with:
+In `CtrlxServer/CtrlxServerApp.swift` replace `totalPendingSessionCount` (lines 597-610) with:
 
 ```swift
     /// Total number of sessions needing attention across local and remote
@@ -373,14 +373,14 @@ In `ClaudeSpyServer/ClaudeSpyServerApp.swift` replace `totalPendingSessionCount`
 
 - [ ] **Step 3: Build both targets**
 
-Via `swift-package` skill: build `ClaudeSpyPackage` (covers `ClaudeSpyCommon`). Then via `xcodebuild` skill: build scheme `ClaudeSpyServer` (covers the app file).
+Via `swift-package` skill: build `CtrlxPackage` (covers `CtrlxCommon`). Then via `xcodebuild` skill: build scheme `CtrlxServer` (covers the app file).
 Expected: both succeed. (The app target has no test bundle; the helper's counting semantics are already covered by Task 1's tests — this is glue.)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/SessionStore.swift \
-        ClaudeSpyServer/ClaudeSpyServerApp.swift
+git add CtrlxPackage/Sources/CtrlxCommon/Services/SessionStore.swift \
+        CtrlxServer/CtrlxServerApp.swift
 git commit -m "Count pinned terminal-only sessions in the Dock/menu badge, per host (#702)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -391,7 +391,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 3: Menu rows — terminal-only sessions, local and remote
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MenuBarExtraView.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/MenuBarExtraView.swift`
 
 **Interfaces:**
 - Consumes: `Collection.terminalOnlySessions()` (Task 1), `SessionStore.terminalOnlySessions(for:)` (Task 2), existing `pendingMenuBarSelection` cases `.local(paneId:)` / `.remote(hostId:hostName:paneId:)`, `Symbols.terminal`.
@@ -549,13 +549,13 @@ Agent-row call sites (in `localSessionButton` / `remoteSessionButton`) become:
 
 - [ ] **Step 4: Build and run the feature test suite**
 
-Via `swift-package` skill: build `ClaudeSpyPackage` and run `ClaudeSpyServerFeatureTests`.
+Via `swift-package` skill: build `CtrlxPackage` and run `CtrlxServerFeatureTests`.
 Expected: build succeeds, suites pass (view-only change; menus have no snapshot coverage — the menu bar dropdown is a system surface the e2e harness can't screenshot, per PR #703).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MenuBarExtraView.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/MenuBarExtraView.swift
 git commit -m "List terminal-only tmux sessions in the system menu, local and remote (#702)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -566,9 +566,9 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 4: Badge-decrease push on every "Set State" mutation path
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift:741-746` (sidebar context menu)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift:3097-3103` (remote `setSessionState` command)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift:2197-2201` (CLI `onSessionSetState`)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift:741-746` (sidebar context menu)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift:3097-3103` (remote `setSessionState` command)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift:2197-2201` (CLI `onSessionSetState`)
 
 **Interfaces:**
 - Consumes: `AppCoordinator.broadcastBadgeDecreaseIfNeeded()` (existing, internal), `MirrorWindowManager.pendingCountDecrease()`, `connectionManager?.broadcastBadgeUpdate(badge:)` (existing pattern at AppCoordinator:3054).
@@ -627,13 +627,13 @@ In `AppCoordinator.swift`, inside `onSessionSetState` (the `if applied > 0` bloc
 
 - [ ] **Step 4: Run the wiring suite and build**
 
-Via `swift-package` skill: run `ClaudeSpyServerFeatureTests` (the `pendingCountDecrease` high-water-mark behavior these paths rely on is covered there, including Task 1's new terminal-session test). Expected: PASS.
+Via `swift-package` skill: run `CtrlxServerFeatureTests` (the `pendingCountDecrease` high-water-mark behavior these paths rely on is covered there, including Task 1's new terminal-session test). Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift
 git commit -m "Push the iOS badge decrease from every Set State mutation path (#702)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -649,11 +649,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Full test pass**
 
-Via `swift-package` skill: run the full `ClaudeSpyNetworkingTests` and `ClaudeSpyServerFeatureTests` suites (not just filters). Expected: PASS.
+Via `swift-package` skill: run the full `CtrlxNetworkingTests` and `CtrlxServerFeatureTests` suites (not just filters). Expected: PASS.
 
 - [ ] **Step 2: Full app build**
 
-Via `xcodebuild` skill: build scheme `ClaudeSpyServer` (macOS). Expected: succeeds.
+Via `xcodebuild` skill: build scheme `CtrlxServer` (macOS). Expected: succeeds.
 
 - [ ] **Step 3: Update PR #703's description**
 

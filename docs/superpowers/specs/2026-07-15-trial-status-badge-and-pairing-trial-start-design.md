@@ -39,7 +39,7 @@ paired.
 ### Current behavior
 
 - `LicensingService.checkEntitlement(hostDeviceId:)`
-  (`ClaudeSpyExternalServerLib/Services/LicensingService.swift:143`) auto-starts a
+  (`CtrlxExternalServerLib/Services/LicensingService.swift:143`) auto-starts a
   trial on first sight of a device via `trialEntitlement(...)`
   (`:172`), which creates the `TrialRecord` and increments the `trialStarts`
   metric as a side effect of the check.
@@ -164,7 +164,7 @@ New/updated relay unit coverage:
 ### Component
 
 New view `TrialStatusToolbarItem`
-(`ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift`).
+(`CtrlxServerFeature/Views/TrialStatusToolbarItem.swift`).
 
 Dependencies:
 
@@ -204,7 +204,7 @@ badge renders only when `settings.isPaired && appearance != nil`.
 - Rendered as a borderless capsule `Button` (`controlSize(.small)`) matching the
   toolbar pill idiom, label = icon + text.
 - Icons: trial uses a new `Symbols` case (`hourglass` = `"hourglass"`, to be added
-  to `ClaudeSpyCommon/UI/Symbols.swift`); expired reuses the existing
+  to `CtrlxCommon/UI/Symbols.swift`); expired reuses the existing
   `Symbols.exclamationmarkTriangle`.
 
 ### Popover
@@ -230,7 +230,7 @@ the existing Disconnect popover. Content (a `VStack`, all logic via the existing
 
 Add a new `ToolbarItem(placement: .automatic)` **before** the existing
 `connectionStatusView` item in `MainView.toolbarContent`
-(`ClaudeSpyServerFeature/Views/MainView.swift:1767`). Same-placement toolbar items
+(`CtrlxServerFeature/Views/MainView.swift:1767`). Same-placement toolbar items
 render in declaration order, so declaring the badge first puts it to the left of
 the wifi + Disconnect capsule.
 
@@ -238,7 +238,7 @@ the wifi + Disconnect capsule.
 
 - Inject the license manager into the panes window: add
   `.environment(coordinator.licenseManager)` to the `Window("Panes", id: "panes")`
-  scene in `ClaudeSpyServer/ClaudeSpyServerApp.swift` (~line 390). It is currently
+  scene in `CtrlxServer/CtrlxServerApp.swift` (~line 390). It is currently
   injected only into the Settings scene (`:548`); `MainView` (in the panes window)
   cannot resolve it today.
 - Status is already kept fresh app-wide by `AppCoordinator.startLicenseMonitoring()`
@@ -273,7 +273,7 @@ the wifi + Disconnect capsule.
 
 ## Interfaces & data model
 
-- `LicenseStatus` (`ClaudeSpyNetworking/Models/LicenseModels.swift`) — **unchanged**.
+- `LicenseStatus` (`CtrlxNetworking/Models/LicenseModels.swift`) — **unchanged**.
 - `LicensingService.Entitlement` — gains `.preTrial`.
 - `LicensingService` — `checkEntitlement` loses its trial-creating side effect;
   new `startTrialIfNeeded(hostDeviceId:)`.
@@ -284,19 +284,19 @@ the wifi + Disconnect capsule.
 ## Affected files
 
 Relay:
-- `ClaudeSpyExternalServerLib/Services/LicensingService.swift` — split
+- `CtrlxExternalServerLib/Services/LicensingService.swift` — split
   check/start, add `.preTrial`.
-- `ClaudeSpyExternalServerLib/Routes/PairingController.swift` — `startTrialIfNeeded`
+- `CtrlxExternalServerLib/Routes/PairingController.swift` — `startTrialIfNeeded`
   on `complete`.
 - Tests: `LicenseEndpointTests.swift`, `LicenseEnforcementWebSocketTests.swift`,
   `LicensingServiceTests` (audit).
 
 Mac:
-- `ClaudeSpyServerFeature/Views/TrialStatusToolbarItem.swift` — new.
-- `ClaudeSpyServerFeature/Views/MainView.swift` — add toolbar item.
-- `ClaudeSpyServer/ClaudeSpyServerApp.swift` — inject `licenseManager` into panes
+- `CtrlxServerFeature/Views/TrialStatusToolbarItem.swift` — new.
+- `CtrlxServerFeature/Views/MainView.swift` — add toolbar item.
+- `CtrlxServer/CtrlxServerApp.swift` — inject `licenseManager` into panes
   window.
-- `ClaudeSpyCommon/UI/Symbols.swift` — add `hourglass`.
+- `CtrlxCommon/UI/Symbols.swift` — add `hourglass`.
 - Mac-side pairing-completion handler — trigger `licenseManager.refreshStatus()`.
 - Tests: new unit test for `trialBadgeAppearance`; new E2E scenario + DEBUG status
   hook.

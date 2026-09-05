@@ -13,7 +13,7 @@ allowed-tools:
 
 # Install / Deploy
 
-Build and deploy ClaudeSpy to one or more targets. Parse `$ARGUMENTS` to determine which targets to act on. If no arguments or "all" is specified, run all three targets in the order below.
+Build and deploy Ctrlx to one or more targets. Parse `$ARGUMENTS` to determine which targets to act on. If no arguments or "all" is specified, run all three targets in the order below.
 
 Valid targets: `ios`, `mac`, `server` (case-insensitive, any combination).
 
@@ -51,8 +51,8 @@ This script handles pre-deploy checks (release build + tests), rsync to the remo
 
 ### 4. Build and run the macOS app (mac only)
 
-Use the `XcodeBuildTools:xcodebuild` skill to build scheme `ClaudeSpyServer`, then the `XcodeBuildTools:macos-app` skill to launch the built app.
+Use the `XcodeBuildTools:xcodebuild` skill to build scheme `CtrlxServer`, then the `XcodeBuildTools:macos-app` skill to launch the built app.
 
 ### 5. Build and install the iOS app (ios only)
 
-Use the `XcodeBuildTools:device-app` skill to build scheme `ClaudeSpy`, install it on the `myiPhone` device, and launch it. If the device is not connected, let the user know and move on.
+Use the `XcodeBuildTools:device-app` skill to build scheme `Ctrlx`, install it on the `myiPhone` device, and launch it. If the device is not connected, let the user know and move on.

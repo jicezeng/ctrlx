@@ -15,12 +15,12 @@
 ## File Structure
 
 **Create:**
-- `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/LoginShellPath.swift` — the resolver dependency (shell-resolve + PATH extraction + cached live resolution).
-- `ClaudeSpyPackage/Tests/ClaudeSpyCommonTests/LoginShellPathTests.swift`
-- `ClaudeSpyPackage/Tests/ClaudeSpyCommonTests/ProcessRunnerPathInjectionTests.swift`
+- `CtrlxPackage/Sources/CtrlxCommon/Services/LoginShellPath.swift` — the resolver dependency (shell-resolve + PATH extraction + cached live resolution).
+- `CtrlxPackage/Tests/CtrlxCommonTests/LoginShellPathTests.swift`
+- `CtrlxPackage/Tests/CtrlxCommonTests/ProcessRunnerPathInjectionTests.swift`
 
 **Modify:**
-- `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ProcessRunner.swift` — inject the resolved PATH into the subprocess env; add the pure `effectivePath` helper.
+- `CtrlxPackage/Sources/CtrlxCommon/Services/ProcessRunner.swift` — inject the resolved PATH into the subprocess env; add the pure `effectivePath` helper.
 
 **No changes** to `ClaudeCodeCLIInstaller`/`CodexCLIInstaller` or the cores — they already invoke `/usr/bin/env <command>`.
 
@@ -29,15 +29,15 @@
 ## Task 1: `LoginShellPath` resolver (pure helpers TDD, then the dependency)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/LoginShellPath.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyCommonTests/LoginShellPathTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxCommon/Services/LoginShellPath.swift`
+- Test: `CtrlxPackage/Tests/CtrlxCommonTests/LoginShellPathTests.swift`
 
 - [ ] **Step 1: Write the failing tests** — create `LoginShellPathTests.swift`:
 
 ```swift
 import Foundation
 import Testing
-@testable import ClaudeSpyCommon
+@testable import CtrlxCommon
 
 #if os(macOS)
     @Suite("LoginShellPath")
@@ -76,7 +76,7 @@ import Testing
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd ClaudeSpyPackage && swift test --filter LoginShellPath 2>&1 | tail -15`
+Run: `cd CtrlxPackage && swift test --filter LoginShellPath 2>&1 | tail -15`
 Expected: FAIL — `LoginShellPath` does not exist.
 
 - [ ] **Step 3: Implement `LoginShellPath.swift`**
@@ -185,13 +185,13 @@ Expected: FAIL — `LoginShellPath` does not exist.
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd ClaudeSpyPackage && swift test --filter LoginShellPath 2>&1 | tail -15`
+Run: `cd CtrlxPackage && swift test --filter LoginShellPath 2>&1 | tail -15`
 Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/LoginShellPath.swift ClaudeSpyPackage/Tests/ClaudeSpyCommonTests/LoginShellPathTests.swift
+git add CtrlxPackage/Sources/CtrlxCommon/Services/LoginShellPath.swift CtrlxPackage/Tests/CtrlxCommonTests/LoginShellPathTests.swift
 git commit -m "feat(common): LoginShellPath resolver for the user's login-shell PATH"
 ```
 
@@ -200,8 +200,8 @@ git commit -m "feat(common): LoginShellPath resolver for the user's login-shell 
 ## Task 2: Inject the resolved PATH in `ProcessRunner`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ProcessRunner.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyCommonTests/ProcessRunnerPathInjectionTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/Services/ProcessRunner.swift`
+- Test: `CtrlxPackage/Tests/CtrlxCommonTests/ProcessRunnerPathInjectionTests.swift`
 
 - [ ] **Step 1: Write the failing tests** — create `ProcessRunnerPathInjectionTests.swift`:
 
@@ -209,7 +209,7 @@ git commit -m "feat(common): LoginShellPath resolver for the user's login-shell 
 import Dependencies
 import Foundation
 import Testing
-@testable import ClaudeSpyCommon
+@testable import CtrlxCommon
 
 #if os(macOS)
     @Suite("ProcessRunner PATH injection")
@@ -268,7 +268,7 @@ import Testing
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd ClaudeSpyPackage && swift test --filter "ProcessRunner PATH injection" 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift test --filter "ProcessRunner PATH injection" 2>&1 | tail -20`
 Expected: FAIL — `ProcessRunner.effectivePath` does not exist (and the live test sees no injection).
 
 - [ ] **Step 3: Add the `effectivePath` helper.** In `ProcessRunner.swift`, add this extension (place it just after the `ProcessResult` struct or near the `ProcessRunner` struct definition; it is pure and not platform-gated):
@@ -329,13 +329,13 @@ with:
 
 - [ ] **Step 5: Run to verify it passes**
 
-Run: `cd ClaudeSpyPackage && swift test --filter "ProcessRunner PATH injection" 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift test --filter "ProcessRunner PATH injection" 2>&1 | tail -20`
 Expected: PASS (5 tests). If the live tests are flaky on the runner, confirm `/usr/bin/env` and `/bin/sh` exist (they do on macOS).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ProcessRunner.swift ClaudeSpyPackage/Tests/ClaudeSpyCommonTests/ProcessRunnerPathInjectionTests.swift
+git add CtrlxPackage/Sources/CtrlxCommon/Services/ProcessRunner.swift CtrlxPackage/Tests/CtrlxCommonTests/ProcessRunnerPathInjectionTests.swift
 git commit -m "fix(common): inject login-shell PATH into ProcessRunner subprocesses"
 ```
 
@@ -347,12 +347,12 @@ git commit -m "fix(common): inject login-shell PATH into ProcessRunner subproces
 
 - [ ] **Step 1: Full unit suite**
 
-Run: `cd ClaudeSpyPackage && swift test 2>&1 | tail -15`
+Run: `cd CtrlxPackage && swift test 2>&1 | tail -15`
 Expected: 0 failures (the new tests pass; existing tests unaffected — `LoginShellPath` has a deterministic preview/test value and existing callers inject `ProcessRunner` directly).
 
 - [ ] **Step 2: Build the macOS app (Debug + Release)**
 
-Run: `xcodebuild -workspace ClaudeSpy.xcworkspace -scheme ClaudeSpyServer -configuration Release -destination 'platform=macOS' -skipMacroValidation -skipPackagePluginValidation build 2>&1 | tee ${TMPDIR:-/tmp}/loginpath_build.log | xcsift --format toon --warnings`
+Run: `xcodebuild -workspace Ctrlx.xcworkspace -scheme CtrlxServer -configuration Release -destination 'platform=macOS' -skipMacroValidation -skipPackagePluginValidation build 2>&1 | tee ${TMPDIR:-/tmp}/loginpath_build.log | xcsift --format toon --warnings`
 Expected: `status: success`, 0 errors. (`LoginShellPath` is `#if os(macOS)`; the iOS app doesn't reference it.)
 
 - [ ] **Step 3: Real-app verification (manual).**

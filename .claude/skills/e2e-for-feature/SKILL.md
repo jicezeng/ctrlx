@@ -76,14 +76,14 @@ Based on the PR analysis, decide:
 
 ### Phase 3: Write the scenario
 
-Create the scenario file in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/`.
+Create the scenario file in `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/`.
 
 #### Mandatory rules
 
 - **Default to `compare: true`** — this is the default, so simply omit the `compare` parameter. Only pass `compare: false` when the captured content genuinely varies between runs (live timestamps, animations in flight). If a screenshot is unreliable for fixable reasons (timing, layout race), fix the root cause instead of disabling comparison.
 - **Screenshot labels must start with a platform prefix:** `ios-`, `mac-`, `host-`, or `viewer-` (host/viewer in two-Mac scenarios)
 - **Use `public enum` with a `public static let scenario`** property
-- **Use `ClaudeSpyE2ELib.scenario(...)` factory** with descriptive name and relevant tags
+- **Use `CtrlxE2ELib.scenario(...)` factory** with descriptive name and relevant tags
 - **No cleanup steps** — the orchestrator handles cleanup automatically (apps, server, tmux, blocked devices, injected scripts)
 - **No manual number prefixes in labels** — auto-numbered by the framework
 - **Use existing Shortcuts** — don't duplicate setup steps that shortcuts already provide
@@ -96,7 +96,7 @@ If the new UI isn't discoverable by ElementQuery / `macClickButton`, see "Step 3
 
 #### Register the scenario
 
-Add it to the **end** of the `allScenarios` array in `ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift`.
+Add it to the **end** of the `allScenarios` array in `CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift`.
 
 ### Phase 4: Build and run
 

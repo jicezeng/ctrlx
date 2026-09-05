@@ -35,6 +35,6 @@
 - Xcode App target 使用 MainActor 默认隔离；Package 服务显式以 MainActor/actor 声明所有权。
 - Stage 24 聚焦测试：32 tests passed。
 - 完整 Swift Package：1647 tests in 233 suites passed。
-- macOS `ClaudeSpyServer` Release 构建通过（ad-hoc signing）。
-- iOS `ClaudeSpy` generic-device Debug 构建通过（禁用签名）。
+- macOS `CtrlxServer` Release 构建通过（ad-hoc signing）。
+- iOS `Ctrlx` generic-device Debug 构建通过（禁用签名）。
 - `git diff --check` 通过；无新增 Swift 并发隔离警告。

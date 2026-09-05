@@ -25,7 +25,7 @@
 ## Verification
 
 - Agent 后台监控定向测试：12 项通过
-- `ClaudeSpyPackage` 完整测试：1757 项、255 个 suite 通过
+- `CtrlxPackage` 完整测试：1757 项、255 个 suite 通过
 - iPhoneOS Debug 构建、手工签名和深度校验：通过
 - iPhone build `20260818-stage7`：安装和启动通过
 - `git diff --check`：通过

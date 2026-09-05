@@ -17,14 +17,14 @@ Concretely:
 
 | Concern | Current implementation |
 |---|---|
-| Agent identity | `CodingAgent` enum in `ClaudeSpyNetworking/Models/CodingAgent.swift` — closed enum with two cases. |
-| Hook ingestion | `HookServerService` runs a local HTTP server on `6111+<offset>`; agents POST JSON to `/api/hooks?project_path=…&tmux_pane=…`. A small `~/.claudespy-port` file tells bridge scripts the port. |
+| Agent identity | `CodingAgent` enum in `CtrlxNetworking/Models/CodingAgent.swift` — closed enum with two cases. |
+| Hook ingestion | `HookServerService` runs a local HTTP server on `6111+<offset>`; agents POST JSON to `/api/hooks?project_path=…&tmux_pane=…`. A small `~/.ctrlx-port` file tells bridge scripts the port. |
 | Hook bridge | `plugin/gallager/scripts/hook.py` (Claude Code) and `plugin/codex/gallager/scripts/hook.py` (Codex) — read stdin, POST to localhost. |
 | Hook installer | Claude: inline logic in `AppCoordinator` + bundled `plugin/.claude-plugin/marketplace.json`. Codex: `CodexPluginInstaller` Swift service + bundled `plugin/codex/.agents/plugins/marketplace.json`. Both register a Gallager-shipped marketplace with the host agent's CLI. |
-| Project scanner | `ClaudeProjectScanner` reads `~/.claude.json` + `~/.claude/projects/*`. `CodexProjectScanner` walks `~/.codex/sessions/**` for rollouts. Both Swift services in `ClaudeSpyServerFeature/Services/`. |
+| Project scanner | `ClaudeProjectScanner` reads `~/.claude.json` + `~/.claude/projects/*`. `CodexProjectScanner` walks `~/.codex/sessions/**` for rollouts. Both Swift services in `CtrlxServerFeature/Services/`. |
 | Pane detection | `TmuxService.detectClaudePanes()` walks each pane's process tree looking for descendants named `claude` or `codex`. Hardcoded. |
 | Command path for auto-launch | `Settings.claudeCommandPath` and `Settings.codexCommandPath` — separate top-level settings. `AppCoordinator` switches on `CodingAgent` to pick which one. |
-| Event vocabulary | `HookAction` enum (~30 cases) in `ClaudeSpyNetworking/Models/HookModels.swift`. Cases are Claude-Code-shaped; Codex maps onto a subset. Each case has its own `*Body` Codable struct. |
+| Event vocabulary | `HookAction` enum (~30 cases) in `CtrlxNetworking/Models/HookModels.swift`. Cases are Claude-Code-shaped; Codex maps onto a subset. Each case has its own `*Body` Codable struct. |
 | Notification copy | `HookNotificationExtensions.swift` has hardcoded `"Claude Code"` strings; gradual agent-aware refactoring across the codebase. |
 
 ## 3. Design decisions (locked in during brainstorm)
@@ -409,15 +409,15 @@ The sidecar may want to keep some state per outstanding `request_id` (e.g., the 
 
 ### 7.6. What disappears from iOS
 
-In `ClaudeSpyFeature/`:
+In `CtrlxFeature/`:
 - `Views/EventRowView.swift` — the per-event debug card. Deleted.
 - The `extension HookEvent.responseView(...)` in `EventResponseView.swift` — replaced by a `switch` over `AgentResponseRequest` cases.
-- Any iOS code that decodes `HookAction` / `HookEvent` / their `*Body` types — those types are gone from `ClaudeSpyNetworking` entirely.
+- Any iOS code that decodes `HookAction` / `HookEvent` / their `*Body` types — those types are gone from `CtrlxNetworking` entirely.
 - `Views/ResponseViews/AskUserQuestionKeystrokes.swift` (the `KeystrokeBuilder` + Claude-specific navigation logic) — deleted. iOS no longer constructs agent-specific keystrokes; it sends a structured `AskUserQuestionResponse` and the sidecar handles delivery.
 - Per-tool-name decoding logic in iOS (it gets `description` as a plain string from the Mac).
 - Any iOS-side dependency on `TmuxKey` / keystroke shapes for driving the agent's interactive UIs — that's the sidecar's job now.
 
-What stays in `ClaudeSpyFeature/`:
+What stays in `CtrlxFeature/`:
 - All five `ResponseViews/` files (`PromptView`, `StopResponseView`, `PermissionRequestResponseView`, `AskUserQuestionResponseView`, `ExitPlanModeResponseView`) — they keep their UI, just driven by `AgentResponseRequest` cases instead of `HookAction` cases. On submit, they emit an `AgentResponse` envelope (Section 7.5) — no keystroke construction.
 - `SessionListView`, `LiveTerminalView`, `InteractiveTerminalView`, etc. — unchanged behavior, just sourced from `AgentSession` with `pluginID` instead of `agent: CodingAgent`.
 
@@ -486,7 +486,7 @@ iOS doesn't install or know about plugins. It consumes whatever the paired Mac f
 
 ## 10. Extracting Claude Code + Codex
 
-### 10.1. New Swift packages in `ClaudeSpyPackage/Sources/`
+### 10.1. New Swift packages in `CtrlxPackage/Sources/`
 
 ```
 GallagerPluginProtocol/        Codable JSON-RPC envelope, PluginEvent, manifest structs (Mac-only)
@@ -494,13 +494,13 @@ ClaudeCodePluginCore/          Claude Code logic (scanner, installer, event tran
 CodexPluginCore/               Codex logic (scanner, installer, event translator, command resolver)
 ClaudeCodePluginSidecar/       executable target wrapping Core in JSON-RPC stdin/stdout server
 CodexPluginSidecar/            executable target wrapping Core in JSON-RPC stdin/stdout server
-ClaudeSpyPluginRuntime/        Mac-only. PluginRegistry, SidecarSupervisor, PluginRouter,
+CtrlxPluginRuntime/        Mac-only. PluginRegistry, SidecarSupervisor, PluginRouter,
                                IngressBroker, AssetCache, PluginEventDispatcher (routes
                                PluginEvent envelopes into status/notification/response/app-action
                                sinks)
 ```
 
-No shared-with-iOS plugin module. `AgentResponseRequest`, `AgentSessionStatusUpdate`, and `PluginPresentation` types live in `ClaudeSpyNetworking` (which already crosses Mac/iOS); everything plugin-runtime-specific is Mac-only.
+No shared-with-iOS plugin module. `AgentResponseRequest`, `AgentSessionStatusUpdate`, and `PluginPresentation` types live in `CtrlxNetworking` (which already crosses Mac/iOS); everything plugin-runtime-specific is Mac-only.
 
 An Xcode build phase copies the two sidecar binaries + their manifests + assets into `Gallager.app/Contents/Resources/plugins/<id>/`.
 
@@ -513,14 +513,14 @@ An Xcode build phase copies the two sidecar binaries + their manifests + assets 
 | `CodexPluginInstaller.swift` | `CodexPluginCore`; invoked by sidecar's `install`/`uninstall`/`is_installed`. |
 | `ClaudeBinaryLocator.swift` | `ClaudeCodePluginCore`; used by `command_for_launch`. |
 | (inline Claude install logic in `AppCoordinator`) | `ClaudeCodePluginCore`. |
-| `ClaudeCodeTools.swift` (in `ClaudeSpyNetworking/Models/`) | `ClaudeCodePluginCore` (it's Claude-specific; the app never needed it outside event decoding). |
+| `ClaudeCodeTools.swift` (in `CtrlxNetworking/Models/`) | `ClaudeCodePluginCore` (it's Claude-specific; the app never needed it outside event decoding). |
 
 ### 10.3. Code that disappears from the app entirely
 
-(See Section 7.6 for the iOS-side deletions in `ClaudeSpyFeature/`; the items below are app-wide / shared / Mac.)
+(See Section 7.6 for the iOS-side deletions in `CtrlxFeature/`; the items below are app-wide / shared / Mac.)
 
-- `HookServerService.swift` — the local HTTP server. `~/.claudespy-port` goes with it.
-- `HookEvent`, `HookAction`, every `*Body` Codable struct (`SessionStartBody`, `PreToolUseBody`, ...), `CommonHookFields`, `SetupTrigger`, `SessionEndReason`, all `PermissionSuggestion*` helpers. From both `ClaudeSpyNetworking/Models/HookModels.swift` and `ClaudeSpyServerFeature/Hooks/HookModels.swift`.
+- `HookServerService.swift` — the local HTTP server. `~/.ctrlx-port` goes with it.
+- `HookEvent`, `HookAction`, every `*Body` Codable struct (`SessionStartBody`, `PreToolUseBody`, ...), `CommonHookFields`, `SetupTrigger`, `SessionEndReason`, all `PermissionSuggestion*` helpers. From both `CtrlxNetworking/Models/HookModels.swift` and `CtrlxServerFeature/Hooks/HookModels.swift`.
 - `CodingAgent` enum.
 - `Settings.claudeCommandPath` and `Settings.codexCommandPath` top-level keys (after one-shot migration into per-plugin settings).
 - All `case .claudeCode:` / `case .codex:` switches across `AppCoordinator`, `Settings`, `MainView`, `MainViewComponents/NewSessionContent`, `TmuxService`.
@@ -531,8 +531,8 @@ An Xcode build phase copies the two sidecar binaries + their manifests + assets 
 
 | Today | Becomes |
 |---|---|
-| `ClaudeSession` (`ClaudeSpyNetworking/Models/HookModels.swift`) | `AgentSession`. `agent: CodingAgent` → `pluginID: String`. Status (`isWorking`/`needsAttention`) tracked directly on the session as plain `Bool`, updated by inbound `AgentSessionStatusUpdate` messages. The trailing-5 `events: [HookEvent]` buffer is dropped — there's no longer any UI that renders structured event history. |
-| `ClaudeProjectInfo` (`ClaudeSpyNetworking/Models/RelayMessages.swift`) | `AgentProject`. `agent: CodingAgent` → `pluginID: String`. |
+| `ClaudeSession` (`CtrlxNetworking/Models/HookModels.swift`) | `AgentSession`. `agent: CodingAgent` → `pluginID: String`. Status (`isWorking`/`needsAttention`) tracked directly on the session as plain `Bool`, updated by inbound `AgentSessionStatusUpdate` messages. The trailing-5 `events: [HookEvent]` buffer is dropped — there's no longer any UI that renders structured event history. |
+| `ClaudeProjectInfo` (`CtrlxNetworking/Models/RelayMessages.swift`) | `AgentProject`. `agent: CodingAgent` → `pluginID: String`. |
 | `paneState.claudeSession`, `hasClaudeSession`, `claudePanes`, `markDetectedClaudeSessions` (across `WindowManager`, `AppCoordinator`, `TmuxService`) | `agentSession`, `hasAgentSession`, `agentPanes`, `markDetectedAgentSessions`. |
 | `TmuxService.detectClaudePanes()` | `detectAgentPanes()`. Internal: fans out over plugin manifests' `process_names`; falls back to per-plugin `sidecar.detect_pane(...)` RPC when a manifest declares `requires_rich_detection: true`. |
 
@@ -553,14 +553,14 @@ On first launch of the new version, the bundled Claude Code plugin's `is_install
 
 This is a flag-day release on both wire and binary fronts:
 
-- `ClaudeSpyNetworking/Models/VersionCompatibility.swift` minimum bumps by one breaking-change increment.
+- `CtrlxNetworking/Models/VersionCompatibility.swift` minimum bumps by one breaking-change increment.
 - A v-new viewer refuses to pair with a v-old host; a v-new host refuses to serve a v-old viewer. The existing compatibility check surfaces the upgrade prompt that's already there.
 - No dual-emit, no legacy event shapes, no deprecation window. `HookEvent` / `HookAction` are deleted outright.
 - Paired-host cross-version skew (one Mac on v-new, another Mac on v-prev-prev paired to the same iOS) still gets `decodeIfPresent` for incidental field additions in `RelayMessages`, per the existing rule for ROUTINE skew. But this release's break is a deliberate format change, not routine skew — VersionCompatibility handles it.
 
 Order of work in the single PR:
-1. Land `GallagerPluginProtocol` (Mac-only) and the new shared `ClaudeSpyNetworking` types (`AgentResponseRequest`, `AgentSessionStatusUpdate`, `PluginPresentation`).
-2. Land `ClaudeSpyPluginRuntime` (Mac-only, no integration yet).
+1. Land `GallagerPluginProtocol` (Mac-only) and the new shared `CtrlxNetworking` types (`AgentResponseRequest`, `AgentSessionStatusUpdate`, `PluginPresentation`).
+2. Land `CtrlxPluginRuntime` (Mac-only, no integration yet).
 3. Land `ClaudeCodePluginCore` + `ClaudeCodePluginSidecar` (executable). Bundle into `Resources/plugins/claude-code/`.
 4. Land `CodexPluginCore` + `CodexPluginSidecar`. Bundle into `Resources/plugins/codex/`.
 5. Wire the runtime into `AppCoordinator`. Replace agent switches with `pluginManager.<method>(pluginID:)` calls.
@@ -573,7 +573,7 @@ Order of work in the single PR:
 
 ## 12. Sidecar supervision
 
-`SidecarSupervisor` (in `ClaudeSpyPluginRuntime`) manages one process per enabled plugin.
+`SidecarSupervisor` (in `CtrlxPluginRuntime`) manages one process per enabled plugin.
 
 **Lifecycle**:
 1. App launch → for each enabled plugin: locate `bin/sidecar`, spawn with `state_dir`, `plugin_root`, `app_version` in env. Stdin/stdout piped for JSON-RPC; stderr → per-plugin log file at `~/.gallager/state/plugins/<id>/logs/sidecar.log` (size-rotated, 5 MB max retained).
@@ -603,7 +603,7 @@ Three layers:
 
 1. **Unit / integration tests in each `*PluginCore` package** (Point-Free Dependencies, swift-testing). Scanner / installer / event-translator logic is the bulk of each plugin core and is independently testable — same as today's tests for `CodexProjectScanner`/`CodexPluginInstaller`, just relocated.
 2. **JSON-RPC contract tests in `GallagerPluginProtocol`**. `MockSidecar` (drives app-side tests) and `MockApp` (drives sidecar-side tests). Each plugin core's RPC adaptor gets a roundtrip smoke test.
-3. **E2E scenarios in `ClaudeSpyE2ELib`**. See Section 15 — non-trivial migration.
+3. **E2E scenarios in `CtrlxE2ELib`**. See Section 15 — non-trivial migration.
 
 Explicitly out of v1 testing scope (manual-smoke-tested only):
 - Third-party HTTPS install (would require network in CI).
@@ -616,7 +616,7 @@ The E2E suite is non-trivially affected. Roughly 10 scenarios drive the system t
 - **Inbound**: `HookServerService` is gone; payloads must arrive at a per-plugin Unix socket instead.
 - **Outbound**: the iOS strings the scenarios assert on (`"Prompt Submitted"`, the event-row labels) come from `EventRowView`, which is deleted. iOS state observable to tests becomes thinner: presentation labels, session status badges, and the response-form UIs.
 
-### 15.1. DSL changes in `ClaudeSpyE2ELib/DSL/TestScenario.swift`
+### 15.1. DSL changes in `CtrlxE2ELib/DSL/TestScenario.swift`
 
 | Today | Tomorrow |
 |---|---|
@@ -657,7 +657,7 @@ Bundled plugins still come from `Gallager.app/Contents/Resources/plugins/` regar
 
 ### 15.5. `EchoPlugin` reference fixture
 
-Lives at `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Fixtures/EchoPlugin/` and is **built as part of the test target**, not the app. Layout matches the bundled-plugin shape:
+Lives at `CtrlxPackage/Sources/CtrlxE2ELib/Fixtures/EchoPlugin/` and is **built as part of the test target**, not the app. Layout matches the bundled-plugin shape:
 
 ```
 Fixtures/EchoPlugin/
@@ -719,7 +719,7 @@ Audit of Mac-side code that inspects `HookEvent` shape for side effects today:
   - On `.sessionEnd` → clears the pane's session, clears yolo mode, AND closes the pane if `closePaneOnSessionEnd` is enabled and the reason was `promptInputExit`.
   - On `.permissionRequest` with yolo mode on AND `body.isYoloAutoApprovable == true` → auto-approves by sending the Enter key after a 500 ms delay.
   - Other cases → just buffer the event into the session model.
-- **`HookActionUI.swift`** (in `ClaudeSpyCommon/UI/`): supplies `title`/`subtitle` strings for the per-`HookAction`-case display. Used today by `EventRowView` (which is deleted) and notification building (which moves into the sidecar).
+- **`HookActionUI.swift`** (in `CtrlxCommon/UI/`): supplies `title`/`subtitle` strings for the per-`HookAction`-case display. Used today by `EventRowView` (which is deleted) and notification building (which moves into the sidecar).
 - **`HookNotificationExtensions.swift`**: `buildNotification()` constructs `(title, body)` from event shape. In the new design, the sidecar bakes title+body and emits a `notification` on the `PluginEvent`; this file becomes part of the Claude Code sidecar core.
 
 Resolution — final `AppAction` enum:
@@ -785,7 +785,7 @@ For each of the 30 current `HookAction` cases, here is what the Claude Code side
 | `postToolBatch` | log-and-drop |
 | `unknown` | log-and-drop with WARN level log |
 
-**Codex sidecar audit**: Codex's hook event set is a subset of Claude's plus `PostCompact` and `SubagentStart`. The mapping is identical to the table above for the cases Codex supports. `PermissionRequest` in Codex carries the same shape as Claude's, so the same dispatch logic applies. The only Codex-specific behavior: when the sidecar parses a `SessionStart`, it also writes a sidecar correlation file at `~/.claudespy/codex-sessions/<tmux_pane>.json` (today's mechanism to correlate Codex session IDs to tmux panes — see `docs/codex-cli-integration-plan.md` §5).
+**Codex sidecar audit**: Codex's hook event set is a subset of Claude's plus `PostCompact` and `SubagentStart`. The mapping is identical to the table above for the cases Codex supports. `PermissionRequest` in Codex carries the same shape as Claude's, so the same dispatch logic applies. The only Codex-specific behavior: when the sidecar parses a `SessionStart`, it also writes a sidecar correlation file at `~/.ctrlx/codex-sessions/<tmux_pane>.json` (today's mechanism to correlate Codex session IDs to tmux panes — see `docs/codex-cli-integration-plan.md` §5).
 
 ### 17.3. Settings schema JSON (resolved)
 
@@ -835,7 +835,7 @@ Per-plugin settings UI is driven by `ui/settings.json`. The app renders a SwiftU
 }
 ```
 
-Supported field types in v1 (closed set; render impl in `ClaudeSpyPluginRuntime`):
+Supported field types in v1 (closed set; render impl in `CtrlxPluginRuntime`):
 
 | `type` | UI | Extra fields | Stored as |
 |---|---|---|---|

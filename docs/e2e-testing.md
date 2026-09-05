@@ -1,14 +1,14 @@
 # E2E Testing
 
-End-to-end tests verify the full ClaudeSpy system: macOS app, iOS simulator app, and an in-process Vapor relay server running together on localhost.
+End-to-end tests verify the full Ctrlx system: macOS app, iOS simulator app, and an in-process Vapor relay server running together on localhost.
 
 ## Architecture
 
 ```
-ClaudeSpyPackage/Sources/
-├── ClaudeSpyE2E/              # CLI entry point (ArgumentParser)
-│   └── ClaudeSpyE2ECommand.swift
-└── ClaudeSpyE2ELib/           # Test framework library
+CtrlxPackage/Sources/
+├── CtrlxE2E/              # CLI entry point (ArgumentParser)
+│   └── CtrlxE2ECommand.swift
+└── CtrlxE2ELib/           # Test framework library
     ├── DSL/                   # Scenario definition
     │   ├── TestScenario.swift # TestStep enum + TestScenario struct
     │   └── ScenarioBuilder.swift  # @resultBuilder for declarative scenarios
@@ -22,13 +22,13 @@ ClaudeSpyPackage/Sources/
     ├── Scenarios/             # Test scenario definitions
     └── Utilities/             # ProcessRunner, Polling helpers
 
-ClaudeSpyE2EHost/              # Minimal iOS app target (host for UITest bundle)
+CtrlxE2EHost/              # Minimal iOS app target (host for UITest bundle)
 ├── AppDelegate.swift
 ├── ViewController.swift
 └── Info.plist
 
-ClaudeSpyE2ERunner/            # UI Testing Bundle target
-├── ClaudeSpyE2ERunnerTests.swift  # Entry point: starts HTTP server
+CtrlxE2ERunner/            # UI Testing Bundle target
+├── CtrlxE2ERunnerTests.swift  # Entry point: starts HTTP server
 ├── Server/
 │   ├── E2EHTTPServer.swift    # FlyingFox HTTP server (port 22087)
 │   └── RouteHandlerFactory.swift
@@ -55,7 +55,7 @@ ClaudeSpyE2ERunner/            # UI Testing Bundle target
 
 ### How it works
 
-1. **ClaudeSpyE2ECommand** parses CLI args and creates a `TestOrchestrator`
+1. **CtrlxE2ECommand** parses CLI args and creates a `TestOrchestrator`
 2. **TestOrchestrator** runs scenarios sequentially, executing each `TestStep` via the appropriate driver
 3. **Drivers** handle platform interaction:
    - **SimulatorDriver** — boots simulator, installs/launches apps, manages XCUITest runner lifecycle, communicates with it via HTTP for UI inspection, taps, swipes, and text input
@@ -67,7 +67,7 @@ ClaudeSpyE2ERunner/            # UI Testing Bundle target
 
 iOS UI automation uses a separate **XCUITest runner** process running in the Simulator. This replaces the previous in-app accessibility server approach.
 
-The runner is a UI Testing bundle (`ClaudeSpyE2ERunner`) hosted by a minimal app (`ClaudeSpyE2EHost`). It exposes an HTTP server on port 22087 with endpoints for:
+The runner is a UI Testing bundle (`CtrlxE2ERunner`) hosted by a minimal app (`CtrlxE2EHost`). It exposes an HTTP server on port 22087 with endpoints for:
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -94,7 +94,7 @@ Both apps accept `--e2e-test` as a launch argument. When present, `prepareDepend
 
 ### Tmux socket isolation
 
-The macOS app accepts `--tmux-socket <path>` (alongside `--e2e-test`) to use a dedicated tmux server socket instead of the system default. This prevents E2E tests from polluting the developer's real tmux sessions. The default socket path is `/tmp/claudespy-e2e.sock`. During cleanup, the orchestrator kills the isolated tmux server and removes the socket file.
+The macOS app accepts `--tmux-socket <path>` (alongside `--e2e-test`) to use a dedicated tmux server socket instead of the system default. This prevents E2E tests from polluting the developer's real tmux sessions. The default socket path is `/tmp/ctrlx-e2e.sock`. During cleanup, the orchestrator kills the isolated tmux server and removes the socket file.
 
 ### Plugin state isolation
 
@@ -144,24 +144,24 @@ Steps can pass data between each other via `ExecutionContext`. Use `macReadClipb
 ./scripts/e2e-test.sh --tmux-socket /tmp/my-test.sock
 ```
 
-The script builds four targets: ClaudeSpyServer (macOS), ClaudeSpy (iOS), ClaudeSpyE2EHost (build-for-testing), and ClaudeSpyE2E (CLI coordinator).
+The script builds four targets: CtrlxServer (macOS), Ctrlx (iOS), CtrlxE2EHost (build-for-testing), and CtrlxE2E (CLI coordinator).
 
 ### Running manually
 
 Build all targets first, then:
 
 ```bash
-ClaudeSpyE2E \
+CtrlxE2E \
     --ios-app-path /path/to/Gallager.app \
     --macos-app-path /path/to/Gallager.app \
     --sim-name "iPhone 17 Pro" \
     --screenshots-dir /tmp/e2e-screenshots \
     --baselines-dir ./E2ETests \
-    --tmux-socket /tmp/claudespy-e2e.sock \
+    --tmux-socket /tmp/ctrlx-e2e.sock \
     --e2e-runner-path /path/to/derived-data
 ```
 
-The `--e2e-runner-path` points to the derived data directory from `xcodebuild build-for-testing` of the `ClaudeSpyE2EHost` scheme. It contains the `.xctestrun` file and host app needed to start the XCUITest runner.
+The `--e2e-runner-path` points to the derived data directory from `xcodebuild build-for-testing` of the `CtrlxE2EHost` scheme. It contains the `.xctestrun` file and host app needed to start the XCUITest runner.
 
 ### Running a specific scenario
 
@@ -169,7 +169,7 @@ The `--e2e-runner-path` points to the derived data directory from `xcodebuild bu
 ./scripts/e2e-test.sh --scenario "Fresh Pairing"
 
 # Or manually:
-ClaudeSpyE2E --scenario "Fresh Pairing" ...
+CtrlxE2E --scenario "Fresh Pairing" ...
 ```
 
 ### Prerequisites
@@ -264,7 +264,7 @@ that linked them are edited (links struck through, deletion note appended) so
 nobody clicks dead links. Open — including reopened — PRs are skipped; asset
 names not matching `pr<N>-*.mp4` are left alone. Needs the `RESULTS_REPO_TOKEN`
 secret (fine-grained PAT, Contents read/write on ClaudeSpyTestResults only);
-everything on ClaudeSpy uses the workflow's own token. Also runs locally:
+everything on Ctrlx uses the workflow's own token. Also runs locally:
 
 ```bash
 ./scripts/e2e_video_cleanup.py --dry-run   # print, don't mutate
@@ -277,13 +277,13 @@ Unit tests: `python3 scripts/tests/test_e2e_video_cleanup.py`.
 
 ### Basic scenario
 
-Create a new file in `ClaudeSpyE2ELib/Scenarios/`:
+Create a new file in `CtrlxE2ELib/Scenarios/`:
 
 ```swift
 import Foundation
 
 public enum MyScenario {
-    public static let scenario = ClaudeSpyE2ELib.scenario(
+    public static let scenario = CtrlxE2ELib.scenario(
         "My Scenario",
         tags: ["mytag"]
     ) {
@@ -314,7 +314,7 @@ Scenarios can include other scenarios. Their steps get flattened inline:
 
 ```swift
 public enum AdvancedScenario {
-    public static let scenario = ClaudeSpyE2ELib.scenario(
+    public static let scenario = CtrlxE2ELib.scenario(
         "Advanced Test",
         tags: ["advanced"]
     ) {
@@ -333,7 +333,7 @@ Scenarios should **not** include cleanup steps (terminate apps, stop server) —
 
 ### Registering a scenario
 
-Add it to the **end** of the `allScenarios` array in `ClaudeSpyE2ECommand.swift`:
+Add it to the **end** of the `allScenarios` array in `CtrlxE2ECommand.swift`:
 
 ```swift
 private static let allScenarios: [TestScenario] = [
@@ -431,7 +431,7 @@ If the scenario fails, fix the issue and re-run until it passes. Never commit a 
 |------|-------------|
 | `injectScript(name:)` | Copy a bundled script from `Scenarios/Scripts/` to `$TMPDIR`. Auto-cleaned after the scenario ends. |
 
-Scripts live in `ClaudeSpyE2ELib/Scenarios/Scripts/` as plain files (Python, shell, etc.). They are bundled as SPM resources and copied to `$TMPDIR` at runtime. Reference them in tmux commands as `$TMPDIR/<name>`. Cleanup is automatic, even on test failure.
+Scripts live in `CtrlxE2ELib/Scenarios/Scripts/` as plain files (Python, shell, etc.). They are bundled as SPM resources and copied to `$TMPDIR` at runtime. Reference them in tmux commands as `$TMPDIR/<name>`. Cleanup is automatic, even on test failure.
 
 ### General
 
@@ -622,7 +622,7 @@ When a comparison fails, a diff image is saved alongside the baseline with a `_d
 ### CLI option
 
 ```bash
-ClaudeSpyE2E --baselines-dir /path/to/baselines ...
+CtrlxE2E --baselines-dir /path/to/baselines ...
 ```
 
 ## Failure screenshots
@@ -641,7 +641,7 @@ The `e2e-report.sh` script runs all E2E scenarios, collects results and screensh
 
 ### How it works
 
-1. Gathers git metadata (branch, commit, PR number) from the current ClaudeSpy checkout
+1. Gathers git metadata (branch, commit, PR number) from the current Ctrlx checkout
 2. Ensures a clone of the results repository exists as a sibling folder (`../ClaudeSpyTestResults`)
 3. Runs `e2e-test.sh` with `--json-output` to get structured step-level results
 4. Syncs the results repo to the latest remote **right before writing results** (not at startup), then copies screenshots into a **content-addressable image store** (`images/<sha256>.png`) — identical images are stored once

@@ -21,9 +21,9 @@
 - Viewer connections are never gated. E2EE paths untouched.
 - New wire fields are optional (`decodeIfPresent` via optional properties) for cross-version skew.
 - All new cross-boundary types `Sendable`; actors for I/O; no GCD; `@MainActor` UI.
-- SF Symbols only via `ClaudeSpyCommon/UI/Symbols.swift` (never string literals).
+- SF Symbols only via `CtrlxCommon/UI/Symbols.swift` (never string literals).
 - Swift Testing (`@Test`, `#expect`), NOT XCTest. Build/test via XcodeBuildTools skills (`swift-package` skill for `swift test`).
-- Run package tests with: `swift test --package-path ClaudeSpyPackage --filter <SuiteName>` (via the XcodeBuildTools `swift-package` skill).
+- Run package tests with: `swift test --package-path CtrlxPackage --filter <SuiteName>` (via the XcodeBuildTools `swift-package` skill).
 - Commit after every green task; never `--no-verify`.
 
 ---
@@ -43,8 +43,8 @@ No code. The user performs this in the Lemon Squeezy dashboard; later tasks cons
 ### Task 1: Networking — `LicenseStatus` + `LicenseActivationRequest` models
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/LicenseModels.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/LicenseModelsTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxNetworking/Models/LicenseModels.swift`
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/LicenseModelsTests.swift`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -53,10 +53,10 @@ No code. The user performs this in the Lemon Squeezy dashboard; later tasks cons
 - [ ] **Step 1: Write the failing tests**
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/LicenseModelsTests.swift
+// CtrlxPackage/Tests/CtrlxNetworkingTests/LicenseModelsTests.swift
 import Foundation
 import Testing
-@testable import ClaudeSpyNetworking
+@testable import CtrlxNetworking
 
 @Suite("License models")
 struct LicenseModelsTests {
@@ -103,13 +103,13 @@ struct LicenseModelsTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseModelsTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseModelsTests`
 Expected: FAIL — `cannot find 'LicenseStatus' in scope`.
 
 - [ ] **Step 3: Write the implementation**
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/LicenseModels.swift
+// CtrlxPackage/Sources/CtrlxNetworking/Models/LicenseModels.swift
 import Foundation
 
 /// Request body for `POST /api/license/activate` on the relay.
@@ -161,14 +161,14 @@ public struct LicenseStatus: Codable, Sendable, Equatable {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseModelsTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseModelsTests`
 Expected: 3 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/LicenseModels.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/LicenseModelsTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/LicenseModels.swift \
+        CtrlxPackage/Tests/CtrlxNetworkingTests/LicenseModelsTests.swift
 git commit -m "Add LicenseStatus and LicenseActivationRequest wire models (#392)"
 ```
 
@@ -177,9 +177,9 @@ git commit -m "Add LicenseStatus and LicenseActivationRequest wire models (#392)
 ### Task 2: Networking — typed license errors + `hostSubscriptionInactive` WS message
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift` (enum case + `ErrorMessage` factory; the enum's five exhaustive switches — `WebSocketMessage` cases near line 66, `MessageType` near line 184, `init(from:)` near line 243, `encode(to:)` near line 322, `messageType` near line 374 — the compiler flags every spot)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/PairingModels.swift:131-137` (`ErrorInfo`)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/LicenseModelsTests.swift` (extend)
+- Modify: `CtrlxPackage/Sources/CtrlxNetworking/Models/WebSocketMessage.swift` (enum case + `ErrorMessage` factory; the enum's five exhaustive switches — `WebSocketMessage` cases near line 66, `MessageType` near line 184, `init(from:)` near line 243, `encode(to:)` near line 322, `messageType` near line 374 — the compiler flags every spot)
+- Modify: `CtrlxPackage/Sources/CtrlxNetworking/Models/PairingModels.swift:131-137` (`ErrorInfo`)
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/LicenseModelsTests.swift` (extend)
 
 **Interfaces:**
 - Consumes: existing `ErrorMessage`, `ErrorInfo`, `WebSocketMessage`.
@@ -224,7 +224,7 @@ git commit -m "Add LicenseStatus and LicenseActivationRequest wire models (#392)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseModelsTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseModelsTests`
 Expected: FAIL — `type 'ErrorMessage' has no member 'subscriptionRequired'`.
 
 - [ ] **Step 3: Implement**
@@ -279,15 +279,15 @@ public struct ErrorInfo: Codable, Sendable, Equatable {
 
 - [ ] **Step 4: Build the whole package and run the networking tests**
 
-Run: `swift build --package-path ClaudeSpyPackage` then `swift test --package-path ClaudeSpyPackage --filter LicenseModelsTests`
+Run: `swift build --package-path CtrlxPackage` then `swift test --package-path CtrlxPackage --filter LicenseModelsTests`
 Expected: build succeeds (compiler-forced switch updates complete), 7 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/PairingModels.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/LicenseModelsTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/WebSocketMessage.swift \
+        CtrlxPackage/Sources/CtrlxNetworking/Models/PairingModels.swift \
+        CtrlxPackage/Tests/CtrlxNetworkingTests/LicenseModelsTests.swift
 git commit -m "Add subscriptionRequired error code and hostSubscriptionInactive message (#392)"
 ```
 
@@ -296,8 +296,8 @@ git commit -m "Add subscriptionRequired error code and hostSubscriptionInactive 
 ### Task 3: Relay — `LicensingConfiguration` env parsing
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingConfiguration.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingConfigurationTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingConfiguration.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingConfigurationTests.swift`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -306,9 +306,9 @@ git commit -m "Add subscriptionRequired error code and hostSubscriptionInactive 
 - [ ] **Step 1: Write the failing tests**
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingConfigurationTests.swift
+// CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingConfigurationTests.swift
 import Testing
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 @Suite("LicensingConfiguration")
 struct LicensingConfigurationTests {
@@ -369,13 +369,13 @@ struct LicensingConfigurationTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingConfigurationTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingConfigurationTests`
 Expected: FAIL — `cannot find 'LicensingConfiguration' in scope`.
 
 - [ ] **Step 3: Implement**
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingConfiguration.swift
+// CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingConfiguration.swift
 import Foundation
 
 /// Thrown at boot for misconfigured licensing env — fail-loud rather than
@@ -437,14 +437,14 @@ struct LicensingConfiguration: Sendable, Equatable {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingConfigurationTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingConfigurationTests`
 Expected: 6 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingConfiguration.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingConfigurationTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingConfiguration.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingConfigurationTests.swift
 git commit -m "Add LicensingConfiguration env parsing for the relay (#392)"
 ```
 
@@ -453,13 +453,13 @@ git commit -m "Add LicensingConfiguration env parsing for the relay (#392)"
 ### Task 4: Relay — Lemon Squeezy API client (protocol, DTOs, live implementation)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LemonSqueezyAPIClient.swift`
-- Modify: `ClaudeSpyPackage/Package.swift` (add `async-http-client` as a direct package + target dependency — it is already resolved transitively via Vapor at 1.30.2, so this adds no new pin)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LemonSqueezyAPIClientTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LemonSqueezyAPIClient.swift`
+- Modify: `CtrlxPackage/Package.swift` (add `async-http-client` as a direct package + target dependency — it is already resolved transitively via Vapor at 1.30.2, so this adds no new pin)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LemonSqueezyAPIClientTests.swift`
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces (all internal to `ClaudeSpyExternalServerLib`):
+- Produces (all internal to `CtrlxExternalServerLib`):
   - `protocol LicenseAPIClient: Sendable` with
     `func activate(licenseKey: String, instanceName: String) async throws -> LSLicenseResponse`,
     `func validate(licenseKey: String, instanceId: String) async throws -> LSLicenseResponse`,
@@ -475,28 +475,28 @@ git commit -m "Add LicensingConfiguration env parsing for the relay (#392)"
 
 - [ ] **Step 1: Add the package dependency**
 
-In `ClaudeSpyPackage/Package.swift`: add to the top-level `dependencies:` array (near the `vapor` entry):
+In `CtrlxPackage/Package.swift`: add to the top-level `dependencies:` array (near the `vapor` entry):
 
 ```swift
 .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.21.0"),
 ```
 
-and to the `ClaudeSpyExternalServerLib` target's `dependencies` (currently `.claudeSpyNetworking, .claudeSpyEncryption, .vapor, .vaporAPNS` at Package.swift:394-401):
+and to the `CtrlxExternalServerLib` target's `dependencies` (currently `.ctrlxNetworking, .ctrlxEncryption, .vapor, .vaporAPNS` at Package.swift:394-401):
 
 ```swift
 .product(name: "AsyncHTTPClient", package: "async-http-client"),
 ```
 
-Run: `swift build --package-path ClaudeSpyPackage --target ClaudeSpyExternalServerLib`
+Run: `swift build --package-path CtrlxPackage --target CtrlxExternalServerLib`
 Expected: builds (no source changes yet). If SPM reports a resolution conflict, match the version already in `Package.resolved` (1.30.2).
 
 - [ ] **Step 2: Write the failing tests**
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LemonSqueezyAPIClientTests.swift
+// CtrlxPackage/Tests/CtrlxExternalServerTests/LemonSqueezyAPIClientTests.swift
 import Foundation
 import Testing
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 @Suite("LemonSqueezyAPIClient")
 struct LemonSqueezyAPIClientTests {
@@ -582,13 +582,13 @@ struct LemonSqueezyAPIClientTests {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LemonSqueezyAPIClientTests`
+Run: `swift test --package-path CtrlxPackage --filter LemonSqueezyAPIClientTests`
 Expected: FAIL — `cannot find 'LSLicenseResponse' in scope`.
 
 - [ ] **Step 4: Implement**
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LemonSqueezyAPIClient.swift
+// CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LemonSqueezyAPIClient.swift
 import AsyncHTTPClient
 import Foundation
 import NIOCore
@@ -739,15 +739,15 @@ struct LemonSqueezyAPIClient: LicenseAPIClient {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LemonSqueezyAPIClientTests`
+Run: `swift test --package-path CtrlxPackage --filter LemonSqueezyAPIClientTests`
 Expected: 5 tests PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Package.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LemonSqueezyAPIClient.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LemonSqueezyAPIClientTests.swift
+git add CtrlxPackage/Package.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LemonSqueezyAPIClient.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LemonSqueezyAPIClientTests.swift
 git commit -m "Add Lemon Squeezy License API client to the relay (#392)"
 ```
 
@@ -756,8 +756,8 @@ git commit -m "Add Lemon Squeezy License API client to the relay (#392)"
 ### Task 5: Relay — `LicensingService` core (trials, persistence, disabled short-circuit)
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift`
 
 **Interfaces:**
 - Consumes: `LicensingConfiguration` (Task 3), `LicenseAPIClient`/`LSLicenseResponse` (Task 4), `LicenseStatus` (Task 1), `MetricsService` (existing actor; counters added in Task 8).
@@ -773,10 +773,10 @@ git commit -m "Add Lemon Squeezy License API client to the relay (#392)"
 - [ ] **Step 1: Write the failing tests**
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift
+// CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift
 import Foundation
 import Testing
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 /// Stub LS client: returns canned responses, records calls.
 /// A `final class` with locked mutable state so tests can swap responses mid-test.
@@ -840,7 +840,7 @@ enum LicensingTestSupport {
 
     static func tempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("claudespy-licensing-tests-\(UUID().uuidString)")
+            .appendingPathComponent("ctrlx-licensing-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
@@ -963,14 +963,14 @@ struct LicensingServiceCoreTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingServiceCoreTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingServiceCoreTests`
 Expected: FAIL — `cannot find 'LicensingService' in scope`.
 
 - [ ] **Step 3: Implement the actor (trial + persistence + disabled paths; license verdict paths land in Task 6)**
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift
-import ClaudeSpyNetworking
+// CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift
+import CtrlxNetworking
 import Foundation
 import Logging
 
@@ -1206,15 +1206,15 @@ in `MetricsService.swift`, next to `incrementPushNotifications()`:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingServiceCoreTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingServiceCoreTests`
 Expected: 5 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift
 git commit -m "Add LicensingService with trial auto-start and persistence (#392)"
 ```
 
@@ -1223,8 +1223,8 @@ git commit -m "Add LicensingService with trial auto-start and persistence (#392)
 ### Task 6: Relay — activation, revalidation, grace, deactivation
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift` (new suite in same file)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift`
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift` (new suite in same file)
 
 **Interfaces:**
 - Consumes: Task 5's actor + Task 4's `LicenseAPIClient`.
@@ -1435,7 +1435,7 @@ struct LicensingServiceActivationTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingServiceActivationTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingServiceActivationTests`
 Expected: FAIL — `value of type 'LicensingService' has no member 'activate'`.
 
 - [ ] **Step 3: Implement**
@@ -1584,15 +1584,15 @@ Add the two metrics counters used above to `MetricsService.swift` (next to `incr
 
 - [ ] **Step 4: Run the full relay test suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter "LicensingService|LemonSqueezy|LicensingConfiguration"`
+Run: `swift test --package-path CtrlxPackage --filter "LicensingService|LemonSqueezy|LicensingConfiguration"`
 Expected: all licensing tests PASS (5 + 9 + 5 + 6).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift
 git commit -m "Add license activation, revalidation, grace, and deactivation (#392)"
 ```
 
@@ -1601,11 +1601,11 @@ git commit -m "Add license activation, revalidation, grace, and deactivation (#3
 ### Task 7: Relay — `LicenseController` endpoints + configure wiring
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/LicenseController.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift` (service creation, storage key, accessor, E2E reset helper)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/routes.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Extensions/VaporContentConformance.swift` (add `extension LicenseStatus: Content {}`, mirroring the existing conformances in that file)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/LicenseController.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift` (service creation, storage key, accessor, E2E reset helper)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/routes.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Extensions/VaporContentConformance.swift` (add `extension LicenseStatus: Content {}`, mirroring the existing conformances in that file)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift`
 
 **Interfaces:**
 - Consumes: `LicensingService` (Tasks 5–6), `LicenseStatus`/`LicenseActivationRequest` (Task 1), `LicensingConfiguration.fromEnvironment` (Task 3), `LemonSqueezyAPIClient`/`DisabledLicenseAPIClient` (Task 4).
@@ -1618,12 +1618,12 @@ git commit -m "Add license activation, revalidation, grace, and deactivation (#3
 - [ ] **Step 1: Write the failing endpoint tests** (mirror `MetricsEndpointTests.withConfiguredApp`'s setenv + temp-dir + `.serialized` pattern exactly — env mutation races under parallel execution)
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift
-import ClaudeSpyNetworking
+// CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift
+import CtrlxNetworking
 import Foundation
 import Testing
 import VaporTesting
-@testable import ClaudeSpyExternalServerLib
+@testable import CtrlxExternalServerLib
 
 /// Endpoint tests exercise only trial/status paths so no Lemon Squeezy stub
 /// server is needed (activation flows are covered at the actor level in
@@ -1638,7 +1638,7 @@ struct LicenseEndpointTests {
         setenv("LEMONSQUEEZY_PRODUCT_ID", "456", 1)
         setenv("TRIAL_DAYS", trialDays, 1)
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("claudespy-license-endpoint-tests-\(UUID().uuidString)")
+            .appendingPathComponent("ctrlx-license-endpoint-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         setenv("DATA_DIRECTORY", tempDir.path, 1)
         defer {
@@ -1670,7 +1670,7 @@ struct LicenseEndpointTests {
     @Test("GET /api/license/status returns notRequired when licensing is disabled")
     func statusDisabledRelay() async throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("claudespy-license-endpoint-tests-\(UUID().uuidString)")
+            .appendingPathComponent("ctrlx-license-endpoint-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         setenv("DATA_DIRECTORY", tempDir.path, 1)
         defer {
@@ -1708,14 +1708,14 @@ struct LicenseEndpointTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseEndpointTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseEndpointTests`
 Expected: FAIL — 404s (routes don't exist) / `app.licensingService` fatalError.
 
 - [ ] **Step 3: Implement the controller**
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/LicenseController.swift
-import ClaudeSpyNetworking
+// CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/LicenseController.swift
+import CtrlxNetworking
 import Vapor
 
 /// HTTP endpoints for host license management. These return billing state
@@ -1835,17 +1835,17 @@ Add the E2E helper in the existing `public extension Application` block (next to
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseEndpointTests`
-Expected: 4 tests PASS. Also run `swift test --package-path ClaudeSpyPackage --filter MetricsEndpointTests` — must still PASS (configure changes are additive when env is unset).
+Run: `swift test --package-path CtrlxPackage --filter LicenseEndpointTests`
+Expected: 4 tests PASS. Also run `swift test --package-path CtrlxPackage --filter MetricsEndpointTests` — must still PASS (configure changes are additive when env is unset).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/LicenseController.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/routes.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Extensions/VaporContentConformance.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/LicenseController.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/routes.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Extensions/VaporContentConformance.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift
 git commit -m "Add license endpoints and configure wiring to the relay (#392)"
 ```
 
@@ -1854,10 +1854,10 @@ git commit -m "Add license endpoints and configure wiring to the relay (#392)"
 ### Task 8: Relay — enforcement at pairing register + host WS connect, metrics
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift:17-29` (`registerPairingCode`)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/WebSocketController.swift:117-127` (after the `isValidPair` guard)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift` (remaining counters + render lines)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift` (extend) and `MetricsServiceTests.swift` (extend, mirroring its existing counter tests)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift:17-29` (`registerPairingCode`)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/WebSocketController.swift:117-127` (after the `isValidPair` guard)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift` (remaining counters + render lines)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift` (extend) and `MetricsServiceTests.swift` (extend, mirroring its existing counter tests)
 
 **Interfaces:**
 - Consumes: `app.licensingService` (Task 7), `Entitlement.isAllowed` (Task 5), `ErrorMessage.subscriptionRequired()` / `ErrorInfo(message:code:)` / `.hostSubscriptionInactive` (Task 2), `ConnectionHub.send(_:to:deviceType:)` (existing, ConnectionHub.swift:174).
@@ -1916,7 +1916,7 @@ git commit -m "Add license endpoints and configure wiring to the relay (#392)"
     @Test("Pairing register is untouched when licensing is disabled")
     func registerUnrestrictedWhenDisabled() async throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("claudespy-license-endpoint-tests-\(UUID().uuidString)")
+            .appendingPathComponent("ctrlx-license-endpoint-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         setenv("DATA_DIRECTORY", tempDir.path, 1)
         defer {
@@ -1942,7 +1942,7 @@ git commit -m "Add license endpoints and configure wiring to the relay (#392)"
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseEndpointTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseEndpointTests`
 Expected: `registerStartsTrial` FAILS on the status assertion (`.none`, no enforcement touch yet) and `registerBlockedAfterTrial` FAILS (gets `.registered`).
 
 - [ ] **Step 3: Implement enforcement**
@@ -1965,7 +1965,7 @@ In `PairingController.registerPairingCode`, between the decode and the `register
         }
 ```
 
-(`ErrorMessage` comes from `ClaudeSpyNetworking`, already imported. The `.error(ErrorInfo(...))` form needs `PairingResponse.error(ErrorInfo(...))` — use the enum case directly: `return .error(ErrorInfo(message: ..., code: ...))`.)
+(`ErrorMessage` comes from `CtrlxNetworking`, already imported. The `.error(ErrorInfo(...))` form needs `PairingResponse.error(ErrorInfo(...))` — use the enum case directly: `return .error(ErrorInfo(message: ..., code: ...))`.)
 
 In `WebSocketController.handleWebSocketUpgrade`, immediately after the `isValidPair` guard block (line 118-127), mirroring the invalid-pair flow:
 
@@ -2008,25 +2008,25 @@ In `MetricsService.swift`, add the remaining counters:
 and in `render(snapshot:buildVersion:)`, after the push-notifications block:
 
 ```swift
-        lines.append("# HELP claudespy_trial_starts_total Hosted-relay trials auto-started since process start.")
-        lines.append("# TYPE claudespy_trial_starts_total counter")
-        lines.append("claudespy_trial_starts_total \(trialStartsTotal)")
+        lines.append("# HELP ctrlx_trial_starts_total Hosted-relay trials auto-started since process start.")
+        lines.append("# TYPE ctrlx_trial_starts_total counter")
+        lines.append("ctrlx_trial_starts_total \(trialStartsTotal)")
 
-        lines.append("# HELP claudespy_license_activations_total License keys activated since process start.")
-        lines.append("# TYPE claudespy_license_activations_total counter")
-        lines.append("claudespy_license_activations_total \(licenseActivationsTotal)")
+        lines.append("# HELP ctrlx_license_activations_total License keys activated since process start.")
+        lines.append("# TYPE ctrlx_license_activations_total counter")
+        lines.append("ctrlx_license_activations_total \(licenseActivationsTotal)")
 
-        lines.append("# HELP claudespy_license_deactivations_total License activations released since process start.")
-        lines.append("# TYPE claudespy_license_deactivations_total counter")
-        lines.append("claudespy_license_deactivations_total \(licenseDeactivationsTotal)")
+        lines.append("# HELP ctrlx_license_deactivations_total License activations released since process start.")
+        lines.append("# TYPE ctrlx_license_deactivations_total counter")
+        lines.append("ctrlx_license_deactivations_total \(licenseDeactivationsTotal)")
 
-        lines.append("# HELP claudespy_license_validation_failures_total Failed license validations/activations since process start.")
-        lines.append("# TYPE claudespy_license_validation_failures_total counter")
-        lines.append("claudespy_license_validation_failures_total \(licenseValidationFailuresTotal)")
+        lines.append("# HELP ctrlx_license_validation_failures_total Failed license validations/activations since process start.")
+        lines.append("# TYPE ctrlx_license_validation_failures_total counter")
+        lines.append("ctrlx_license_validation_failures_total \(licenseValidationFailuresTotal)")
 
-        lines.append("# HELP claudespy_blocked_host_attempts_total Host connections/registrations rejected for lack of entitlement.")
-        lines.append("# TYPE claudespy_blocked_host_attempts_total counter")
-        lines.append("claudespy_blocked_host_attempts_total \(blockedHostAttemptsTotal)")
+        lines.append("# HELP ctrlx_blocked_host_attempts_total Host connections/registrations rejected for lack of entitlement.")
+        lines.append("# TYPE ctrlx_blocked_host_attempts_total counter")
+        lines.append("ctrlx_blocked_host_attempts_total \(blockedHostAttemptsTotal)")
 ```
 
 In `LicensingService.deactivate`, after `saveState()`, add the increment (it was deferred until the counter existed):
@@ -2035,22 +2035,22 @@ In `LicensingService.deactivate`, after `saveState()`, add the increment (it was
         Task { await metricsService?.incrementLicenseDeactivations() }
 ```
 
-Extend `MetricsServiceTests.swift` with a counter test mirroring its existing ones (increment each new counter once, assert the rendered text contains `claudespy_trial_starts_total 1` etc.).
+Extend `MetricsServiceTests.swift` with a counter test mirroring its existing ones (increment each new counter once, assert the rendered text contains `ctrlx_trial_starts_total 1` etc.).
 
 - [ ] **Step 4: Run the relay test suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter "License|Metrics|PairingService"`
+Run: `swift test --package-path CtrlxPackage --filter "License|Metrics|PairingService"`
 Expected: all PASS, including the pre-existing pairing and metrics suites.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Routes/WebSocketController.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicenseEndpointTests.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/MetricsServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/PairingController.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Routes/WebSocketController.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/MetricsService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicenseEndpointTests.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/MetricsServiceTests.swift
 git commit -m "Enforce hosted-relay entitlement at pairing and host connect (#392)"
 ```
 
@@ -2059,10 +2059,10 @@ git commit -m "Enforce hosted-relay entitlement at pairing and host connect (#39
 ### Task 9: Relay — daily sweep for mid-connection lapses
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/ConnectionHub.swift` (add `disconnect(pairId:deviceType:)`)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift` (add `sweepBlockedHosts`)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift` (start the loop when enabled)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift` (new suite)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/ConnectionHub.swift` (add `disconnect(pairId:deviceType:)`)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift` (add `sweepBlockedHosts`)
+- Modify: `CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift` (start the loop when enabled)
+- Test: `CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift` (new suite)
 
 **Interfaces:**
 - Consumes: `PairingService.activePairIds`/`getPair(pairId:)` (existing), `ConnectionHub.isHostConnected(pairId:)`/`send` (existing).
@@ -2117,7 +2117,7 @@ struct LicensingServiceSweepTests {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingServiceSweepTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingServiceSweepTests`
 Expected: FAIL — no member `sweepBlockedHosts`.
 
 - [ ] **Step 3: Implement**
@@ -2203,16 +2203,16 @@ struct LicensingSweepTaskKey: StorageKey {
 
 - [ ] **Step 4: Run the relay suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter "License|Metrics|Pairing|ViewerReconnect"`
+Run: `swift test --package-path CtrlxPackage --filter "License|Metrics|Pairing|ViewerReconnect"`
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/ConnectionHub.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/Services/LicensingService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyExternalServerLib/configure.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyExternalServerTests/LicensingServiceTests.swift
+git add CtrlxPackage/Sources/CtrlxExternalServerLib/Services/ConnectionHub.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/Services/LicensingService.swift \
+        CtrlxPackage/Sources/CtrlxExternalServerLib/configure.swift \
+        CtrlxPackage/Tests/CtrlxExternalServerTests/LicensingServiceTests.swift
 git commit -m "Add daily licensing sweep for mid-connection lapses (#392)"
 ```
 
@@ -2221,8 +2221,8 @@ git commit -m "Add daily licensing sweep for mid-connection lapses (#392)"
 ### Task 10: Ops & docs — docker-compose, .env.example, self-hosting.md, monitoring.md
 
 **Files:**
-- Modify: `ClaudeSpyPackage/docker-compose.yml` (environment block, lines 9-21)
-- Modify: `ClaudeSpyPackage/.env.example`
+- Modify: `CtrlxPackage/docker-compose.yml` (environment block, lines 9-21)
+- Modify: `CtrlxPackage/.env.example`
 - Modify: `docs/self-hosting.md`
 - Modify: `docs/monitoring.md`
 
@@ -2282,12 +2282,12 @@ default) and the relay behaves exactly as before licensing existed.
 
 Also add the five new env vars to the Configuration section's example block with the same comments as `.env.example` (condensed).
 
-- [ ] **Step 4: monitoring.md** — document the five new counters (`claudespy_trial_starts_total`, `claudespy_license_activations_total`, `claudespy_license_deactivations_total`, `claudespy_license_validation_failures_total`, `claudespy_blocked_host_attempts_total`) in the metrics list, one line each, noting they stay 0 when licensing is disabled.
+- [ ] **Step 4: monitoring.md** — document the five new counters (`ctrlx_trial_starts_total`, `ctrlx_license_activations_total`, `ctrlx_license_deactivations_total`, `ctrlx_license_validation_failures_total`, `ctrlx_blocked_host_attempts_total`) in the metrics list, one line each, noting they stay 0 when licensing is disabled.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/docker-compose.yml ClaudeSpyPackage/.env.example \
+git add CtrlxPackage/docker-compose.yml CtrlxPackage/.env.example \
         docs/self-hosting.md docs/monitoring.md
 git commit -m "Document and wire licensing env for relay deployments (#392)"
 ```
@@ -2297,8 +2297,8 @@ git commit -m "Document and wire licensing env for relay deployments (#392)"
 ### Task 11: Keychain — generic secret storage for the license key
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyEncryption/KeyManager.swift` (three methods, mirroring `storeSessionKey`/`loadSessionKey`/`deleteSessionKey` at lines 319-380)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyEncryption/SecretsService.swift` (three closures + `inMemory()` + `liveValue`)
+- Modify: `CtrlxPackage/Sources/CtrlxEncryption/KeyManager.swift` (three methods, mirroring `storeSessionKey`/`loadSessionKey`/`deleteSessionKey` at lines 319-380)
+- Modify: `CtrlxPackage/Sources/CtrlxEncryption/SecretsService.swift` (three closures + `inMemory()` + `liveValue`)
 
 **Interfaces:**
 - Consumes: existing `KeyManager` private helpers (`storeAttributes(account:data:)`, the query/`SecItem` patterns) and `CryptoError.keychainError(status:)`.
@@ -2347,14 +2347,14 @@ Wire them in `liveValue` (calling the `KeyManager` methods from Step 1, same act
 
 - [ ] **Step 3: Build both platforms' packages**
 
-Run: `swift build --package-path ClaudeSpyPackage --target ClaudeSpyEncryption`
-Expected: builds. (Live keychain behavior is not unit-tested — existing `ClaudeSpyEncryptionTests` covers E2EE flows only; the `inMemory()` path is exercised by Task 13's tests.)
+Run: `swift build --package-path CtrlxPackage --target CtrlxEncryption`
+Expected: builds. (Live keychain behavior is not unit-tested — existing `CtrlxEncryptionTests` covers E2EE flows only; the `inMemory()` path is exercised by Task 13's tests.)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyEncryption/KeyManager.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyEncryption/SecretsService.swift
+git add CtrlxPackage/Sources/CtrlxEncryption/KeyManager.swift \
+        CtrlxPackage/Sources/CtrlxEncryption/SecretsService.swift
 git commit -m "Add generic keychain secret storage to SecretsService (#392)"
 ```
 
@@ -2363,11 +2363,11 @@ git commit -m "Add generic keychain secret storage to SecretsService (#392)"
 ### Task 12: Mac — `LicensingClient` dependency client
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicensingClient.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicensingClientTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/LicensingClient.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/LicensingClientTests.swift`
 
 **Interfaces:**
-- Consumes: `LicenseStatus`/`LicenseActivationRequest` (Task 1), relay endpoints (Task 7), `String.httpURL` (`ClaudeSpyCommon/Utilities/String+URL.swift`).
+- Consumes: `LicenseStatus`/`LicenseActivationRequest` (Task 1), relay endpoints (Task 7), `String.httpURL` (`CtrlxCommon/Utilities/String+URL.swift`).
 - Produces:
 
 ```swift
@@ -2386,10 +2386,10 @@ plus `enum LicensingClientError: LocalizedError, Equatable { case invalidURL, in
 - [ ] **Step 1: Write the failing test** (pure logic only — the URLSession live path is covered by E2E; the test pins error mapping through a stubbed client used exactly as `LicenseManager` will)
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicensingClientTests.swift
-import ClaudeSpyNetworking
+// CtrlxPackage/Tests/CtrlxServerFeatureTests/LicensingClientTests.swift
+import CtrlxNetworking
 import Testing
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 @Suite("LicensingClient")
 @MainActor
@@ -2417,15 +2417,15 @@ struct LicensingClientTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingClientTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingClientTests`
 Expected: FAIL — `cannot find 'LicensingClient' in scope`.
 
 - [ ] **Step 3: Implement** (mirror `PairingManager.registerCode`'s URLSession style, PairingManager.swift:198-237; decode with `.iso8601` because `LicenseStatus` carries dates)
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicensingClient.swift
+// CtrlxPackage/Sources/CtrlxServerFeature/Services/LicensingClient.swift
 #if os(macOS)
-    import ClaudeSpyNetworking
+    import CtrlxNetworking
     import Dependencies
     import DependenciesMacros
     import Foundation
@@ -2536,14 +2536,14 @@ Expected: FAIL — `cannot find 'LicensingClient' in scope`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicensingClientTests`
+Run: `swift test --package-path CtrlxPackage --filter LicensingClientTests`
 Expected: 3 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicensingClient.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicensingClientTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Services/LicensingClient.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/LicensingClientTests.swift
 git commit -m "Add Mac LicensingClient for relay license endpoints (#392)"
 ```
 
@@ -2552,9 +2552,9 @@ git commit -m "Add Mac LicensingClient for relay license endpoints (#392)"
 ### Task 13: Mac — `LicenseManager` observable
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseManager.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/Settings.swift` (persisted `trialAlertsFired` — the four-touch pattern: property+didSet, `Keys` case, `Defaults` value, `init()` load)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicenseManagerTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseManager.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Models/Settings.swift` (persisted `trialAlertsFired` — the four-touch pattern: property+didSet, `Keys` case, `Defaults` value, `init()` load)
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/LicenseManagerTests.swift`
 
 **Interfaces:**
 - Consumes: `LicensingClient` (Task 12), `SecretsService.storeSecret/loadSecret/deleteSecret` (Task 11), `AppSettings` (`externalServerURL`, `deviceId`, new `trialAlertsFired`).
@@ -2581,13 +2581,13 @@ Keychain account constant: `enum LicenseKeychainAccounts { static let licenseKey
 - [ ] **Step 1: Write the failing tests**
 
 ```swift
-// ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicenseManagerTests.swift
-import ClaudeSpyEncryption
-import ClaudeSpyNetworking
+// CtrlxPackage/Tests/CtrlxServerFeatureTests/LicenseManagerTests.swift
+import CtrlxEncryption
+import CtrlxNetworking
 import Dependencies
 import Foundation
 import Testing
-@testable import ClaudeSpyServerFeature
+@testable import CtrlxServerFeature
 
 @Suite("LicenseManager")
 @MainActor
@@ -2681,7 +2681,7 @@ struct LicenseManagerTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseManagerTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseManagerTests`
 Expected: FAIL — `cannot find 'LicenseManager' in scope`.
 
 - [ ] **Step 3: Implement**
@@ -2712,10 +2712,10 @@ Expected: FAIL — `cannot find 'LicenseManager' in scope`.
 `LicenseManager.swift`:
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseManager.swift
+// CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseManager.swift
 #if os(macOS)
-    import ClaudeSpyEncryption
-    import ClaudeSpyNetworking
+    import CtrlxEncryption
+    import CtrlxNetworking
     import Dependencies
     import Foundation
     import Observation
@@ -2819,15 +2819,15 @@ Note: `settings.deviceName` — verify the exact `AppSettings` property for the 
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter LicenseManagerTests`
+Run: `swift test --package-path CtrlxPackage --filter LicenseManagerTests`
 Expected: 4 tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseManager.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/Settings.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicenseManagerTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseManager.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Models/Settings.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/LicenseManagerTests.swift
 git commit -m "Add LicenseManager observable for Mac license state (#392)"
 ```
 
@@ -2836,12 +2836,12 @@ git commit -m "Add LicenseManager observable for Mac license state (#392)"
 ### Task 14: Mac — 48h/24h trial-expiry alerts
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TrialAlertPlanner.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseNotificationService.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseManager.swift` (`checkTrialAlerts()`)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TerminalNotificationService.swift:170-202` (`ForegroundNotificationDelegate` license-tap routing)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` (own `LicenseManager`, start monitoring, route taps — near `setupNotificationTapHandler()` at :3169)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicenseManagerTests.swift` (extend)
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/TrialAlertPlanner.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseNotificationService.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseManager.swift` (`checkTrialAlerts()`)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/TerminalNotificationService.swift:170-202` (`ForegroundNotificationDelegate` license-tap routing)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` (own `LicenseManager`, start monitoring, route taps — near `setupNotificationTapHandler()` at :3169)
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/LicenseManagerTests.swift` (extend)
 
 **Interfaces:**
 - Consumes: `LicenseManager`/`AppSettings.trialAlertsFired` (Task 13), `UNUserNotificationCenter` patterns from `TerminalNotificationService`.
@@ -2930,13 +2930,13 @@ And a `LicenseManager` integration test in the existing suite:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter "TrialAlertPlanner|LicenseManagerTests"`
+Run: `swift test --package-path CtrlxPackage --filter "TrialAlertPlanner|LicenseManagerTests"`
 Expected: FAIL — `cannot find 'TrialAlertPlanner' in scope`.
 
 - [ ] **Step 3: Implement**
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TrialAlertPlanner.swift
+// CtrlxPackage/Sources/CtrlxServerFeature/Services/TrialAlertPlanner.swift
 #if os(macOS)
     import Foundation
 
@@ -2970,7 +2970,7 @@ Expected: FAIL — `cannot find 'TrialAlertPlanner' in scope`.
 ```
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseNotificationService.swift
+// CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseNotificationService.swift
 #if os(macOS)
     import Dependencies
     import DependenciesMacros
@@ -3105,23 +3105,23 @@ Note the open-settings step: `openSettings` is a SwiftUI environment action, una
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter "TrialAlertPlanner|LicenseManagerTests"`
+Run: `swift test --package-path CtrlxPackage --filter "TrialAlertPlanner|LicenseManagerTests"`
 Expected: all PASS (planner 4, manager 5).
 
 - [ ] **Step 5: Build the Mac app**
 
-Use the XcodeBuildTools `xcodebuild` skill, scheme `ClaudeSpyServer`.
+Use the XcodeBuildTools `xcodebuild` skill, scheme `CtrlxServer`.
 Expected: builds with the AppCoordinator changes.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TrialAlertPlanner.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseNotificationService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/LicenseManager.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TerminalNotificationService.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/LicenseManagerTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Services/TrialAlertPlanner.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseNotificationService.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Services/LicenseManager.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Services/TerminalNotificationService.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/LicenseManagerTests.swift
 git commit -m "Alert host Macs 48h and 24h before trial expiry (#392)"
 ```
 
@@ -3130,20 +3130,20 @@ git commit -m "Alert host Macs 48h and 24h before trial expiry (#392)"
 ### Task 15: Mac — License section in Remote Access settings + typed-error surfacing
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/RemoteAccessSettingsView.swift` (new Section after "Server", lines 37-48)
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/LicensingLinks.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/PairingManager.swift` (map `SUBSCRIPTION_REQUIRED` on `.error` responses)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/ExternalServerClient.swift:563-568` (recognize the code, notify)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/SettingsView.swift:295-297` (inject `coordinator.licenseManager` into the environment)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/RemoteAccessSettingsView.swift` (new Section after "Server", lines 37-48)
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Models/LicensingLinks.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/PairingManager.swift` (map `SUBSCRIPTION_REQUIRED` on `.error` responses)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/ExternalServerClient.swift:563-568` (recognize the code, notify)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/SettingsView.swift:295-297` (inject `coordinator.licenseManager` into the environment)
 
 **Interfaces:**
-- Consumes: `LicenseManager` (Tasks 13–14), `URLOpener` (`ClaudeSpyCommon/Services/URLOpener.swift`), `Symbols` (`.exclamationmarkTriangle` exists at Symbols.swift:47), `ErrorMessage.subscriptionRequiredCode` (Task 2).
+- Consumes: `LicenseManager` (Tasks 13–14), `URLOpener` (`CtrlxCommon/Services/URLOpener.swift`), `Symbols` (`.exclamationmarkTriangle` exists at Symbols.swift:47), `ErrorMessage.subscriptionRequiredCode` (Task 2).
 - Produces: user-visible licensing UI; `ExternalServerClient.onSubscriptionRequired: (@MainActor () -> Void)?` callback (set in AppCoordinator next to its other client callbacks → triggers `licenseManager.refreshStatus()`).
 
 - [ ] **Step 1: LicensingLinks** (URLs from Task 0 — if Task 0 isn't done yet, use the store name placeholder and revisit before release; the file is the single place they live)
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/LicensingLinks.swift
+// CtrlxPackage/Sources/CtrlxServerFeature/Models/LicensingLinks.swift
 #if os(macOS)
     import Foundation
 
@@ -3282,23 +3282,23 @@ In `AppCoordinator`, where the external server client's other handlers are wired
 
 - [ ] **Step 4: Build + run the Mac app and eyeball the section**
 
-Build via XcodeBuildTools `xcodebuild` skill (scheme `ClaudeSpyServer`), launch via `macos-app` skill, open Settings → Remote Access. Expected: License section renders in all three shapes (none/trial with the countdown, active, notRequired against a licensing-disabled relay).
+Build via XcodeBuildTools `xcodebuild` skill (scheme `CtrlxServer`), launch via `macos-app` skill, open Settings → Remote Access. Expected: License section renders in all three shapes (none/trial with the countdown, active, notRequired against a licensing-disabled relay).
 
 - [ ] **Step 5: Run the full ServerFeature test suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyServerFeatureTests`
+Run: `swift test --package-path CtrlxPackage --filter CtrlxServerFeatureTests`
 Expected: PASS (no regressions from the PairingManager/ExternalServerClient edits).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/RemoteAccessSettingsView.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Models/LicensingLinks.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/PairingManager.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/ExternalServerClient.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/SettingsView.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/Symbols.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/RemoteAccessSettingsView.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Models/LicensingLinks.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Services/PairingManager.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Services/ExternalServerClient.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Views/SettingsView.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Sources/CtrlxCommon/UI/Symbols.swift
 git commit -m "Add License section to Remote Access settings (#392)"
 ```
 
@@ -3307,10 +3307,10 @@ git commit -m "Add License section to Remote Access settings (#392)"
 ### Task 16: Viewers — "Host's subscription expired" state (iOS + Mac viewer)
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ViewerRelayClient.swift` (new observable flag + message handling near lines 800-843)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ViewerConnection.swift` (expose the flag, near lines 31-50)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/SessionListView.swift` (row in `HostSessionsSection.body`, lines 283-292)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/RemoteHostsSettingsView.swift` (`HostRow`, line 223 — status text)
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/Services/ViewerRelayClient.swift` (new observable flag + message handling near lines 800-843)
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/Services/ViewerConnection.swift` (expose the flag, near lines 31-50)
+- Modify: `CtrlxPackage/Sources/CtrlxFeature/Views/SessionListView.swift` (row in `HostSessionsSection.body`, lines 283-292)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/RemoteHostsSettingsView.swift` (`HostRow`, line 223 — status text)
 
 **Interfaces:**
 - Consumes: `WebSocketMessage.hostSubscriptionInactive` (Task 2), existing `ViewerRelayClient` observables (`isHostConnected` etc.).
@@ -3365,16 +3365,16 @@ Clear it wherever the host comes back or the connection resets: in the `.hostCon
 
 - [ ] **Step 5: Build both apps**
 
-Build via XcodeBuildTools `xcodebuild` skill: scheme `ClaudeSpyServer` (macOS) and scheme `ClaudeSpy` (iOS simulator).
+Build via XcodeBuildTools `xcodebuild` skill: scheme `CtrlxServer` (macOS) and scheme `Ctrlx` (iOS simulator).
 Expected: both build. (State-machine coverage for this flag rides the E2E scenario; `ViewerRelayClient`'s message pump has no existing unit harness to extend.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ViewerRelayClient.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/ViewerConnection.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/SessionListView.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/RemoteHostsSettingsView.swift
+git add CtrlxPackage/Sources/CtrlxCommon/Services/ViewerRelayClient.swift \
+        CtrlxPackage/Sources/CtrlxCommon/Services/ViewerConnection.swift \
+        CtrlxPackage/Sources/CtrlxFeature/Views/SessionListView.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Views/RemoteHostsSettingsView.swift
 git commit -m "Show host subscription-expired state on viewers (#392)"
 ```
 
@@ -3383,9 +3383,9 @@ git commit -m "Show host subscription-expired state on viewers (#392)"
 ### Task 17: E2E scenario — licensing flow against a stub Lemon Squeezy
 
 **Files:**
-- Create: a stub LS server in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/` (small Vapor app serving `/v1/licenses/activate|validate|deactivate` with canned `LSLicenseResponse` JSON)
+- Create: a stub LS server in `CtrlxPackage/Sources/CtrlxE2ELib/` (small Vapor app serving `/v1/licenses/activate|validate|deactivate` with canned `LSLicenseResponse` JSON)
 - Create: one scenario in the E2E scenario registry
-- Possibly modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Drivers/Server/ServerDriver.swift:18-60` (env injection before `configure`, mirroring the existing `setenv("APNS_E2E_LOG_PATH", …)`)
+- Possibly modify: `CtrlxPackage/Sources/CtrlxE2ELib/Drivers/Server/ServerDriver.swift:18-60` (env injection before `configure`, mirroring the existing `setenv("APNS_E2E_LOG_PATH", …)`)
 
 **Interfaces:**
 - Consumes: everything above; `Application.resetLicensingState()` (Task 7); `LEMONSQUEEZY_API_BASE` env override (Task 3).
@@ -3407,7 +3407,7 @@ git commit -m "Show host subscription-expired state on viewers (#392)"
 ### Task 18: Rollout prep — version gate + release checklist (DO NOT merge the bump with the feature PR)
 
 **Files:**
-- Modify (enablement release only): `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/VersionCompatibility.swift:14,20`
+- Modify (enablement release only): `CtrlxPackage/Sources/CtrlxNetworking/Models/VersionCompatibility.swift:14,20`
 
 **Context:** `VersionCompatibility` is peer-to-peer (host↔viewer, exchanged via `peerHello`), not relay-enforced. Bumping the minimums makes updated viewers refuse pre-licensing hosts, surfacing the existing "please update" UI instead of opaque failures once enforcement is live. Per the spec's rollout §3, this ships in the release that coincides with enabling licensing on the hosted relay — NOT with the feature PR (old hosts remain fine until the env vars are set).
 
@@ -3424,7 +3424,7 @@ with the doc comment noting the licensing flag-day, mirroring the existing plugi
   1. Task 0 complete; real checkout/portal URLs in `LicensingLinks.swift` (replace the `CHECKOUT-VARIANT-UUID` placeholder — grep for it).
   2. Deploy relay WITHOUT the LS env vars → verify `/health`, existing pairs reconnect, `./deploy.sh test` green.
   3. Ship the Mac/iOS app release containing this feature + the version bump.
-  4. Set `LEMONSQUEEZY_STORE_ID`/`LEMONSQUEEZY_PRODUCT_ID` in the relay's `.env`, `docker compose up -d` → licensing live; watch `claudespy_trial_starts_total` climb and `logs` for "Licensing ENABLED".
+  4. Set `LEMONSQUEEZY_STORE_ID`/`LEMONSQUEEZY_PRODUCT_ID` in the relay's `.env`, `docker compose up -d` → licensing live; watch `ctrlx_trial_starts_total` climb and `logs` for "Licensing ENABLED".
   5. One real production purchase + refund end-to-end.
   6. Hand out tester discount codes.
 
@@ -3432,7 +3432,7 @@ with the doc comment noting the licensing flag-day, mirroring the existing plugi
 
 ## Verification & docs wrap-up (fold into the final PR)
 
-- Full suite: `swift test --package-path ClaudeSpyPackage` green; both app schemes build; E2E suite green.
+- Full suite: `swift test --package-path CtrlxPackage` green; both app schemes build; E2E suite green.
 - `CLAUDE.md`: add a one-line reference entry for the licensing feature (the PR-checklist hook will prompt for this and the other post-PR chores on `gh pr create`).
 - The feature PR should reference issue #392 and note that enforcement stays dormant until the env vars are set in production.
 

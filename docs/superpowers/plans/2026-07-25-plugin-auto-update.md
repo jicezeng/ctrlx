@@ -13,9 +13,9 @@
 ## Global Constraints
 
 - Branch: `plugin-auto-update` (already created; the spec commit is on it).
-- Build/test ONLY via XcodeBuildTools skills: `swift-package` skill for package tests (package path `ClaudeSpyPackage`), `xcodebuild` skill (scheme `ClaudeSpyServer`) for app builds. Never raw `swift`/`xcodebuild` commands outside the skill wrappers.
+- Build/test ONLY via XcodeBuildTools skills: `swift-package` skill for package tests (package path `CtrlxPackage`), `xcodebuild` skill (scheme `CtrlxServer`) for app builds. Never raw `swift`/`xcodebuild` commands outside the skill wrappers.
 - Swift Testing (`@Suite`/`@Test`/`#expect`/`#require`), NOT XCTest.
-- All new files in `ClaudeSpyServerFeature` wrap their contents in `#if os(macOS)` … `#endif` (match `PluginUpdateChecker.swift`).
+- All new files in `CtrlxServerFeature` wrap their contents in `#if os(macOS)` … `#endif` (match `PluginUpdateChecker.swift`).
 - No ViewModels. `@Observable` model + `@Environment(AppCoordinator.self)` in views.
 - No new SF Symbol string literals — reuse existing `Symbols` cases (`.exclamationmarkTriangle`, `.exclamationmarkCircleFill`).
 - `TestClock` + `@MainActor` tests MUST wrap in `withMainSerialExecutor` (known flake otherwise).
@@ -28,17 +28,17 @@
 
 | File | Role |
 |---|---|
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistryStore.swift` | Modify: add `autoUpdate` + `needsBridgeRefresh` to `PluginRegistryEntry` |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift` | Modify: shared `registryEntry(cliEntry:manifest:prior:)` merge helper; use in `persistRegistry`/`persistRegistryExcluding` |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` | Modify: boot rewrite uses merge helper; create/expose `pluginUpdateManager`; CLI apply path through manager |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/PluginUpdateNotificationService.swift` | Create: `@DependencyClient` desktop notification (mirrors `LicenseNotificationService`) |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift` | Create: the orchestrator (`@MainActor @Observable`) |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AgentsSettingsView.swift` | Modify: Updates section in `PluginAgentForm`; restart banner; Review… flow |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AddPluginSheet.swift` | Modify: `initialURLString` init param |
-| `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRegistryStoreTests.swift` | Modify: new-field decode/round-trip tests |
-| `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginInstallerTests.swift` | Modify: merge-helper tests |
-| `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateManagerTests.swift` | Create: manager unit tests |
-| `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/AgentsPluginAutoUpdateScenario.swift` | Create: E2E scenario (Task 12) |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistryStore.swift` | Modify: add `autoUpdate` + `needsBridgeRefresh` to `PluginRegistryEntry` |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift` | Modify: shared `registryEntry(cliEntry:manifest:prior:)` merge helper; use in `persistRegistry`/`persistRegistryExcluding` |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` | Modify: boot rewrite uses merge helper; create/expose `pluginUpdateManager`; CLI apply path through manager |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Services/PluginUpdateNotificationService.swift` | Create: `@DependencyClient` desktop notification (mirrors `LicenseNotificationService`) |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateManager.swift` | Create: the orchestrator (`@MainActor @Observable`) |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Views/AgentsSettingsView.swift` | Modify: Updates section in `PluginAgentForm`; restart banner; Review… flow |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Views/AddPluginSheet.swift` | Modify: `initialURLString` init param |
+| `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRegistryStoreTests.swift` | Modify: new-field decode/round-trip tests |
+| `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginInstallerTests.swift` | Modify: merge-helper tests |
+| `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateManagerTests.swift` | Create: manager unit tests |
+| `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/AgentsPluginAutoUpdateScenario.swift` | Create: E2E scenario (Task 12) |
 | `docs/plugins/sidecar-authoring.md`, `CLAUDE.md` | Modify: document auto-update (Task 11) |
 
 ---
@@ -46,8 +46,8 @@
 ### Task 1: Registry fields `autoUpdate` + `needsBridgeRefresh`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistryStore.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRegistryStoreTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistryStore.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRegistryStoreTests.swift`
 
 **Interfaces:**
 - Produces: `PluginRegistryEntry.autoUpdate: Bool` (var, default `true`), `PluginRegistryEntry.needsBridgeRefresh: Bool` (var, default `false`); memberwise init gains `autoUpdate: Bool = true, needsBridgeRefresh: Bool = false` trailing params so existing call sites compile unchanged.
@@ -149,9 +149,9 @@ Init signature becomes:
 Three code paths rebuild `registry.json` from the in-memory registry and would silently reset the new fields: `PluginInstaller.persistRegistry` (:977), `PluginInstaller.persistRegistryExcluding` (:999), and the AppCoordinator boot rewrite (:704-726). Extract one pure merge helper and use it in all three.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginInstaller.swift:977-1017`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift:704-726`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginInstallerTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginInstaller.swift:977-1017`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift:704-726`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginInstallerTests.swift`
 
 **Interfaces:**
 - Consumes: Task 1's fields.
@@ -300,7 +300,7 @@ In `AppCoordinator.swift` :704-724, replace the body of the boot-rewrite `compac
             }
 ```
 
-- [ ] **Step 4: Run to verify pass** — filter `RegistryEntryMergeTests`, then run the whole `ClaudeSpyServerFeatureTests` target (existing `PluginInstallFlowTests` / `PluginZipInstallTests` / `PluginFolderDropTests` exercise the rewritten persist paths). Expected: PASS.
+- [ ] **Step 4: Run to verify pass** — filter `RegistryEntryMergeTests`, then run the whole `CtrlxServerFeatureTests` target (existing `PluginInstallFlowTests` / `PluginZipInstallTests` / `PluginFolderDropTests` exercise the rewritten persist paths). Expected: PASS.
 
 - [ ] **Step 5: Commit** — `git commit -am "refactor: single registryEntry merge helper preserves update fields across registry rewrites"`
 
@@ -309,7 +309,7 @@ In `AppCoordinator.swift` :704-724, replace the body of the boot-rewrite `compac
 ### Task 3: PluginUpdateNotificationService
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/PluginUpdateNotificationService.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/PluginUpdateNotificationService.swift`
 
 **Interfaces:**
 - Produces: `PluginUpdateNotificationService.showUpdateNotification(_ body: String)` — `@DependencyClient`, resolved via `@Dependency(PluginUpdateNotificationService.self)`.
@@ -319,7 +319,7 @@ No unit test — pure side-effect wrapper, same as `LicenseNotificationService` 
 - [ ] **Step 1: Implement** — mirror `Services/LicenseNotificationService.swift` exactly (same actor + `ensurePermission()` body — copy it verbatim from `LiveLicenseNotificationHandler`, including the `ForegroundNotificationDelegate` installation):
 
 ```swift
-// ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/PluginUpdateNotificationService.swift
+// CtrlxPackage/Sources/CtrlxServerFeature/Services/PluginUpdateNotificationService.swift
 #if os(macOS)
     import Dependencies
     import DependenciesMacros
@@ -353,7 +353,7 @@ No unit test — pure side-effect wrapper, same as `LicenseNotificationService` 
     /// Actor managing UNUserNotificationCenter permission + delivery. The
     /// ensurePermission() body is identical to LiveLicenseNotificationHandler's.
     private actor LivePluginUpdateNotificationHandler {
-        private let logger = Logger(label: "com.claudespy.pluginupdatenotification")
+        private let logger = Logger(label: "com.ctrlx.pluginupdatenotification")
         private var isAuthorized = false
         private var hasRequestedPermission = false
         private var hasInstalledDelegate = false
@@ -387,7 +387,7 @@ No unit test — pure side-effect wrapper, same as `LicenseNotificationService` 
 #endif
 ```
 
-- [ ] **Step 2: Build to verify** — swift-package skill, build the `ClaudeSpyServerFeature` product (or run the test target build). Expected: compiles clean.
+- [ ] **Step 2: Build to verify** — swift-package skill, build the `CtrlxServerFeature` product (or run the test target build). Expected: compiles clean.
 
 - [ ] **Step 3: Commit** — `git add -A && git commit -m "feat: PluginUpdateNotificationService for update desktop notifications"`
 
@@ -396,8 +396,8 @@ No unit test — pure side-effect wrapper, same as `LicenseNotificationService` 
 ### Task 4: PluginUpdateManager — types, registry accessors, test harness
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift`
-- Create: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateManagerTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateManager.swift`
+- Create: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateManagerTests.swift`
 
 **Interfaces:**
 - Consumes: `PluginRegistryFile`/`PluginRegistryEntry` (Tasks 1-2), `PluginUpdate`, `PluginInstaller.InstallOutcome`, `InstallError`, `PluginInstallStatus`, `PreferencesService`.
@@ -419,7 +419,7 @@ No unit test — pure side-effect wrapper, same as `LicenseNotificationService` 
     import Foundation
     import GallagerPluginProtocol
     import Testing
-    @testable import ClaudeSpyServerFeature
+    @testable import CtrlxServerFeature
 
     // MARK: - Harness
 
@@ -548,7 +548,7 @@ Note: `withDependencies` around *construction* because the manager resolves `Pre
 
 ```swift
 #if os(macOS)
-    import ClaudeSpyCommon
+    import CtrlxCommon
     import Dependencies
     import Foundation
     import GallagerPluginProtocol
@@ -664,7 +664,7 @@ Note: `withDependencies` around *construction* because the manager resolves `Pre
 
         private let callbacks: Callbacks
         private let automaticTriggersEnabled: Bool
-        private let logger = Logger(label: "com.claudespy.pluginupdatemanager")
+        private let logger = Logger(label: "com.ctrlx.pluginupdatemanager")
         @ObservationIgnored @Dependency(PreferencesService.self) private var preferences
         @ObservationIgnored @Dependency(\.continuousClock) private var clock
         @ObservationIgnored @Dependency(\.date) private var date
@@ -739,8 +739,8 @@ Note: `withDependencies` around *construction* because the manager resolves `Pre
 ### Task 5: applyUpdate + bridge refresh + boot sweep
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateManagerTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateManager.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateManagerTests.swift`
 
 **Interfaces:**
 - Produces: `applyUpdate(_ update: PluginUpdate) async -> ApplyResult` (public — the CLI path calls it in Task 9); private `refreshBridges(_:)`, `sweepPendingBridgeRefreshes()`.
@@ -976,10 +976,10 @@ And a minimal `start()` (extended in Task 6) plus the run-serialization helper:
 The batch `PluginUpdateChecker.check` silently skips fetch errors (best-effort by design), but the spec requires the manual button to surface errors inline. Add a throwing single-entry `checkOne`, refactor `check` onto it, and build the manual path on it.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateChecker.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateCheckerTests.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateManagerTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateChecker.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateManager.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateCheckerTests.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateManagerTests.swift`
 
 **Interfaces:**
 - Produces: `PluginUpdateChecker.checkOne(_ entry: PluginRegistryEntry, session: any URLSessionProtocol) async throws -> PluginUpdate?` (public); `PluginUpdateManager.checkNow(_ id: String)` (public); private `runManualCheck(_:)`, `stampLastCheck()`; static `notificationBody(_ notices: [PluginRestartNotice]) -> String` (internal, tested via Task 7).
@@ -1196,8 +1196,8 @@ Run filter `PluginUpdateCheckerTests` — the new tests AND all pre-existing one
 ### Task 7: Automatic triggers — version change, daily threshold, 24h loop
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Distribution/PluginUpdateManager.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginUpdateManagerTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Distribution/PluginUpdateManager.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginUpdateManagerTests.swift`
 
 **Interfaces:**
 - Produces: full `start()` (sweep + triggers + loop), `stop()` (cancels the loop; tests and teardown).
@@ -1449,7 +1449,7 @@ Notes: `PreferencesService.inMemory()` is created OUTSIDE `withDependencies` whe
 ### Task 8: AppCoordinator wiring
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift`
 
 **Interfaces:**
 - Consumes: everything from Tasks 3-7.
@@ -1529,7 +1529,7 @@ Thin wiring — not unit-tested directly (same stated precedent as `installPlugi
 
 Note: `isE2ETest` already exists as a private let (:1284) — if it is declared *after* this use site in the file, that's fine (type-scope member). `trustConfirmed: true` is correct here: automatic updates only ever flow through a `manifestURL` already pinned in the registry from a user-confirmed install, and source-changed updates were filtered out before `installFromURL` is reached.
 
-- [ ] **Step 3: Build + full test pass** — xcodebuild skill, scheme `ClaudeSpyServer` (build only), then swift-package skill full `ClaudeSpyServerFeatureTests`. Expected: builds clean, all tests pass.
+- [ ] **Step 3: Build + full test pass** — xcodebuild skill, scheme `CtrlxServer` (build only), then swift-package skill full `CtrlxServerFeatureTests`. Expected: builds clean, all tests pass.
 
 - [ ] **Step 4: Commit** — `git commit -am "feat: wire PluginUpdateManager into AppCoordinator boot"`
 
@@ -1540,7 +1540,7 @@ Note: `isE2ETest` already exists as a private let (:1284) — if it is declared 
 Today `gallager plugin update --apply` re-installs but never reloads the running sidecar and never refreshes bridges. Route it through `applyUpdate` so CLI and automatic behavior match (banner/inline state light up too; no desktop notification on the CLI path — the user is reading CLI output).
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` (the `onPluginUpdate` closure, ~:2552)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` (the `onPluginUpdate` closure, ~:2552)
 
 **Interfaces:**
 - Consumes: `PluginUpdateManager.applyUpdate` (Task 5).
@@ -1579,7 +1579,7 @@ Today `gallager plugin update --apply` re-installs but never reloads the running
 
 (The old path's "no manifestURL in registry" note is preserved — `applyUpdate` returns `.failed("no manifestURL in registry")` for that case.)
 
-- [ ] **Step 2: Build + run related tests** — swift-package skill: full `ClaudeSpyServerFeatureTests`; also build the CLI target (`swift-package` skill, build product `GallagerCLI` if separate). Grep `Tests/` for `onPluginUpdate`/`plugin.update` router tests and run those filters too. Expected: green.
+- [ ] **Step 2: Build + run related tests** — swift-package skill: full `CtrlxServerFeatureTests`; also build the CLI target (`swift-package` skill, build product `GallagerCLI` if separate). Grep `Tests/` for `onPluginUpdate`/`plugin.update` router tests and run those filters too. Expected: green.
 
 - [ ] **Step 3: Commit** — `git commit -am "refactor: CLI plugin update --apply goes through PluginUpdateManager"`
 
@@ -1588,8 +1588,8 @@ Today `gallager plugin update --apply` re-installs but never reloads the running
 ### Task 10: Settings UI — Updates section, restart banner, Review… flow
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AgentsSettingsView.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/AddPluginSheet.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/AgentsSettingsView.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/AddPluginSheet.swift`
 
 **Interfaces:**
 - Consumes: `coordinator.pluginUpdateManager` (Task 8) — `isUpdatable`, `autoUpdateEnabled`, `setAutoUpdate`, `checkNow`, `inlineStatus`, `lastCheckDate`, `restartNotices`, `manifestURL`.
@@ -1760,7 +1760,7 @@ and the status row helper on `PluginAgentForm`:
 
 (`agentDisplayName` already exists on `PluginAgentForm` — it drives "Auto-run \(agentDisplayName)…".)
 
-- [ ] **Step 5: Build** — xcodebuild skill, scheme `ClaudeSpyServer`. Expected: clean build. Note: `isUpdatable` reads registry.json from disk per render — acceptable for a settings pane; do not cache prematurely.
+- [ ] **Step 5: Build** — xcodebuild skill, scheme `CtrlxServer`. Expected: clean build. Note: `isUpdatable` reads registry.json from disk per render — acceptable for a settings pane; do not cache prematurely.
 
 - [ ] **Step 6: Commit** — `git commit -am "feat: plugin Updates section, restart banner, and source-changed Review flow in Agents settings"`
 
@@ -1789,9 +1789,9 @@ and the status row helper on `PluginAgentForm`:
 An e2e-deterministic path: under `--e2e-test` the coordinator wires stub callbacks (real network/HTTPS is impossible in e2e — the pipeline is HTTPS-only by design). The echo plugin is presented as URL-installed with one pending update; the scenario drives Check Now and verifies the section, inline status, and banner.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` (e2e wiring inside the Task 8 block)
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/AgentsPluginAutoUpdateScenario.swift`
-- Modify: the `allScenarios` registry (find it: `grep -rn "allScenarios" ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/`)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` (e2e wiring inside the Task 8 block)
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/AgentsPluginAutoUpdateScenario.swift`
+- Modify: the `allScenarios` registry (find it: `grep -rn "allScenarios" CtrlxPackage/Sources/CtrlxE2ELib/`)
 
 **REQUIRED SUB-SKILL for this task:** invoke the repo's `e2e-testing` skill before writing the scenario — it owns the DSL details, run script, and baseline rules. The step contents below are the target behavior; defer to the skill on step-type spellings.
 
@@ -1807,7 +1807,7 @@ An e2e-deterministic path: under `--e2e-test` the coordinator wires stub callbac
 
 ## Final verification (after all tasks)
 
-- [ ] Full package test run (swift-package skill, all of `ClaudeSpyServerFeatureTests`).
-- [ ] macOS app build (xcodebuild skill, scheme `ClaudeSpyServer`).
+- [ ] Full package test run (swift-package skill, all of `CtrlxServerFeatureTests`).
+- [ ] macOS app build (xcodebuild skill, scheme `CtrlxServer`).
 - [ ] Manual smoke: launch the app with a URL-installed plugin present (e.g. re-install `pi` from its published manifest), open Settings → Agents → pi, confirm the Updates section renders with the toggle on and "Check Now" reports "Up to date".
 - [ ] Use superpowers:verification-before-completion, then superpowers:finishing-a-development-branch (PR per repo convention; the `gh pr create` hook injects the post-PR checklist).

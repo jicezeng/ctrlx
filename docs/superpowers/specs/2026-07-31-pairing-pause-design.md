@@ -41,25 +41,25 @@ servers. Existing pairings are unaffected — please try again in a few hours."
 
 ## Implementation
 
-All changes in `ClaudeSpyPackage`:
+All changes in `CtrlxPackage`:
 
-1. **`Sources/ClaudeSpyNetworking/Models/WebSocketMessage.swift`** — add
+1. **`Sources/CtrlxNetworking/Models/WebSocketMessage.swift`** — add
    `ErrorMessage.pairingPausedCode = "PAIRING_PAUSED"` next to
    `subscriptionRequiredCode`. (Shared constant only; no client logic change.)
-2. **`Sources/ClaudeSpyExternalServerLib/configure.swift`** — read
+2. **`Sources/CtrlxExternalServerLib/configure.swift`** — read
    `PAIRING_PAUSED_MESSAGE` from the injected `env`, trim whitespace, store the
    non-empty value in `app.storage` via a new `PairingPausedMessageKey`
    (`Value = String?`, same shape as `MetricsTokenKey`) + an
    `Application.pairingPausedMessage` accessor. Log at boot when enabled:
    "Pairing PAUSED — new pairing registrations will be refused".
-3. **`Sources/ClaudeSpyExternalServerLib/Routes/PairingController.swift`** —
+3. **`Sources/CtrlxExternalServerLib/Routes/PairingController.swift`** —
    first check in `registerPairingCode`, before the licensing entitlement check:
    if a pause message is configured, increment the metrics counter and return
    `.error(ErrorInfo(message: message, code: ErrorMessage.pairingPausedCode))`.
-4. **`Sources/ClaudeSpyExternalServerLib/Services/MetricsService.swift`** — add
+4. **`Sources/CtrlxExternalServerLib/Services/MetricsService.swift`** — add
    `pausedPairingAttemptsTotal` counter (`&+= 1`), an
    `incrementPausedPairingAttempts()` method, and export it as
-   `claudespy_paused_pairing_attempts_total`, mirroring
+   `ctrlx_paused_pairing_attempts_total`, mirroring
    `blockedHostAttemptsTotal`.
 
 ## Operations

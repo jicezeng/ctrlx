@@ -17,34 +17,34 @@
 ## File Structure
 
 **Create:**
-- `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeCLIInstaller.swift` — Claude CLI install/uninstall/status.
-- `ClaudeSpyPackage/Sources/CodexPluginCore/CodexCLIInstaller.swift` — Codex CLI install/uninstall/status.
-- `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeCLIInstallerTests.swift`
-- `ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexCLIInstallerTests.swift`
+- `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeCLIInstaller.swift` — Claude CLI install/uninstall/status.
+- `CtrlxPackage/Sources/CodexPluginCore/CodexCLIInstaller.swift` — Codex CLI install/uninstall/status.
+- `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeCLIInstallerTests.swift`
+- `CtrlxPackage/Tests/CodexPluginCoreTests/CodexCLIInstallerTests.swift`
 
 **Modify:**
-- `ClaudeSpyPackage/Sources/GallagerPluginProtocol/PluginEnv.swift` — add `PluginInstallStatus`, add `marketplaceSource` to `PluginEnv`.
-- `ClaudeSpyPackage/Sources/GallagerPluginProtocol/PluginCore.swift` — new `install/uninstall/installStatus` signatures.
-- `ClaudeSpyPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift` — conform to new signatures.
-- `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodePluginCore.swift` — build/use `ClaudeCodeCLIInstaller`.
-- `ClaudeSpyPackage/Sources/CodexPluginCore/CodexPluginCore.swift` — build/use `CodexCLIInstaller`.
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistry.swift` — `callCore` new signatures + pass `marketplaceSource` into `PluginEnv`.
-- `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/LivePluginHost.swift` (or wherever `PluginEnv` is constructed) — populate `marketplaceSource`.
-- `ClaudeSpyPackage/Sources/Gallager/Commands/PluginCommands.swift` — `plugin call` help/args for `installStatus`.
+- `CtrlxPackage/Sources/GallagerPluginProtocol/PluginEnv.swift` — add `PluginInstallStatus`, add `marketplaceSource` to `PluginEnv`.
+- `CtrlxPackage/Sources/GallagerPluginProtocol/PluginCore.swift` — new `install/uninstall/installStatus` signatures.
+- `CtrlxPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift` — conform to new signatures.
+- `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodePluginCore.swift` — build/use `ClaudeCodeCLIInstaller`.
+- `CtrlxPackage/Sources/CodexPluginCore/CodexPluginCore.swift` — build/use `CodexCLIInstaller`.
+- `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistry.swift` — `callCore` new signatures + pass `marketplaceSource` into `PluginEnv`.
+- `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/LivePluginHost.swift` (or wherever `PluginEnv` is constructed) — populate `marketplaceSource`.
+- `CtrlxPackage/Sources/Gallager/Commands/PluginCommands.swift` — `plugin call` help/args for `installStatus`.
 - `plugin/gallager/scripts/hook.py`, `plugin/codex/gallager/scripts/hook.py` — ingress transport.
 - `plugin/gallager/.claude-plugin/plugin.json`, `plugin/codex/gallager/.codex-plugin/plugin.json` — version bump.
 - Wiring tests referencing the old signatures.
 
 **Delete:**
-- `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeInstaller.swift` (+ `Tests/ClaudeCodePluginCoreTests/ClaudeCodeInstallerTests.swift`).
-- `ClaudeSpyPackage/Sources/CodexPluginCore/CodexInstaller.swift` (+ `Tests/CodexPluginCoreTests/CodexInstallerTests.swift`).
+- `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeInstaller.swift` (+ `Tests/ClaudeCodePluginCoreTests/ClaudeCodeInstallerTests.swift`).
+- `CtrlxPackage/Sources/CodexPluginCore/CodexInstaller.swift` (+ `Tests/CodexPluginCoreTests/CodexInstallerTests.swift`).
 
 ---
 
 ## Task 1: Add `PluginInstallStatus` and `PluginEnv.marketplaceSource`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/GallagerPluginProtocol/PluginEnv.swift`
+- Modify: `CtrlxPackage/Sources/GallagerPluginProtocol/PluginEnv.swift`
 
 - [ ] **Step 1: Add the status enum**
 
@@ -76,13 +76,13 @@ Update the initializer signature and body to include `marketplaceSource: URL` (p
 
 - [ ] **Step 3: Build the protocol module**
 
-Run: `cd ClaudeSpyPackage && swift build --target GallagerPluginProtocol 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift build --target GallagerPluginProtocol 2>&1 | tail -20`
 Expected: FAILS — every `PluginEnv(...)` call site now misses `marketplaceSource`. That's fixed in later tasks; the new types compile.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/GallagerPluginProtocol/PluginEnv.swift
+git add CtrlxPackage/Sources/GallagerPluginProtocol/PluginEnv.swift
 git commit -m "feat(plugin): add PluginInstallStatus + PluginEnv.marketplaceSource"
 ```
 
@@ -91,8 +91,8 @@ git commit -m "feat(plugin): add PluginInstallStatus + PluginEnv.marketplaceSour
 ## Task 2: Change the `PluginCore` protocol + update `EchoPluginCore`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/GallagerPluginProtocol/PluginCore.swift`
-- Modify: `ClaudeSpyPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift`
+- Modify: `CtrlxPackage/Sources/GallagerPluginProtocol/PluginCore.swift`
+- Modify: `CtrlxPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift`
 
 - [ ] **Step 1: Update the protocol**
 
@@ -131,13 +131,13 @@ In `EchoPluginCore.swift`, replace the existing `install`/`uninstall`/`isInstall
 
 - [ ] **Step 3: Build the protocol module**
 
-Run: `cd ClaudeSpyPackage && swift build --target GallagerPluginProtocol 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift build --target GallagerPluginProtocol 2>&1 | tail -20`
 Expected: PASS (the protocol + Echo conformer compile; concrete cores in other modules still fail to build — handled next).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/GallagerPluginProtocol/PluginCore.swift ClaudeSpyPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift
+git add CtrlxPackage/Sources/GallagerPluginProtocol/PluginCore.swift CtrlxPackage/Sources/GallagerPluginProtocol/EchoPluginCore.swift
 git commit -m "feat(plugin): per-configRoot install/uninstall/installStatus on PluginCore"
 ```
 
@@ -146,17 +146,17 @@ git commit -m "feat(plugin): per-configRoot install/uninstall/installStatus on P
 ## Task 3: `ClaudeCodeCLIInstaller` (TDD) + wire the core, drop the file-writer
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeCLIInstaller.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeCLIInstallerTests.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodePluginCore.swift`
-- Delete: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeInstaller.swift`, `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeInstallerTests.swift`
+- Create: `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeCLIInstaller.swift`
+- Test: `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeCLIInstallerTests.swift`
+- Modify: `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodePluginCore.swift`
+- Delete: `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeInstaller.swift`, `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeInstallerTests.swift`
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `ClaudeCodeCLIInstallerTests.swift`:
 
 ```swift
-import ClaudeSpyCommon
+import CtrlxCommon
 import Dependencies
 import Foundation
 import GallagerPluginProtocol
@@ -240,7 +240,7 @@ private func args0Command(_ args: [String], exe: String) -> String? { exe == "/u
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ClaudeSpyPackage && swift test --filter ClaudeCodeCLIInstaller 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift test --filter ClaudeCodeCLIInstaller 2>&1 | tail -20`
 Expected: FAIL — `ClaudeCodeCLIInstaller` does not exist.
 
 - [ ] **Step 3: Implement `ClaudeCodeCLIInstaller`**
@@ -248,7 +248,7 @@ Expected: FAIL — `ClaudeCodeCLIInstaller` does not exist.
 Create `ClaudeCodeCLIInstaller.swift`:
 
 ```swift
-import ClaudeSpyCommon
+import CtrlxCommon
 import Foundation
 import GallagerPluginProtocol
 
@@ -318,7 +318,7 @@ struct ClaudeCodeCLIInstaller: Sendable {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ClaudeSpyPackage && swift test --filter ClaudeCodeCLIInstaller 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift test --filter ClaudeCodeCLIInstaller 2>&1 | tail -20`
 Expected: PASS (all 5 tests).
 
 - [ ] **Step 5: Wire the core + delete the file-writer**
@@ -354,19 +354,19 @@ In `ClaudeCodePluginCore.swift`:
 - In `applySettings`, after decoding the new settings, refresh the command: `self.command = decoded.commandPath` (so a settings change updates which binary install uses).
 - Delete `ClaudeCodeInstaller.swift` and `ClaudeCodeInstallerTests.swift`:
   ```bash
-  git rm ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeInstaller.swift ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeInstallerTests.swift
+  git rm CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeInstaller.swift CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeInstallerTests.swift
   ```
   (Its `bridgeScript` Python is re-homed in Task 6; copy it out before/while deleting if convenient.)
 
 - [ ] **Step 6: Build the core target**
 
-Run: `cd ClaudeSpyPackage && swift build --target ClaudeCodePluginCore 2>&1 | tail -25`
+Run: `cd CtrlxPackage && swift build --target ClaudeCodePluginCore 2>&1 | tail -25`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeCodePluginCore ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests
+git add CtrlxPackage/Sources/ClaudeCodePluginCore CtrlxPackage/Tests/ClaudeCodePluginCoreTests
 git commit -m "feat(claude-code): CLI-based per-folder install, drop settings.json writer"
 ```
 
@@ -375,17 +375,17 @@ git commit -m "feat(claude-code): CLI-based per-folder install, drop settings.js
 ## Task 4: `CodexCLIInstaller` (TDD) + wire the core, drop the file-writer
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/CodexPluginCore/CodexCLIInstaller.swift`
-- Test: `ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexCLIInstallerTests.swift`
-- Modify: `ClaudeSpyPackage/Sources/CodexPluginCore/CodexPluginCore.swift`
-- Delete: `ClaudeSpyPackage/Sources/CodexPluginCore/CodexInstaller.swift`, `ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexInstallerTests.swift`
+- Create: `CtrlxPackage/Sources/CodexPluginCore/CodexCLIInstaller.swift`
+- Test: `CtrlxPackage/Tests/CodexPluginCoreTests/CodexCLIInstallerTests.swift`
+- Modify: `CtrlxPackage/Sources/CodexPluginCore/CodexPluginCore.swift`
+- Delete: `CtrlxPackage/Sources/CodexPluginCore/CodexInstaller.swift`, `CtrlxPackage/Tests/CodexPluginCoreTests/CodexInstallerTests.swift`
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `CodexCLIInstallerTests.swift` (mirror Task 3's tests, Codex commands + `CODEX_HOME`):
 
 ```swift
-import ClaudeSpyCommon
+import CtrlxCommon
 import Dependencies
 import Foundation
 import GallagerPluginProtocol
@@ -451,7 +451,7 @@ struct CodexCLIInstallerTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd ClaudeSpyPackage && swift test --filter CodexCLIInstaller 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift test --filter CodexCLIInstaller 2>&1 | tail -20`
 Expected: FAIL — `CodexCLIInstaller` does not exist.
 
 - [ ] **Step 3: Implement `CodexCLIInstaller`**
@@ -459,7 +459,7 @@ Expected: FAIL — `CodexCLIInstaller` does not exist.
 Create `CodexCLIInstaller.swift`:
 
 ```swift
-import ClaudeSpyCommon
+import CtrlxCommon
 import Foundation
 import GallagerPluginProtocol
 
@@ -517,7 +517,7 @@ struct CodexCLIInstaller: Sendable {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ClaudeSpyPackage && swift test --filter CodexCLIInstaller 2>&1 | tail -20`
+Run: `cd CtrlxPackage && swift test --filter CodexCLIInstaller 2>&1 | tail -20`
 Expected: PASS.
 
 - [ ] **Step 5: Wire the core + delete the file-writer**
@@ -529,18 +529,18 @@ In `CodexPluginCore.swift`, apply the same pattern as Task 3 Step 5:
 - In `applySettings`, refresh `self.command = decoded.commandPath`.
 - Delete the file-writer:
   ```bash
-  git rm ClaudeSpyPackage/Sources/CodexPluginCore/CodexInstaller.swift ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexInstallerTests.swift
+  git rm CtrlxPackage/Sources/CodexPluginCore/CodexInstaller.swift CtrlxPackage/Tests/CodexPluginCoreTests/CodexInstallerTests.swift
   ```
 
 - [ ] **Step 6: Build the core target**
 
-Run: `cd ClaudeSpyPackage && swift build --target CodexPluginCore 2>&1 | tail -25`
+Run: `cd CtrlxPackage && swift build --target CodexPluginCore 2>&1 | tail -25`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/CodexPluginCore ClaudeSpyPackage/Tests/CodexPluginCoreTests
+git add CtrlxPackage/Sources/CodexPluginCore CtrlxPackage/Tests/CodexPluginCoreTests
 git commit -m "feat(codex): CLI-based per-folder install, drop hooks.json writer"
 ```
 
@@ -549,13 +549,13 @@ git commit -m "feat(codex): CLI-based per-folder install, drop hooks.json writer
 ## Task 5: Update the registry, `PluginEnv` construction, and the `plugin call` CLI
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginRegistry.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginRegistry.swift`
 - Modify: the `PluginEnv(...)` construction site (search; likely `PluginRegistry.swift` or `LivePluginHost.swift`)
-- Modify: `ClaudeSpyPackage/Sources/Gallager/Commands/PluginCommands.swift`
+- Modify: `CtrlxPackage/Sources/Gallager/Commands/PluginCommands.swift`
 
 - [ ] **Step 1: Populate `marketplaceSource` when building `PluginEnv`**
 
-Find the construction: `grep -rn "PluginEnv(" ClaudeSpyPackage/Sources/ClaudeSpyServerFeature`. At that site, add a `marketplaceSource:` argument. Resolve it from the app bundle by plugin id:
+Find the construction: `grep -rn "PluginEnv(" CtrlxPackage/Sources/CtrlxServerFeature`. At that site, add a `marketplaceSource:` argument. Resolve it from the app bundle by plugin id:
 
 ```swift
 // Bundled marketplace dirs live in the app's main bundle Resources:
@@ -616,13 +616,13 @@ In `PluginCommands.swift`, update the `call` subcommand's `discussion`/help text
 
 - [ ] **Step 4: Build the server feature + CLI**
 
-Run: `cd ClaudeSpyPackage && swift build --target ClaudeSpyServerFeature --target Gallager 2>&1 | tail -30`
+Run: `cd CtrlxPackage && swift build --target CtrlxServerFeature --target Gallager 2>&1 | tail -30`
 Expected: PASS. If `PluginEnv(` construction appears in more than one place, fix each.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins ClaudeSpyPackage/Sources/Gallager/Commands/PluginCommands.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins CtrlxPackage/Sources/Gallager/Commands/PluginCommands.swift
 git commit -m "feat(plugin): registry passes marketplaceSource; callCore uses installStatus + configRoot"
 ```
 
@@ -752,13 +752,13 @@ git commit -m "feat(plugins): bundled hooks write to ingress socket; bump versio
 ## Task 7: Fix existing wiring tests + full build & test
 
 **Files:**
-- Modify (as needed): `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiringTests.swift`, `PluginRuntimeResponseWiringTests.swift`, `PluginRegistryTests.swift`, `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodePluginCoreTests.swift`, `MockPluginHost.swift`, `CodexPluginCoreTests/CodexPluginCoreTests.swift`
+- Modify (as needed): `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeStatusWiringTests.swift`, `PluginRuntimeResponseWiringTests.swift`, `PluginRegistryTests.swift`, `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodePluginCoreTests.swift`, `MockPluginHost.swift`, `CodexPluginCoreTests/CodexPluginCoreTests.swift`
 
 - [ ] **Step 1: Find stale references**
 
 Run:
 ```bash
-cd ClaudeSpyPackage && grep -rn "isInstalled()\|\.install()\|\.uninstall()\|PluginEnv(" Tests Sources/GallagerPluginProtocol | grep -v CLIInstaller
+cd CtrlxPackage && grep -rn "isInstalled()\|\.install()\|\.uninstall()\|PluginEnv(" Tests Sources/GallagerPluginProtocol | grep -v CLIInstaller
 ```
 Expected: a list of call sites still using the old zero-arg API or constructing `PluginEnv` without `marketplaceSource`.
 
@@ -772,12 +772,12 @@ For each hit:
 
 - [ ] **Step 3: Run the full package test suite**
 
-Run: `cd ClaudeSpyPackage && swift test 2>&1 | tail -30`
+Run: `cd CtrlxPackage && swift test 2>&1 | tail -30`
 Expected: PASS (0 failures). Fix any remaining compile/assertion errors.
 
 - [ ] **Step 4: Build the macOS app (Release) to catch app-target wiring**
 
-Run: `xcodebuild -workspace ClaudeSpy.xcworkspace -scheme ClaudeSpyServer -configuration Release -destination 'platform=macOS' -skipMacroValidation -skipPackagePluginValidation build 2>&1 | tee ${TMPDIR:-/tmp}/p1_build.log | xcsift --format toon --warnings`
+Run: `xcodebuild -workspace Ctrlx.xcworkspace -scheme CtrlxServer -configuration Release -destination 'platform=macOS' -skipMacroValidation -skipPackagePluginValidation build 2>&1 | tee ${TMPDIR:-/tmp}/p1_build.log | xcsift --format toon --warnings`
 Expected: `status: success`, 0 errors.
 
 - [ ] **Step 5: Manual smoke (optional but recommended)**
@@ -793,7 +793,7 @@ Expected: status flips to `installed`. (Codex likewise if the `codex plugin` CLI
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Tests
+git add CtrlxPackage/Tests
 git commit -m "test(plugin): update wiring tests for per-configRoot install API"
 ```
 

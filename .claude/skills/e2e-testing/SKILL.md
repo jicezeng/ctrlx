@@ -2,18 +2,18 @@
 name: e2e-testing
 allowed-tools:
   - Bash(./scripts/e2e-test.sh *)
-description: Use this skill when writing, modifying, running, or debugging formal e2e test scenarios — the Swift DSL-based automated tests in ClaudeSpyE2ELib. This includes creating new scenario files, adding or changing TestStep sequences, fixing failing scenarios, choosing ElementQuery matchers, registering scenarios in allScenarios, adding accessibility identifiers/hooks for testability, running ./scripts/e2e-test.sh, updating screenshot baselines, or extending the test framework with new step types. Use this skill whenever someone mentions e2e scenarios, test steps, element queries, screenshot baselines, the ScenarioBuilder DSL, or wants to run the automated e2e suite. Do NOT use this skill for ad-hoc manual debugging, taking one-off screenshots, interactively driving the app, or exploratory testing without writing a formal scenario — use e2e-manual-debugging for those instead.
+description: Use this skill when writing, modifying, running, or debugging formal e2e test scenarios — the Swift DSL-based automated tests in CtrlxE2ELib. This includes creating new scenario files, adding or changing TestStep sequences, fixing failing scenarios, choosing ElementQuery matchers, registering scenarios in allScenarios, adding accessibility identifiers/hooks for testability, running ./scripts/e2e-test.sh, updating screenshot baselines, or extending the test framework with new step types. Use this skill whenever someone mentions e2e scenarios, test steps, element queries, screenshot baselines, the ScenarioBuilder DSL, or wants to run the automated e2e suite. Do NOT use this skill for ad-hoc manual debugging, taking one-off screenshots, interactively driving the app, or exploratory testing without writing a formal scenario — use e2e-manual-debugging for those instead.
 ---
 
 # E2E Test Scenario Development
 
-Guide for creating and updating end-to-end test scenarios for the ClaudeSpy distributed system (macOS app, iOS simulator app, in-process Vapor relay server, optional second macOS instance for two-Mac pairing).
+Guide for creating and updating end-to-end test scenarios for the Ctrlx distributed system (macOS app, iOS simulator app, in-process Vapor relay server, optional second macOS instance for two-Mac pairing).
 
 ## Architecture Overview
 
-The E2E test framework lives in `ClaudeSpyPackage/Sources/`:
-- **ClaudeSpyE2ELib/** - Test framework library (DSL, drivers, orchestrator, scenarios, bundled scripts)
-- **ClaudeSpyE2E/** - CLI entry point (`ClaudeSpyE2ECommand.swift` — scenario registration)
+The E2E test framework lives in `CtrlxPackage/Sources/`:
+- **CtrlxE2ELib/** - Test framework library (DSL, drivers, orchestrator, scenarios, bundled scripts)
+- **CtrlxE2E/** - CLI entry point (`CtrlxE2ECommand.swift` — scenario registration)
 
 Scenarios are defined declaratively using a `@resultBuilder` DSL and executed sequentially by the `TestOrchestrator`.
 
@@ -51,14 +51,14 @@ When a non-screenshot step fails (element missing, assertion failed, HTTP error)
 
 ### Step 1: Create the Scenario File
 
-Create a new Swift file in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/`. Follow this exact pattern:
+Create a new Swift file in `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/`. Follow this exact pattern:
 
 ```swift
 import Foundation
 
 /// Brief description of what this scenario tests
 public enum MyScenario {
-    public static let scenario = ClaudeSpyE2ELib.scenario(
+    public static let scenario = CtrlxE2ELib.scenario(
         "Human-Readable Name",
         tags: ["relevant-tag"]
     ) {
@@ -74,13 +74,13 @@ public enum MyScenario {
 Key conventions:
 - Use `public enum` (not struct/class) as a namespace
 - The static property must be named `scenario`
-- Use `ClaudeSpyE2ELib.scenario(...)` factory with the `@ScenarioBuilder` DSL
+- Use `CtrlxE2ELib.scenario(...)` factory with the `@ScenarioBuilder` DSL
 - Name should be human-readable (used in CLI `--scenario "Name"`)
 - Tags categorize scenarios. Existing tags include `"smoke"`, `"pairing"`, `"unpair"`, `"reconnect"`, `"version-mismatch"`, `"terminal"`, `"rendering"`, `"resize"`, `"sessions"`, `"hooks"`, `"yolo"`, `"clipboard"`, `"file-browser"`, `"tabs"`, `"sidebar"`, `"layout"`, `"links"`, `"editor"`, `"project-search"`, `"keystroke"`, `"description"`, `"sync"`, `"persistence"`, `"disconnect"`, `"interactive"`, `"macos-only"`, `"ios"`, `"remote"`. Pick existing ones when they fit.
 
 ### Step 2: Register the Scenario
 
-Add the scenario to the **end** of the `allScenarios` array in `ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift`:
+Add the scenario to the **end** of the `allScenarios` array in `CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift`:
 
 ```swift
 private static let allScenarios: [TestScenario] = [
@@ -140,7 +140,7 @@ If the scenario fails, fix the issue and re-run until it passes. **Never commit 
 Embed an existing scenario to reuse its steps:
 
 ```swift
-public static let scenario = ClaudeSpyE2ELib.scenario("Advanced Test", tags: ["advanced"]) {
+public static let scenario = CtrlxE2ELib.scenario("Advanced Test", tags: ["advanced"]) {
     FreshPairingScenario.scenario  // All pairing steps run first, inline
 
     // Additional steps with both apps paired and running
@@ -168,7 +168,7 @@ The `Shortcut` enum in `ScenarioShortcuts.swift` provides pre-built scenario fra
 
 Usage:
 ```swift
-public static let scenario = ClaudeSpyE2ELib.scenario("My Test", tags: ["macos-only"]) {
+public static let scenario = CtrlxE2ELib.scenario("My Test", tags: ["macos-only"]) {
     Shortcut.macOnlySetup  // Replaces manual launchMacApp + openPanesWindow steps
 
     // Test-specific steps...
@@ -261,7 +261,7 @@ For detailed information, consult:
 - **`references/patterns.md`** — Common scenario patterns with full examples (multi-instance, hooks, scripts, version mismatch, terminal content assertions, …)
 - **`docs/e2e-testing.md`** (project root) — Screenshot comparison workflow, baseline storage, auto-numbering, failure screenshots, results-repo publishing, and CLI options
 
-### Existing Scenarios (in `ClaudeSpyE2ELib/Scenarios/`)
+### Existing Scenarios (in `CtrlxE2ELib/Scenarios/`)
 
 Study these as reference implementations for specific patterns:
 - **FreshPairingScenario** — Foundation scenario, most others compose on top of it

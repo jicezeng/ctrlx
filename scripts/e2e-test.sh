@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# E2E Test Script for ClaudeSpy
+# E2E Test Script for Ctrlx
 # Builds all targets and runs the E2E test coordinator
 
 set -eo pipefail
@@ -21,7 +21,7 @@ fi
 # =====================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-WORKSPACE="$PROJECT_ROOT/ClaudeSpy.xcworkspace"
+WORKSPACE="$PROJECT_ROOT/Ctrlx.xcworkspace"
 _E2E_DD_DEFAULT="${TMPDIR:-/tmp}/ctrlx-e2e-derived-data"
 DERIVED_DATA="${REPORT_DERIVED_DATA:-${SANDBOX_DERIVED_DATA:-$_E2E_DD_DEFAULT}}"
 SIM_NAME="iPhone 17 Pro"
@@ -461,14 +461,14 @@ PRODUCTS_DEBUG="$DERIVED_DATA/Build/Products/Debug"
 PRODUCTS_SIM="$DERIVED_DATA/Build/Products/Debug-iphonesimulator"
 MACOS_APP="$PRODUCTS_DEBUG/CtrlX.app"
 IOS_APP="$PRODUCTS_SIM/CtrlX.app"
-E2E_BIN="$PRODUCTS_DEBUG/ClaudeSpyE2E"
-E2E_HOST_APP="$PRODUCTS_SIM/ClaudeSpyE2EHost.app"
+E2E_BIN="$PRODUCTS_DEBUG/CtrlxE2E"
+E2E_HOST_APP="$PRODUCTS_SIM/CtrlxE2EHost.app"
 
 # The EchoPluginSidecar SPM executable is staged by plugin/sidecar scenarios
 # (macStageSidecarFixture) and resolved from the package's own SwiftPM
 # .build/debug — a path the xcodebuild steps never populate, so it needs its
 # own build step below.
-PACKAGE_ROOT="$PROJECT_ROOT/ClaudeSpyPackage"
+PACKAGE_ROOT="$PROJECT_ROOT/CtrlxPackage"
 SIDECAR_BIN="$PACKAGE_ROOT/.build/debug/EchoPluginSidecar"
 
 # Assert that an xcodebuild step produced its expected artifact. xcsift
@@ -548,30 +548,30 @@ else
     # app and the E2E coordinator caused intermittent "header has been modified"
     # PCM-cache failures because the iOS build path regenerates Sparkle's
     # umbrella header.
-    step "Building macOS app (ClaudeSpyServer)"
+    step "Building macOS app (CtrlxServer)"
     xcodebuild "${XCODEBUILD_FLAGS[@]}" \
-        -scheme ClaudeSpyServer \
+        -scheme CtrlxServer \
         -destination 'platform=macOS' \
         build 2>&1 | xcsift --format toon --executable
     verify_artifact "$MACOS_APP"
 
     step "Building E2E coordinator"
     xcodebuild "${XCODEBUILD_FLAGS[@]}" \
-        -scheme ClaudeSpyE2E \
+        -scheme CtrlxE2E \
         -destination 'platform=macOS' \
         build 2>&1 | xcsift --format toon --executable
     verify_artifact "$E2E_BIN"
 
-    step "Building iOS app (ClaudeSpy)"
+    step "Building iOS app (Ctrlx)"
     xcodebuild "${XCODEBUILD_FLAGS[@]}" \
-        -scheme ClaudeSpy \
+        -scheme Ctrlx \
         -destination "id=$SIM_UDID" \
         build 2>&1 | xcsift --format toon --executable
     verify_artifact "$IOS_APP"
 
-    step "Building E2E XCUITest runner (ClaudeSpyE2EHost)"
+    step "Building E2E XCUITest runner (CtrlxE2EHost)"
     xcodebuild "${XCODEBUILD_FLAGS[@]}" \
-        -scheme ClaudeSpyE2EHost \
+        -scheme CtrlxE2EHost \
         -destination "id=$SIM_UDID" \
         build-for-testing 2>&1 | xcsift --format toon --executable
     verify_artifact "$E2E_HOST_APP"

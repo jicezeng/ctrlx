@@ -1,0 +1,1348 @@
+import CtrlxEncryption
+import CtrlxNetworking
+import Foundation
+
+/// Keeps JSONDecoder and its CPU work off MainActor while preserving the
+/// receive loop's message order.
+private actor WebSocketMessageDecoder {
+    private let decoder: JSONDecoder
+
+    init() {
+        decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+    }
+
+    func decode(_ data: Data) throws -> WebSocketMessage {
+        try decoder.decode(WebSocketMessage.self, from: data)
+    }
+}
+
+/// Errors that can occur during viewer relay communication.
+public enum ViewerRelayClientError: Error, LocalizedError {
+    case notConnected
+    case timeout
+    case commandFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notConnected:
+            return "Not connected to relay server"
+        case .timeout:
+            return "Request timed out"
+        case let .commandFailed(message):
+            return "Command failed: \(message)"
+        }
+    }
+}
+
+/// Result of a caller-initiated liveness probe. The probe reuses the
+/// existing viewer socket and reconnect machinery; it never creates a parallel
+/// transport.
+public enum ViewerRelayProbeResult: Sendable, Equatable {
+    case alive
+    case reconnecting
+    case restarted
+    case unavailable
+}
+
+/// Client for connecting to a remote host via the external relay server as a "viewer" device.
+///
+/// This is the shared implementation used by both macOS and iOS
+/// to connect to the relay server, register as a viewer, and exchange encrypted messages with a host.
+@Observable
+@MainActor
+final public class ViewerRelayClient {
+    // MARK: - Connection State
+
+    /// Current connection state
+    public enum ConnectionState: Equatable, Sendable {
+        case disconnected
+        case connecting
+        case connected
+        case reconnecting(attempt: Int)
+        case error(String)
+
+        public var isConnected: Bool {
+            if case .connected = self { return true }
+            return false
+        }
+
+        public var statusText: String {
+            switch self {
+            case .disconnected: "Disconnected"
+            case .connecting: "Connecting..."
+            case .connected: "Connected"
+            case let .reconnecting(attempt): "Backoff (\(attempt))..."
+            case let .error(message): "Error: \(message)"
+            }
+        }
+    }
+
+    // MARK: - Properties
+
+    private let logger = Logger(label: "com.jicezeng.ctrlx.viewerrelayclient")
+    private let messageDecoder = WebSocketMessageDecoder()
+
+    /// Current connection state
+    public private(set) var state: ConnectionState = .disconnected
+
+    /// Whether the host is currently connected to the relay
+    public private(set) var isHostConnected = false
+
+    /// Name of the connected host device (if known)
+    public private(set) var connectedHostName: String?
+
+    /// Structured version-mismatch result, set when the host's peerHello fails
+    /// compatibility and cleared on the next connection attempt. The human-readable
+    /// text is still carried on the `.error` state; this property lets UI render
+    /// update-required affordances without string parsing.
+    public private(set) var versionMismatch: VersionCompatibility.VersionMismatch?
+
+    /// True when the relay reported this host is blocked for lack of an
+    /// active subscription. Cleared when the host connects again.
+    public private(set) var hostSubscriptionInactive = false
+
+    /// The WebSocket task
+    private var webSocketTask: URLSessionWebSocketTask?
+
+    /// The URL session for WebSocket connections
+    private var urlSession: URLSession?
+
+    /// Pair ID for the current connection
+    private var pairId: String?
+
+    /// Device ID for registration (this device as viewer)
+    private var deviceId: String?
+
+    /// Device name for registration (this device as viewer)
+    private var deviceName: String?
+
+    /// Public key for E2EE (Base64-encoded)
+    private var publicKey: String?
+
+    /// Public key ID for E2EE
+    private var publicKeyId: String?
+
+    /// Server URL for reconnection
+    private var serverURL: URL?
+
+    /// Whether we should attempt reconnection
+    private var shouldReconnect = false
+
+    /// Current reconnection attempt
+    private var reconnectionAttempt = 0
+
+    /// Maximum backoff delay in seconds
+    private let maxBackoffDelay = 60
+
+    /// Seconds between keep-alive pings. Injectable so tests can exercise the
+    /// half-open watchdog without waiting the production interval.
+    private let pingIntervalSeconds: Int
+
+    /// Seconds to wait for a pong (or any other inbound frame) after a keep-alive
+    /// ping before treating the socket as half-open. Injectable (see above).
+    private let pongTimeoutSeconds: Int
+
+    /// Set right before a keep-alive ping is sent, cleared on ANY inbound frame.
+    /// Two consecutive silent rounds are required before reconnecting. This
+    /// catches genuinely half-open sockets after a network switch without making
+    /// one delayed MainActor turn look like a dead connection.
+    private var awaitingPong = false
+
+    /// Task for receiving messages
+    private var receiveTask: Task<Void, Never>?
+
+    /// Task for ping/pong keep-alive
+    private var pingTask: Task<Void, Never>?
+
+    /// Task for delayed reconnection (exponential backoff)
+    private var reconnectionTask: Task<Void, Never>?
+
+    /// Task for retrying registration (handles server-side race condition)
+    private var registrationRetryTask: Task<Void, Never>?
+    private var connectionGeneration = ConnectionGeneration()
+    private var activeSendCount = 0
+    private var activeSendBytes = 0
+    private var livenessPolicy = ConnectionLivenessPolicy()
+    private var lastInboundAt = ContinuousClock.now
+    private var inboundFrameCount: UInt64 = 0
+
+    // MARK: - E2EE Properties
+
+    /// E2EE service for encrypting/decrypting messages
+    private var e2eeService: E2EEService?
+
+    /// Partner's public key received during registration or connection (Base64-encoded)
+    private var partnerPublicKey: String?
+
+    /// Partner's public key ID
+    private var partnerPublicKeyId: String?
+
+    // MARK: - Pending Commands
+
+    /// Type-erased response handlers keyed by command ID.
+    private var pendingCommands: [UUID: @MainActor (Result<Any, Error>) -> Void] = [:]
+
+    /// Timeout tasks keyed by command ID (for cancellation on response).
+    /// These MUST be cancelled when responses arrive to prevent timeout handlers
+    /// from firing after successful responses (race condition bug fix from iOS client).
+    private var timeoutTasks: [UUID: Task<Void, Never>] = [:]
+
+    // MARK: - Callbacks
+
+    /// Called when a per-session state update arrives (carries the open form).
+    public var onAgentSessionStatus: (@Sendable (AgentSessionStatusMessage) -> Void)?
+
+    /// Called when the host pushes the complete enabled-plugin presentation set.
+    public var onPluginPresentations: (@Sendable (PluginPresentationsMessage) -> Void)?
+
+    /// Called when the host pushes a pre-baked notification over the live socket
+    /// (so a backgrounded-but-connected viewer can show a local notification).
+    public var onAgentNotification: (@Sendable (AgentNotificationMessage) -> Void)?
+
+    /// Called when session state is received from host
+    public var onSessionState: (@Sendable (SessionStateMessage) -> Void)?
+
+    /// Per-pane terminal stream handlers, keyed by pane ID.
+    /// Multiple panes can receive stream data concurrently.
+    private var terminalStreamHandlers = TerminalStreamHandlerRegistry()
+    private var legacyTerminalHandlerRegistrationIds: [String: UUID] = [:]
+
+    /// Installs the current handler for a pane and returns its ownership token.
+    /// Replacing a handler invalidates the old token; stale views therefore
+    /// cannot unregister their successor's handler.
+    @discardableResult
+    public func registerTerminalStreamHandler(
+        for paneId: String,
+        handler: @MainActor @escaping @Sendable (TerminalStreamMessage) -> Void
+    ) -> UUID {
+        terminalStreamHandlers.register(paneId: paneId, handler: handler)
+    }
+
+    public func unregisterTerminalStreamHandler(
+        for paneId: String,
+        registrationId: UUID
+    ) {
+        terminalStreamHandlers.unregister(
+            paneId: paneId,
+            registrationId: registrationId
+        )
+    }
+
+    /// Compatibility entry point for callers compiled against the original
+    /// setter API. Its registration is token-owned as well, so a later `nil`
+    /// cannot remove a replacement installed through the new API.
+    @available(*, deprecated, message: "Use registerTerminalStreamHandler and token-based unregister")
+    public func setTerminalStreamHandler(
+        for paneId: String,
+        handler: (@MainActor @Sendable (TerminalStreamMessage) -> Void)?
+    ) {
+        if let handler {
+            legacyTerminalHandlerRegistrationIds[paneId] = registerTerminalStreamHandler(
+                for: paneId,
+                handler: handler
+            )
+        } else if let registrationId = legacyTerminalHandlerRegistrationIds.removeValue(forKey: paneId) {
+            unregisterTerminalStreamHandler(for: paneId, registrationId: registrationId)
+        }
+    }
+
+    /// Called when partner's public key is received (for persisting to settings)
+    public var onPartnerKeyReceived: (@MainActor @Sendable (String, String) async -> Void)?
+
+    /// Called when the host device disconnects (but pairing is still active)
+    public var onHostDisconnected: (@MainActor @Sendable () async -> Void)?
+
+    /// Called when this viewer's Relay transport is interrupted. Unlike a real
+    /// `.hostDisconnected` frame, this must not end an in-flight Agent monitor:
+    /// the monitor is what drives the reconnect.
+    public var onTransportInterrupted: (@MainActor @Sendable () async -> Void)?
+
+    /// Called when the server notifies that this pairing was removed by the other side
+    public var onUnpaired: (@MainActor @Sendable () async -> Void)?
+
+    // MARK: - Initialization
+
+    /// - Parameters:
+    ///   - pingIntervalSeconds: Seconds between keep-alive pings (default matches production).
+    ///   - pongTimeoutSeconds: Seconds to await a pong before declaring the socket half-open.
+    public init(pingIntervalSeconds: Int = 20, pongTimeoutSeconds: Int = 10) {
+        self.pingIntervalSeconds = pingIntervalSeconds
+        self.pongTimeoutSeconds = pongTimeoutSeconds
+    }
+
+    private func setState(_ newState: ConnectionState) {
+        state = newState
+        logger.info("Connection state: \(newState)")
+    }
+
+    // MARK: - Connection Management
+
+    /// Connect to a remote host via the relay server.
+    ///
+    /// - Parameters:
+    ///   - serverURL: WebSocket URL of the relay server
+    ///   - pairId: The pair ID from device pairing
+    ///   - deviceId: Unique identifier for this device (as viewer)
+    ///   - deviceName: Display name for this device
+    ///   - publicKey: Base64-encoded public key for E2EE
+    ///   - publicKeyId: Unique identifier for the public key
+    ///   - e2eeService: E2EE service for encrypting/decrypting messages
+    ///   - partnerPublicKey: Base64-encoded public key of the host (from pairing)
+    ///   - partnerPublicKeyId: Unique identifier for the host's public key
+    public func connect(
+        serverURL: URL,
+        pairId: String,
+        deviceId: String,
+        deviceName: String,
+        publicKey: String,
+        publicKeyId: String,
+        e2eeService: E2EEService,
+        partnerPublicKey: String? = nil,
+        partnerPublicKeyId: String? = nil
+    ) async {
+        guard state != .connecting, !state.isConnected else {
+            logger.warning("Already connected or connecting")
+            return
+        }
+
+        self.serverURL = serverURL
+        self.pairId = pairId
+        self.deviceId = deviceId
+        self.deviceName = deviceName
+        self.publicKey = publicKey
+        self.publicKeyId = publicKeyId
+        self.e2eeService = e2eeService
+        self.partnerPublicKey = partnerPublicKey
+        self.partnerPublicKeyId = partnerPublicKeyId
+        shouldReconnect = true
+        reconnectionAttempt = 0
+        versionMismatch = nil
+        // Reset on a fresh connect (possibly to a different pair). NOT reset in
+        // `cleanupConnection()` — that runs on every transient reconnect, and the
+        // relay only re-emits `.hostSubscriptionInactive` on a blocked-host connect
+        // or sweep, never on viewer re-register, so clearing it there would silently
+        // drop the "Host's subscription expired" banner after any reconnect blip.
+        hostSubscriptionInactive = false
+
+        // Establish E2EE session if we have partner's public key from pairing
+        if let partnerKey = partnerPublicKey, let partnerKeyId = partnerPublicKeyId {
+            guard let keyData = Data(base64Encoded: partnerKey) else {
+                let errorMessage = "Failed to decode partner public key - encryption setup failed"
+                logger.error("\(errorMessage)")
+                setState(.error(errorMessage))
+                return
+            }
+            do {
+                try await e2eeService.establishSession(
+                    partnerPublicKey: keyData,
+                    partnerKeyId: partnerKeyId,
+                    pairId: pairId
+                )
+                logger.info("E2EE session established with partner from pairing info")
+            } catch {
+                let errorMessage = "Failed to establish E2EE session: \(error.localizedDescription)"
+                logger.error("\(errorMessage)")
+                setState(.error(errorMessage))
+                return
+            }
+        }
+
+        await performConnect()
+    }
+
+    /// Disconnect from the relay server
+    public func disconnect() async {
+        shouldReconnect = false
+        await cleanupConnection()
+        setState(.disconnected)
+    }
+
+    /// Reset reconnection backoff and immediately attempt to reconnect.
+    public func reconnectImmediately() async {
+        guard shouldReconnect else {
+            logger.debug("Not configured to reconnect, ignoring reconnectImmediately()")
+            return
+        }
+
+        if state.isConnected {
+            guard !isHostConnected else {
+                logger.debug("Relay and Host are already connected")
+                return
+            }
+
+            logger.info("Relay is connected but Host presence is stale; refreshing registration")
+            await sendViewerRegistration()
+            return
+        }
+
+        guard state != .connecting else {
+            logger.debug("Already connected or connecting, ignoring reconnectImmediately()")
+            return
+        }
+
+        logger.info("Immediate reconnection requested, cancelling pending backoff and resetting")
+
+        reconnectionTask?.cancel()
+        reconnectionTask = nil
+
+        reconnectionAttempt = 0
+        await performConnect()
+    }
+
+    /// Verify that the existing Relay transport still receives frames. A normal
+    /// probe is a single ping. If the socket was already stale, give that ping a
+    /// short response window and replace only the still-silent generation.
+    public func probeConnection(
+        staleAfter: Duration = .seconds(30),
+        responseTimeout: Duration = .seconds(2)
+    ) async -> ViewerRelayProbeResult {
+        guard shouldReconnect else { return .unavailable }
+
+        guard state.isConnected else {
+            await reconnectImmediately()
+            return state.isConnected ? .restarted : .reconnecting
+        }
+
+        let generation = connectionGeneration.current
+        guard let task = webSocketTask else { return .reconnecting }
+
+        let inboundCountBeforeProbe = inboundFrameCount
+        let wasStale = ContinuousClock.now - lastInboundAt >= staleAfter
+        guard await send(.ping, using: task, generation: generation) else {
+            return .reconnecting
+        }
+        guard wasStale else { return .alive }
+
+        do {
+            try await Task.sleep(for: responseTimeout)
+        } catch {
+            return .unavailable
+        }
+
+        guard
+            connectionGeneration.isCurrent(generation),
+            webSocketTask === task,
+            inboundFrameCount == inboundCountBeforeProbe
+        else {
+            return .alive
+        }
+
+        logger.warning("Background probe found a stale Relay connection; replacing it")
+        await cleanupConnection()
+        await onTransportInterrupted?()
+        guard shouldReconnect else { return .unavailable }
+
+        reconnectionAttempt = 0
+        await performConnect()
+        return .restarted
+    }
+
+    /// Re-enable reconnection after a terminal failure (e.g. version mismatch) and
+    /// immediately attempt to reconnect.
+    ///
+    /// `handleVersionMismatch` sets `shouldReconnect = false` so the client stops
+    /// retrying a broken handshake. E2E scenarios that "upgrade" the peer and then
+    /// expect the connection to recover call this to flip the flag back on and
+    /// trigger a fresh `performConnect`.
+    public func enableReconnectAndRetry() async {
+        shouldReconnect = true
+        reconnectionTask?.cancel()
+        reconnectionTask = nil
+        reconnectionAttempt = 0
+        versionMismatch = nil
+
+        guard !state.isConnected, state != .connecting else {
+            logger.debug("Already connected or connecting, ignoring enableReconnectAndRetry()")
+            return
+        }
+
+        await performConnect()
+    }
+
+    // MARK: - Sending Messages
+
+    /// Send a command and wait for response with type-safe return type.
+    ///
+    /// - Parameters:
+    ///   - command: The command specification to send (conforms to `CommandSpec`)
+    ///   - paneId: The tmux pane ID to target
+    ///   - timeout: Maximum time to wait for response (default: 15 seconds)
+    /// - Returns: Result containing the command's associated Response type or Error
+    public func sendCommand<C: CommandSpec>(
+        _ command: C,
+        paneId: String,
+        timeout: TimeInterval = 15
+    ) async -> Result<C.Response, Error> {
+        guard state.isConnected else {
+            return .failure(ViewerRelayClientError.notConnected)
+        }
+
+        let commandMessage = CommandMessage(paneId: paneId, command: command.commandType)
+
+        // Fire-and-forget: just write to the WebSocket and return a synthetic success.
+        // The command type declares it doesn't need a response, so no handler or timeout.
+        guard command.commandType.requiresResponse else {
+            guard await sendEncrypted(.command(commandMessage)) else {
+                return .failure(
+                    ViewerRelayClientError.commandFailed("Unable to send relay message")
+                )
+            }
+            // All fire-and-forget commands currently use CommandResponseMessage as Response
+            if let response = CommandResponseMessage.success(for: commandMessage.id) as? C.Response {
+                return .success(response)
+            }
+            return .failure(ViewerRelayClientError.commandFailed("Unexpected response type"))
+        }
+
+        let generation = connectionGeneration.current
+        guard let task = webSocketTask else {
+            return .failure(ViewerRelayClientError.notConnected)
+        }
+
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Result<C.Response, Error>, Never>) in
+            pendingCommands[commandMessage.id] = { result in
+                switch result {
+                case let .success(anyResponse):
+                    if let typedResponse = anyResponse as? C.Response {
+                        continuation.resume(returning: .success(typedResponse))
+                    } else {
+                        continuation.resume(returning: .failure(ViewerRelayClientError.commandFailed("Unexpected response type")))
+                    }
+                case let .failure(error):
+                    continuation.resume(returning: .failure(error))
+                }
+            }
+
+            Task {
+                guard await self.sendEncrypted(
+                    .command(commandMessage),
+                    using: task,
+                    generation: generation
+                ) else {
+                    self.timeoutTasks.removeValue(forKey: commandMessage.id)?.cancel()
+                    if let handler = self.pendingCommands.removeValue(forKey: commandMessage.id) {
+                        handler(.failure(ViewerRelayClientError.commandFailed("Unable to send relay message")))
+                    }
+                    return
+                }
+            }
+
+            let commandId = commandMessage.id
+            timeoutTasks[commandId] = Task {
+                try? await Task.sleep(for: .seconds(timeout))
+                self.timeoutTasks.removeValue(forKey: commandId)
+                if let handler = self.pendingCommands.removeValue(forKey: commandId) {
+                    handler(.failure(ViewerRelayClientError.timeout))
+                }
+            }
+        }
+    }
+
+    /// Send a `CommandType` to the host, discarding the typed response.
+    ///
+    /// This is a convenience wrapper around `sendCommand(_:paneId:)` that dispatches
+    /// the enum variant to the underlying generic method. Useful when the caller doesn't
+    /// need the response (fire-and-forget style).
+    @discardableResult
+    public func send(_ command: CommandType, paneId: String) async -> Bool {
+        switch command {
+        case let .sendKeystroke(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .cancelOperation(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .startTerminalStream(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .stopTerminalStream(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .createTmuxSession(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .resizeTmuxPane(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .setSharedTerminalLayout(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .setYoloMode(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .markHandled(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .renameTmuxSession(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .setSessionDescription(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .setSessionColor(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .setSessionEmoji(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .setSessionState(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .setWindowName(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .moveTmuxWindows(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .splitTmuxPane(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .selectTmuxPane(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .selectTmuxWindow(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .createTmuxWindow(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .submitEditorContent(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .cancelEditorSession(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .sendRawInput(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        case let .checkRunningProcesses(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .killTmuxWindow(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .killTmuxSession(spec):
+            return (try? await sendCommand(spec, paneId: "").get()) != nil
+        case let .sendDroppedFiles(spec):
+            return (try? await sendCommand(spec, paneId: paneId).get()) != nil
+        }
+    }
+
+    /// Request current session state from host
+    @discardableResult
+    public func requestSessionState() async -> Bool {
+        guard state.isConnected else {
+            logger.debug("Not connected, cannot request session state")
+            return false
+        }
+
+        return await send(.requestSessionState)
+    }
+
+    /// Send this viewer's peerHello to the host once the E2EE session is up.
+    /// Called right after establishing E2EE on `.hostConnected`.
+    private func sendPeerHello() async {
+        let hello = PeerHelloMessage(
+            appVersion: VersionCompatibility.currentAppVersion,
+            minRequiredPartnerVersion: VersionCompatibility.minRequiredHostVersion
+        )
+        logger.info(
+            "Sending peerHello to host",
+            metadata: [
+                "appVersion": "\(hello.appVersion)",
+                "minRequiredPartnerVersion": "\(hello.minRequiredPartnerVersion)",
+            ]
+        )
+        await sendEncrypted(.peerHello(hello))
+    }
+
+    /// Send push notification token to the relay server (iOS only).
+    ///
+    /// - Parameter token: The APNs device token as a hex string
+    public func sendPushToken(_ token: String) async {
+        guard state.isConnected else {
+            logger.debug("Not connected, cannot send push token")
+            return
+        }
+
+        logger.info("Sending push token to relay server")
+        let message = WebSocketMessage.registerPushToken(RegisterPushTokenMessage(deviceToken: token))
+        await send(message)
+    }
+
+    /// Submit a structured response for a previously-emitted response request.
+    /// The host matches `requestId` and calls `core.deliverResponse(...)`.
+    /// Returns whether the submission was handed to the transport — a `false`
+    /// means the answer did NOT leave the device (not connected, encryption
+    /// refused, or the socket send failed) and the caller should surface that.
+    @discardableResult
+    public func submitAgentResponse(
+        sessionId: String,
+        pluginId: String,
+        requestId: String,
+        response: AgentResponse
+    ) async -> Bool {
+        guard state.isConnected else {
+            logger.debug("Not connected, cannot submit agent response")
+            return false
+        }
+        let message = AgentResponseSubmissionMessage(
+            pairId: pairId ?? "",
+            sessionId: sessionId,
+            pluginId: pluginId,
+            requestId: requestId,
+            response: response
+        )
+        return await sendEncrypted(.agentResponseSubmission(message))
+    }
+
+    // MARK: - Private Methods
+
+    private func performConnect() async {
+        guard
+            let serverURL, let pairId, let deviceId, let deviceName,
+            let publicKey, let publicKeyId
+        else {
+            logger.error("Missing connection parameters")
+            setState(.error("Missing connection parameters"))
+            return
+        }
+
+        connectionGeneration.invalidate()
+        let generation = connectionGeneration.current
+        setState(.connecting)
+
+        // Build WebSocket URL with query parameters
+        var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: false)
+
+        var path = components?.path ?? ""
+        if !path.hasSuffix("/api/ws") {
+            if path.hasSuffix("/") {
+                path += "api/ws"
+            } else {
+                path += "/api/ws"
+            }
+        }
+        components?.path = path
+
+        components?.queryItems = [
+            URLQueryItem(name: "pairId", value: pairId),
+            URLQueryItem(name: "deviceType", value: "viewer"),
+            URLQueryItem(name: "deviceId", value: deviceId),
+            // Report our version so the relay's optional minimum-client-version
+            // gate (issue #659) can refuse an out-of-date client on connect.
+            URLQueryItem(name: "clientVersion", value: VersionCompatibility.currentAppVersion),
+        ]
+
+        guard let wsURL = components?.url else {
+            logger.error("Failed to build WebSocket URL")
+            setState(.error("Invalid server URL"))
+            return
+        }
+
+        logger.info("Connecting to relay server as viewer: \(wsURL)")
+
+        let session = URLSession(configuration: .default)
+        urlSession = session
+
+        let task = session.webSocketTask(with: wsURL)
+        webSocketTask = task
+        lastInboundAt = ContinuousClock.now
+        task.resume()
+
+        receiveTask = Task { [weak self] in
+            await self?.receiveMessages(using: task, generation: generation)
+        }
+
+        // Register as viewer
+        let registerMessage = WebSocketMessage.registerViewer(
+            RegisterViewerMessage(
+                pairId: pairId,
+                deviceId: deviceId,
+                deviceName: deviceName,
+                publicKey: publicKey,
+                publicKeyId: publicKeyId
+            )
+        )
+        guard await send(registerMessage, using: task, generation: generation) else { return }
+        guard connectionGeneration.isCurrent(generation), webSocketTask === task else { return }
+
+        // Transition to connected immediately. The server's viewerRegistered
+        // response may be lost due to a race condition in Vapor's WebSocket
+        // upgrade: the onUpgrade Task may not have set up onText handlers
+        // before the client's registration frame arrives, causing it to be
+        // silently consumed by the default no-op handler. We retry below
+        // to handle this.
+        setState(.connected)
+        reconnectionAttempt = 0
+
+        // Retry registration after a delay to handle server-side race condition.
+        // Vapor calls onUpgrade from a Swift Concurrency Task, not directly on
+        // the NIO event loop. On localhost, the client's registration frame can
+        // arrive before that Task runs and sets up the onText handler. The server
+        // handles duplicate registrations idempotently.
+        registrationRetryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard
+                !Task.isCancelled,
+                let self,
+                self.connectionGeneration.isCurrent(generation),
+                self.webSocketTask === task
+            else { return }
+            self.logger.debug("Retrying registration (race condition mitigation)")
+            await self.send(registerMessage, using: task, generation: generation)
+        }
+
+        pingTask = Task { [weak self] in
+            await self?.pingLoop(using: task, generation: generation)
+        }
+    }
+
+    private func sendViewerRegistration() async {
+        guard
+            let pairId,
+            let deviceId,
+            let deviceName,
+            let publicKey,
+            let publicKeyId
+        else {
+            logger.error("Missing connection parameters for Viewer registration refresh")
+            return
+        }
+
+        await send(
+            .registerViewer(
+                RegisterViewerMessage(
+                    pairId: pairId,
+                    deviceId: deviceId,
+                    deviceName: deviceName,
+                    publicKey: publicKey,
+                    publicKeyId: publicKeyId
+                )
+            )
+        )
+    }
+
+    private func receiveMessages(
+        using task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async {
+        while !Task.isCancelled {
+            guard connectionGeneration.isCurrent(generation), webSocketTask === task else { break }
+
+            do {
+                let message = try await task.receive()
+                guard connectionGeneration.isCurrent(generation), webSocketTask === task else { break }
+                await handleMessage(message, using: task, generation: generation)
+            } catch {
+                if !Task.isCancelled {
+                    logger.error("WebSocket receive error: \(error)")
+                    await handleDisconnection(failedTask: task, generation: generation)
+                }
+                break
+            }
+        }
+    }
+
+    private func handleMessage(
+        _ message: URLSessionWebSocketTask.Message,
+        using task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async {
+        guard connectionGeneration.isCurrent(generation), webSocketTask === task else { return }
+        // Any inbound frame proves the socket is alive; clear the keep-alive watchdog.
+        lastInboundAt = ContinuousClock.now
+        inboundFrameCount &+= 1
+        awaitingPong = false
+        livenessPolicy.receivedInboundFrame()
+
+        let data: Data
+        switch message {
+        case let .string(text):
+            data = Data(text.utf8)
+        case let .data(messageData):
+            data = messageData
+        @unknown default:
+            logger.warning("Unknown message type received")
+            return
+        }
+
+        do {
+            let wsMessage = try await messageDecoder.decode(data)
+            guard connectionGeneration.isCurrent(generation), webSocketTask === task else { return }
+            await handleWebSocketMessage(wsMessage, using: task, generation: generation)
+        } catch {
+            logger.error("Failed to decode WebSocket message: \(error)")
+        }
+    }
+
+    private func handleWebSocketMessage(
+        _ message: WebSocketMessage,
+        using task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async {
+        guard connectionGeneration.isCurrent(generation), webSocketTask === task else { return }
+        // Decrypt encrypted messages first
+        let decryptedMessage: WebSocketMessage
+        if case .encrypted = message {
+            guard let e2eeService else {
+                logger.error("Received encrypted message but E2EE service not configured")
+                return
+            }
+            do {
+                decryptedMessage = try await message.decrypt(using: e2eeService)
+            } catch {
+                logger.error("Failed to decrypt message: \(error)")
+                return
+            }
+        } else {
+            decryptedMessage = message
+        }
+
+        guard connectionGeneration.isCurrent(generation), webSocketTask === task else { return }
+
+        switch decryptedMessage {
+        case let .viewerRegistered(response):
+            if response.success {
+                logger.info("Successfully registered with relay server as viewer")
+
+                setState(.connected)
+                connectedHostName = response.hostDeviceName
+                // `isHostConnected` is deliberately NOT set here — a mismatched host
+                // would otherwise surface as "Connected" in the UI until peerHello
+                // validation completes and flips state to `.error`. The flag is
+                // raised only after a compatible peerHello arrives (below).
+
+                // Establish E2EE session if host is connected and we have their public key.
+                // The relay also fires `.hostConnected` in this case, which re-establishes
+                // E2EE and drives the peerHello handshake — so we leave the handshake and
+                // session state request to that path.
+                if
+                    let hostPublicKey = response.hostPublicKey,
+                    let hostPublicKeyId = response.hostPublicKeyId,
+                    let keyData = Data(base64Encoded: hostPublicKey),
+                    let e2eeService,
+                    let pairId {
+                    do {
+                        try await e2eeService.establishSession(
+                            partnerPublicKey: keyData,
+                            partnerKeyId: hostPublicKeyId,
+                            pairId: pairId
+                        )
+                        partnerPublicKey = hostPublicKey
+                        partnerPublicKeyId = hostPublicKeyId
+                        logger.info("E2EE session established with host")
+
+                        if let onPartnerKeyReceived {
+                            await onPartnerKeyReceived(hostPublicKey, hostPublicKeyId)
+                        }
+                    } catch {
+                        logger.error("Failed to establish E2EE session: \(error)")
+                    }
+                }
+            } else {
+                logger.error("Registration failed: \(response.error ?? "Unknown error")")
+                setState(.error(response.error ?? "Registration failed"))
+                await disconnect()
+            }
+
+        case let .agentSessionStatus(status):
+            logger.trace("Received agent session status from host")
+            onAgentSessionStatus?(status)
+
+        case let .pluginPresentations(presentations):
+            logger.info("Received plugin presentations from host")
+            onPluginPresentations?(presentations)
+
+        case let .agentNotification(notification):
+            logger.info("Received agent notification from host")
+            onAgentNotification?(notification)
+
+        case let .sessionState(sessionState):
+            logger.info("Received session state from host")
+            onSessionState?(sessionState)
+
+        case let .commandResponse(response):
+            logger.info("Received command response from host")
+            timeoutTasks[response.commandId]?.cancel()
+            timeoutTasks.removeValue(forKey: response.commandId)
+            if let handler = pendingCommands.removeValue(forKey: response.commandId) {
+                if response.success {
+                    handler(.success(response))
+                } else {
+                    handler(.failure(ViewerRelayClientError.commandFailed(response.error ?? "Unknown error")))
+                }
+            }
+
+        case let .terminalStream(streamMessage):
+            logger.trace("Received terminal stream for pane \(streamMessage.paneId)")
+            terminalStreamHandlers.deliver(streamMessage)
+
+        case let .hostConnected(connectedMessage):
+            logger.info("Host device connected")
+            hostSubscriptionInactive = false
+
+            // `isHostConnected` is NOT flipped to true here — it is set only after
+            // the host's peerHello arrives and passes the compatibility check.
+            // Otherwise the UI would flash "Connected" before the handshake resolves
+            // on a version mismatch.
+
+            // Establish E2EE, then send our peerHello. Session state is requested only
+            // after the host's peerHello arrives and passes the compatibility check;
+            // that happens in the `.peerHello` case below.
+            let hostPublicKey = connectedMessage.publicKey
+            let hostPublicKeyId = connectedMessage.publicKeyId
+            var e2eeReady = false
+            if
+                let keyData = Data(base64Encoded: hostPublicKey),
+                let e2eeService,
+                let pairId {
+                do {
+                    try await e2eeService.establishSession(
+                        partnerPublicKey: keyData,
+                        partnerKeyId: hostPublicKeyId,
+                        pairId: pairId
+                    )
+                    partnerPublicKey = hostPublicKey
+                    partnerPublicKeyId = hostPublicKeyId
+                    e2eeReady = true
+                    logger.info("E2EE session established with host on connect notification")
+
+                    if let onPartnerKeyReceived {
+                        await onPartnerKeyReceived(hostPublicKey, hostPublicKeyId)
+                    }
+                } catch {
+                    logger.error("Failed to establish E2EE session: \(error)")
+                }
+            }
+            if e2eeReady {
+                await sendPeerHello()
+            }
+
+        case let .peerHello(peerHello):
+            logger.info(
+                "Received peerHello from host",
+                metadata: ["appVersion": "\(peerHello.appVersion)"]
+            )
+            if
+                let mismatch = VersionCompatibility.checkCompatibility(
+                    partnerAppVersion: peerHello.appVersion,
+                    partnerMinRequiredOurVersion: peerHello.minRequiredPartnerVersion,
+                    partnerRole: .host
+                ) {
+                await handleVersionMismatch(mismatch)
+                return
+            }
+            // Compatible — now safe to surface the host as connected and ask for state.
+            isHostConnected = true
+            await requestSessionState()
+
+        case .hostDisconnected:
+            logger.info("Host device disconnected")
+            isHostConnected = false
+            connectedHostName = nil
+            await onHostDisconnected?()
+
+        case .hostSubscriptionInactive:
+            logger.info("Host blocked: subscription inactive")
+            hostSubscriptionInactive = true
+            isHostConnected = false
+
+        case .unpaired:
+            logger.info("Pairing removed by the other side")
+            shouldReconnect = false
+            await cleanupConnection()
+            setState(.disconnected)
+            await onUnpaired?()
+
+        case .ping:
+            await send(.pong)
+
+        case .pong:
+            break
+
+        case let .pushTokenRegistered(response):
+            if response.success {
+                logger.info("Push token registered successfully with server")
+            } else {
+                logger.error("Failed to register push token: \(response.error ?? "Unknown error")")
+            }
+
+        case let .error(errorMessage):
+            if errorMessage.code == ErrorMessage.invalidPairCode {
+                logger.info("Received INVALID_PAIR error, treating as unpair")
+                shouldReconnect = false
+                await cleanupConnection()
+                setState(.disconnected)
+                await onUnpaired?()
+            } else if errorMessage.code == ErrorMessage.clientTooOldCode {
+                // The relay's server-side version gate refused us (issue #659).
+                // Stop reconnecting and KEEP the message visible: calling
+                // `disconnect()` here resets the state to `.disconnected` and
+                // hides the "please update" text — reproducing the opaque
+                // disconnect the gate exists to replace. Mirrors the terminal
+                // handling in `handleVersionMismatch`.
+                logger.error("Relay rejected our version: \(errorMessage.message)")
+                shouldReconnect = false
+                await cleanupConnection()
+                setState(.error(errorMessage.message))
+            } else {
+                logger.error("Server error: \(errorMessage.message)")
+                if !errorMessage.recoverable {
+                    setState(.error(errorMessage.message))
+                    await disconnect()
+                }
+            }
+
+        default:
+            logger.debug("Received unhandled message type")
+        }
+    }
+
+    /// Returns whether the frame was handed to the transport — callers that
+    /// promise delivery feedback (e.g. notification action submissions) branch
+    /// on it; fire-and-forget callers discard it.
+    @discardableResult
+    private func send(_ message: WebSocketMessage) async -> Bool {
+        let generation = connectionGeneration.current
+        guard let task = webSocketTask else {
+            logger.debug("No WebSocket task, cannot send message")
+            return false
+        }
+        return await send(message, using: task, generation: generation)
+    }
+
+    @discardableResult
+    private func send(
+        _ message: WebSocketMessage,
+        using task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async -> Bool {
+        guard connectionGeneration.isCurrent(generation), webSocketTask === task else {
+            return false
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(message)
+            guard data.count <= RelayPayloadLimits.maxWebSocketFrameBytes else {
+                logger.error(
+                    "Refusing oversized WebSocket frame: \(data.count) bytes exceeds \(RelayPayloadLimits.maxWebSocketFrameBytes)"
+                )
+                return false
+            }
+            activeSendCount += 1
+            activeSendBytes += data.count
+            recordSendQueue()
+            defer {
+                activeSendCount -= 1
+                activeSendBytes -= data.count
+                recordSendQueue()
+            }
+            let sendStart = ContinuousClock.now
+            defer {
+                TerminalTransportMetrics.shared.recordDuration(.webSocketSend, since: sendStart)
+            }
+            guard connectionGeneration.isCurrent(generation), webSocketTask === task else {
+                return false
+            }
+            try await task.send(.data(data))
+            guard connectionGeneration.isCurrent(generation), webSocketTask === task else {
+                return false
+            }
+            return true
+        } catch {
+            logger.error("Failed to send WebSocket message: \(error)")
+            await handleDisconnection(failedTask: task, generation: generation)
+            return false
+        }
+    }
+
+    // MARK: - Version Compatibility
+
+    /// Handles a detected version mismatch by stopping reconnects and surfacing an error.
+    /// The mismatch itself is computed by `VersionCompatibility.checkCompatibility`;
+    /// only the user-facing messaging and state transition are viewer-specific.
+    private func handleVersionMismatch(_ mismatch: VersionCompatibility.VersionMismatch) async {
+        let hostLabel = connectedHostName ?? "the host"
+        let message: String
+        switch mismatch {
+        case let .weAreTooOld(required):
+            message = "This app is out of date. \(hostLabel) requires version \(required) or later. Please update."
+        case let .partnerTooOld(partnerVersion):
+            let versionText = partnerVersion.isEmpty ? "an older version" : "version \(partnerVersion)"
+            message = "\(hostLabel) is running \(versionText) and cannot connect. Ask the host to update."
+        }
+
+        logger.error("Version mismatch with host: \(message)")
+        shouldReconnect = false
+        versionMismatch = mismatch
+        await cleanupConnection()
+        setState(.error(message))
+    }
+
+    /// Encrypts and sends a message that should be encrypted.
+    /// Fails closed if E2EE session is not established - will not send unencrypted.
+    /// Returns whether the encrypted frame was handed to the transport.
+    @discardableResult
+    private func sendEncrypted(_ message: WebSocketMessage) async -> Bool {
+        let generation = connectionGeneration.current
+        guard let task = webSocketTask else {
+            logger.debug("No WebSocket task, cannot send encrypted message")
+            return false
+        }
+        return await sendEncrypted(message, using: task, generation: generation)
+    }
+
+    @discardableResult
+    private func sendEncrypted(
+        _ message: WebSocketMessage,
+        using task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async -> Bool {
+        guard
+            connectionGeneration.isCurrent(generation),
+            webSocketTask === task,
+            let e2eeService,
+            await e2eeService.isSessionEstablished
+        else {
+            logger.error("E2EE session not established, refusing to send sensitive message")
+            return false
+        }
+
+        do {
+            let encryptionStart = ContinuousClock.now
+            defer {
+                TerminalTransportMetrics.shared.recordDuration(.encryption, since: encryptionStart)
+            }
+            let encryptedMessage = try await message.encrypt(using: e2eeService)
+            guard connectionGeneration.isCurrent(generation), webSocketTask === task else {
+                return false
+            }
+            return await send(encryptedMessage, using: task, generation: generation)
+        } catch {
+            logger.error("Failed to encrypt message: \(error)")
+            return false
+        }
+    }
+
+    private func recordSendQueue() {
+        TerminalTransportMetrics.shared.recordQueue(
+            .webSocketSend,
+            id: "viewer:\(pairId ?? "unpaired")",
+            depth: activeSendCount,
+            bytes: activeSendBytes
+        )
+    }
+
+    private func pingLoop(
+        using task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async {
+        var isFirstRound = true
+        while
+            !Task.isCancelled,
+            state.isConnected,
+            connectionGeneration.isCurrent(generation),
+            webSocketTask === task
+        {
+            // Idle period between keep-alive pings.
+            let jitter = isFirstRound ? initialPingJitterSeconds : 0
+            isFirstRound = false
+            try? await Task.sleep(for: .seconds(pingIntervalSeconds + jitter))
+            guard
+                !Task.isCancelled,
+                state.isConnected,
+                connectionGeneration.isCurrent(generation),
+                webSocketTask === task
+            else { break }
+
+            awaitingPong = true
+            guard await send(.ping, using: task, generation: generation) else { break }
+
+            // Wait for the server's pong (or any other inbound frame) to clear the flag.
+            try? await Task.sleep(for: .seconds(pongTimeoutSeconds))
+            guard
+                !Task.isCancelled,
+                state.isConnected,
+                connectionGeneration.isCurrent(generation),
+                webSocketTask === task
+            else { break }
+
+            if awaitingPong {
+                if livenessPolicy.missedRound() {
+                    logger.warning(
+                        "No inbound frame for \(livenessPolicy.consecutiveMissedRounds) keepalive rounds — forcing reconnect"
+                    )
+                    await handleDisconnection(failedTask: task, generation: generation)
+                    break
+                }
+                logger.notice(
+                    "No inbound frame for one keepalive round; waiting for confirmation"
+                )
+            }
+        }
+    }
+
+    /// A small stable offset keeps this iPhone's host sockets from probing on
+    /// the same MainActor turn. Short test intervals intentionally use no jitter.
+    private var initialPingJitterSeconds: Int {
+        guard pingIntervalSeconds >= 5, let pairId else { return 0 }
+        let checksum = pairId.utf8.reduce(0) { ($0 &* 31 &+ Int($1)) & 0x7FFF_FFFF }
+        return checksum % 5
+    }
+
+    private func handleDisconnection(
+        failedTask: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async {
+        // A delayed receive/send failure from an old socket must never tear down
+        // its replacement.
+        guard connectionGeneration.isCurrent(generation), webSocketTask === failedTask else {
+            return
+        }
+
+        isHostConnected = false
+        connectedHostName = nil
+        await cleanupConnection()
+        await onTransportInterrupted?()
+
+        guard shouldReconnect else { return }
+
+        reconnectionAttempt += 1
+        // Exponential backoff: 1s, 2s, 4s, 8s, ... capped at maxBackoffDelay
+        let exponent = min(reconnectionAttempt - 1, 20)
+        let delay = min(maxBackoffDelay, Int(pow(2, Double(exponent))))
+        setState(.reconnecting(attempt: reconnectionAttempt))
+        if reconnectionAttempt <= 10 {
+            logger.info("Reconnecting in \(delay) seconds (attempt \(reconnectionAttempt))")
+        } else {
+            logger.debug("Reconnecting in \(delay) seconds (attempt \(reconnectionAttempt))")
+        }
+
+        reconnectionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+
+            guard self.shouldReconnect else { return }
+
+            await self.performConnect()
+        }
+    }
+
+    private func cleanupConnection() async {
+        connectionGeneration.invalidate()
+        awaitingPong = false
+        livenessPolicy.receivedInboundFrame()
+
+        receiveTask?.cancel()
+        receiveTask = nil
+
+        pingTask?.cancel()
+        pingTask = nil
+
+        reconnectionTask?.cancel()
+        reconnectionTask = nil
+
+        registrationRetryTask?.cancel()
+        registrationRetryTask = nil
+
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
+
+        for (_, task) in timeoutTasks {
+            task.cancel()
+        }
+        timeoutTasks.removeAll()
+
+        for (_, handler) in pendingCommands {
+            handler(.failure(ViewerRelayClientError.notConnected))
+        }
+        pendingCommands.removeAll()
+    }
+}

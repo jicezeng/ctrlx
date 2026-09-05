@@ -18,7 +18,7 @@
 ## Migration policy
 
 CtrlX 3.0.0 使用全新的技术身份和本地数据目录，不自动读取或迁移 Gallager 的
-UserDefaults、Keychain、App Group、`~/.gallager`、`~/.claudespy`、CLI socket 或
+UserDefaults、Keychain、App Group、`~/.gallager`、`~/.ctrlx`、CLI socket 或
 tmux user options。用户需要重新配置 Relay 并重新配对设备。这样可以保证两个发行版
 同时安装、同时运行时不共享密钥和运行状态。
 
@@ -26,5 +26,5 @@ tmux user options。用户需要重新配置 Relay 并重新配对设备。这�
 
 - [ ] CtrlX 与 Gallager 可同时安装，Bundle、数据、Keychain 和 socket 不冲突（配置审计通过；双应用真机验收留在 Stage 6）。
 - [x] 新安装不会默认连接任何未由 CtrlX 维护者配置的公网 Relay。
-- [x] 生产运行路径不存在 `GALLAGER_*`、`.gallager`、`.claudespy` 或 `@gallager-*`。
-- [x] 内部 Swift 模块/target 名允许暂时保留 `ClaudeSpy*`，不得泄漏为用户技术身份。
+- [x] 生产运行路径不存在 `GALLAGER_*`、`.gallager`、`.ctrlx` 或 `@gallager-*`。
+- [x] 内部 Swift 模块/target 名允许暂时保留 `Ctrlx*`，不得泄漏为用户技术身份。

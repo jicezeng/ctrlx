@@ -33,7 +33,7 @@ A repeatable evaluation on Apple's Evaluations framework that:
 
 ## Architecture
 
-- New test target **`StopFinalityEvaluations`** in `ClaudeSpyPackage`, depending on `ClaudeCodePluginCore`. All framework code guarded by `#if canImport(Evaluations)` + `@available(macOS 27, *)`; on older SDKs the target compiles to an empty/skipped suite.
+- New test target **`StopFinalityEvaluations`** in `CtrlxPackage`, depending on `ClaudeCodePluginCore`. All framework code guarded by `#if canImport(Evaluations)` + `@available(macOS 27, *)`; on older SDKs the target compiles to an empty/skipped suite.
 - Run via Xcode 27 on the beta Mac to get the evaluation report, per-sample assistant view, and baseline-vs-candidate comparison view. `#expect` gates come from Swift Testing integration (`EvaluationTrait`).
 - **Production seam (only production-code change):** extract the instruction text into `StopFinalityClassifier.productionInstructions` and add a package-visible `classify(message:instructions:)` path. `liveValue` calls it with `productionInstructions` — behavior unchanged; the eval calls it with variants. The seam preserves the production configuration (guided `StopFinalityJudgment` generation, greedy sampling, 4k-char tail truncation) so the eval measures exactly what ships.
 

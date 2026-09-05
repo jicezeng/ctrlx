@@ -16,27 +16,27 @@
 
 | File | Purpose | Action |
 |------|---------|--------|
-| `ClaudeSpyPackage/Package.swift` | Rename GallagerEditor → Gallager, add dependencies | Modify |
-| `ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift` | Root CLI command with global options | Create |
-| `ClaudeSpyPackage/Sources/Gallager/SocketClient.swift` | Unix socket client for JSON-RPC | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/SessionCommands.swift` | list-sessions, new-session, etc. | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/WindowCommands.swift` | list-windows, new-window, etc. | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/PaneCommands.swift` | list-panes, split-pane, select-pane | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/InputCommands.swift` | send, send-key | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/NotifyCommand.swift` | notify | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/EditCommand.swift` | edit (replaces GallagerEditor) | Create |
-| `ClaudeSpyPackage/Sources/Gallager/Commands/UtilityCommands.swift` | ping, capabilities, identify | Create |
-| `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift` | JSON-RPC request/response types | Create |
-| `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/APIModels.swift` | SessionInfo, WindowInfo, APIPaneInfo, IdentifyInfo | Create |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swift` | @DependencyClient socket server | Create |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift` | @DependencyClient request dispatcher | Create |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/EditorSocketServer.swift` | Remove (replaced by APISocketServer) | Delete |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` | Wire APISocketServer, update env vars | Modify |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/EditorSessionManager.swift` | Update to work with APISocketServer | Modify |
-| `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TmuxService.swift` | Update env var names (GALLAGER_SOCKET) | Modify |
-| `ClaudeSpyPackage/Sources/GallagerEditor/GallagerEditor.swift` | Remove (replaced by Gallager/Commands/EditCommand.swift) | Delete |
-| `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/JSONRPCTests.swift` | JSON-RPC encode/decode tests | Create |
-| `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/APIRequestRouterTests.swift` | Router dispatch tests | Create |
+| `CtrlxPackage/Package.swift` | Rename GallagerEditor → Gallager, add dependencies | Modify |
+| `CtrlxPackage/Sources/Gallager/GallagerCLI.swift` | Root CLI command with global options | Create |
+| `CtrlxPackage/Sources/Gallager/SocketClient.swift` | Unix socket client for JSON-RPC | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/SessionCommands.swift` | list-sessions, new-session, etc. | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/WindowCommands.swift` | list-windows, new-window, etc. | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/PaneCommands.swift` | list-panes, split-pane, select-pane | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/InputCommands.swift` | send, send-key | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/NotifyCommand.swift` | notify | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/EditCommand.swift` | edit (replaces GallagerEditor) | Create |
+| `CtrlxPackage/Sources/Gallager/Commands/UtilityCommands.swift` | ping, capabilities, identify | Create |
+| `CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift` | JSON-RPC request/response types | Create |
+| `CtrlxPackage/Sources/CtrlxNetworking/Models/APIModels.swift` | SessionInfo, WindowInfo, APIPaneInfo, IdentifyInfo | Create |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Services/APISocketServer.swift` | @DependencyClient socket server | Create |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift` | @DependencyClient request dispatcher | Create |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Services/EditorSocketServer.swift` | Remove (replaced by APISocketServer) | Delete |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` | Wire APISocketServer, update env vars | Modify |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Managers/EditorSessionManager.swift` | Update to work with APISocketServer | Modify |
+| `CtrlxPackage/Sources/CtrlxServerFeature/Services/TmuxService.swift` | Update env var names (GALLAGER_SOCKET) | Modify |
+| `CtrlxPackage/Sources/GallagerEditor/GallagerEditor.swift` | Remove (replaced by Gallager/Commands/EditCommand.swift) | Delete |
+| `CtrlxPackage/Tests/CtrlxNetworkingTests/JSONRPCTests.swift` | JSON-RPC encode/decode tests | Create |
+| `CtrlxPackage/Tests/CtrlxServerFeatureTests/APIRequestRouterTests.swift` | Router dispatch tests | Create |
 | `docs/gallager-cli-api.md` | API reference documentation | Create |
 
 ---
@@ -46,16 +46,16 @@
 Shared types used by both CLI and server for the wire protocol.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/JSONRPCTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift`
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/JSONRPCTests.swift`
 
 - [ ] **Step 1: Write failing test for JSON-RPC request encoding**
 
-In `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/JSONRPCTests.swift`:
+In `CtrlxPackage/Tests/CtrlxNetworkingTests/JSONRPCTests.swift`:
 
 ```swift
 import Testing
-@testable import ClaudeSpyNetworking
+@testable import CtrlxNetworking
 import Foundation
 
 @Test
@@ -115,7 +115,7 @@ Expected: FAIL — types don't exist yet
 
 - [ ] **Step 3: Implement JSON-RPC types**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift`:
+In `CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift`:
 
 ```swift
 import Foundation
@@ -266,8 +266,8 @@ Expected: All 4 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/JSONRPC.swift \
-       ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/JSONRPCTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/JSONRPC.swift \
+       CtrlxPackage/Tests/CtrlxNetworkingTests/JSONRPCTests.swift
 git commit -m "feat: add JSON-RPC wire protocol types (#343)"
 ```
 
@@ -278,11 +278,11 @@ git commit -m "feat: add JSON-RPC wire protocol types (#343)"
 API-facing models for sessions, windows, panes, and identify info.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/APIModels.swift`
+- Create: `CtrlxPackage/Sources/CtrlxNetworking/Models/APIModels.swift`
 
 - [ ] **Step 1: Create API models**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/APIModels.swift`:
+In `CtrlxPackage/Sources/CtrlxNetworking/Models/APIModels.swift`:
 
 ```swift
 import Foundation
@@ -415,13 +415,13 @@ public struct APIIdentifyInfo: Codable, Sendable {
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `$(cat ${TMPDIR:-/tmp}/claude-sandbox-$(echo $PPID))/bin/swift build --target ClaudeSpyNetworking`
+Run: `$(cat ${TMPDIR:-/tmp}/claude-sandbox-$(echo $PPID))/bin/swift build --target CtrlxNetworking`
 Expected: Build succeeds
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/APIModels.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/APIModels.swift
 git commit -m "feat: add API response models for CLI (#343)"
 ```
 
@@ -432,13 +432,13 @@ git commit -m "feat: add API response models for CLI (#343)"
 Rename the GallagerEditor target to Gallager and add required dependencies.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Package.swift`
-- Delete: `ClaudeSpyPackage/Sources/GallagerEditor/GallagerEditor.swift`
-- Create: `ClaudeSpyPackage/Sources/Gallager/` directory
+- Modify: `CtrlxPackage/Package.swift`
+- Delete: `CtrlxPackage/Sources/GallagerEditor/GallagerEditor.swift`
+- Create: `CtrlxPackage/Sources/Gallager/` directory
 
 - [ ] **Step 1: Update Package.swift**
 
-In `ClaudeSpyPackage/Package.swift`, make these changes:
+In `CtrlxPackage/Package.swift`, make these changes:
 
 1. Rename the product from `GallagerEditor` to `Gallager`:
 ```swift
@@ -465,7 +465,7 @@ In `ClaudeSpyPackage/Package.swift`, make these changes:
     name: "Gallager",
     dependencies: [
         .argumentParser,
-        .claudeSpyNetworking,
+        .ctrlxNetworking,
     ]
 ),
 ```
@@ -473,10 +473,10 @@ In `ClaudeSpyPackage/Package.swift`, make these changes:
 - [ ] **Step 2: Create Gallager source directory and placeholder**
 
 ```bash
-mkdir -p ClaudeSpyPackage/Sources/Gallager/Commands
+mkdir -p CtrlxPackage/Sources/Gallager/Commands
 ```
 
-Create a minimal `ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift` placeholder:
+Create a minimal `CtrlxPackage/Sources/Gallager/GallagerCLI.swift` placeholder:
 
 ```swift
 import ArgumentParser
@@ -505,7 +505,7 @@ struct PingCommand: ParsableCommand {
 - [ ] **Step 3: Delete old GallagerEditor source**
 
 ```bash
-rm -rf ClaudeSpyPackage/Sources/GallagerEditor
+rm -rf CtrlxPackage/Sources/GallagerEditor
 ```
 
 - [ ] **Step 4: Verify it compiles**
@@ -515,9 +515,9 @@ Expected: Build succeeds
 
 - [ ] **Step 5: Update Xcode project references**
 
-The Xcode project (ClaudeSpyServer target) embeds GallagerEditor as an auxiliary executable. Search for "GallagerEditor" in the `.xcodeproj` or `.pbxproj` file and update to "Gallager". The relevant setting is the "Copy Files" build phase that copies the binary into the app bundle.
+The Xcode project (CtrlxServer target) embeds GallagerEditor as an auxiliary executable. Search for "GallagerEditor" in the `.xcodeproj` or `.pbxproj` file and update to "Gallager". The relevant setting is the "Copy Files" build phase that copies the binary into the app bundle.
 
-Run: `grep -r "GallagerEditor" ClaudeSpyServer.xcodeproj/ ClaudeSpyPackage/` to find all references, then update them.
+Run: `grep -r "GallagerEditor" CtrlxServer.xcodeproj/ CtrlxPackage/` to find all references, then update them.
 
 - [ ] **Step 6: Commit**
 
@@ -533,14 +533,14 @@ git commit -m "refactor: rename GallagerEditor to Gallager CLI (#343)"
 The CLI-side Unix socket client that sends JSON-RPC requests and reads responses.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/Gallager/SocketClient.swift`
+- Create: `CtrlxPackage/Sources/Gallager/SocketClient.swift`
 
 - [ ] **Step 1: Implement SocketClient**
 
-In `ClaudeSpyPackage/Sources/Gallager/SocketClient.swift`:
+In `CtrlxPackage/Sources/Gallager/SocketClient.swift`:
 
 ```swift
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 /// Connects to the Gallager app's Unix domain socket and sends JSON-RPC requests.
@@ -640,7 +640,7 @@ Expected: Build succeeds
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/Gallager/SocketClient.swift
+git add CtrlxPackage/Sources/Gallager/SocketClient.swift
 git commit -m "feat: add CLI socket client for JSON-RPC (#343)"
 ```
 
@@ -651,16 +651,16 @@ git commit -m "feat: add CLI socket client for JSON-RPC (#343)"
 Start with the simplest commands to validate the end-to-end flow.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift`
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/UtilityCommands.swift`
+- Modify: `CtrlxPackage/Sources/Gallager/GallagerCLI.swift`
+- Create: `CtrlxPackage/Sources/Gallager/Commands/UtilityCommands.swift`
 
 - [ ] **Step 1: Add global options and update root command**
 
-Replace `ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift` with:
+Replace `CtrlxPackage/Sources/Gallager/GallagerCLI.swift` with:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 @main
@@ -732,11 +732,11 @@ func printResponse(_ response: JSONRPCResponse, json: Bool) {
 
 - [ ] **Step 2: Create utility commands**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/UtilityCommands.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/UtilityCommands.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct PingCommand: ParsableCommand {
@@ -809,8 +809,8 @@ Expected: Build succeeds
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift \
-       ClaudeSpyPackage/Sources/Gallager/Commands/UtilityCommands.swift
+git add CtrlxPackage/Sources/Gallager/GallagerCLI.swift \
+       CtrlxPackage/Sources/Gallager/Commands/UtilityCommands.swift
 git commit -m "feat: add utility CLI commands (ping, capabilities, identify) (#343)"
 ```
 
@@ -819,16 +819,16 @@ git commit -m "feat: add utility CLI commands (ping, capabilities, identify) (#3
 ### Task 6: CLI Commands — Sessions
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/SessionCommands.swift`
-- Modify: `ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift` (add to subcommands)
+- Create: `CtrlxPackage/Sources/Gallager/Commands/SessionCommands.swift`
+- Modify: `CtrlxPackage/Sources/Gallager/GallagerCLI.swift` (add to subcommands)
 
 - [ ] **Step 1: Create session commands**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/SessionCommands.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/SessionCommands.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct ListSessionsCommand: ParsableCommand {
@@ -966,8 +966,8 @@ Expected: Build succeeds
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/Gallager/Commands/SessionCommands.swift \
-       ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift
+git add CtrlxPackage/Sources/Gallager/Commands/SessionCommands.swift \
+       CtrlxPackage/Sources/Gallager/GallagerCLI.swift
 git commit -m "feat: add session CLI commands (#343)"
 ```
 
@@ -976,20 +976,20 @@ git commit -m "feat: add session CLI commands (#343)"
 ### Task 7: CLI Commands — Windows, Panes, Input, Notify, Edit
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/WindowCommands.swift`
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/PaneCommands.swift`
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/InputCommands.swift`
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/NotifyCommand.swift`
-- Create: `ClaudeSpyPackage/Sources/Gallager/Commands/EditCommand.swift`
-- Modify: `ClaudeSpyPackage/Sources/Gallager/GallagerCLI.swift`
+- Create: `CtrlxPackage/Sources/Gallager/Commands/WindowCommands.swift`
+- Create: `CtrlxPackage/Sources/Gallager/Commands/PaneCommands.swift`
+- Create: `CtrlxPackage/Sources/Gallager/Commands/InputCommands.swift`
+- Create: `CtrlxPackage/Sources/Gallager/Commands/NotifyCommand.swift`
+- Create: `CtrlxPackage/Sources/Gallager/Commands/EditCommand.swift`
+- Modify: `CtrlxPackage/Sources/Gallager/GallagerCLI.swift`
 
 - [ ] **Step 1: Create window commands**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/WindowCommands.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/WindowCommands.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct ListWindowsCommand: ParsableCommand {
@@ -1090,11 +1090,11 @@ struct CloseWindowCommand: ParsableCommand {
 
 - [ ] **Step 2: Create pane commands**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/PaneCommands.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/PaneCommands.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct ListPanesCommand: ParsableCommand {
@@ -1178,11 +1178,11 @@ struct SelectPaneCommand: ParsableCommand {
 
 - [ ] **Step 3: Create input commands**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/InputCommands.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/InputCommands.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct SendCommand: ParsableCommand {
@@ -1226,11 +1226,11 @@ struct SendKeyCommand: ParsableCommand {
 
 - [ ] **Step 4: Create notify command**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/NotifyCommand.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/NotifyCommand.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct NotifyCommand: ParsableCommand {
@@ -1268,11 +1268,11 @@ struct NotifyCommand: ParsableCommand {
 
 - [ ] **Step 5: Create edit command**
 
-In `ClaudeSpyPackage/Sources/Gallager/Commands/EditCommand.swift`:
+In `CtrlxPackage/Sources/Gallager/Commands/EditCommand.swift`:
 
 ```swift
 import ArgumentParser
-import ClaudeSpyNetworking
+import CtrlxNetworking
 import Foundation
 
 struct EditCommand: ParsableCommand {
@@ -1353,7 +1353,7 @@ Expected: Build succeeds
 - [ ] **Step 8: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/Gallager/
+git add CtrlxPackage/Sources/Gallager/
 git commit -m "feat: add all CLI commands (sessions, windows, panes, input, notify, edit) (#343)"
 ```
 
@@ -1364,16 +1364,16 @@ git commit -m "feat: add all CLI commands (sessions, windows, panes, input, noti
 The server-side Unix socket server that replaces EditorSocketServer.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swift`
-- Delete: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/EditorSocketServer.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/APISocketServer.swift`
+- Delete: `CtrlxPackage/Sources/CtrlxServerFeature/Services/EditorSocketServer.swift`
 
 - [ ] **Step 1: Create APISocketServer**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swift`:
+In `CtrlxPackage/Sources/CtrlxServerFeature/Services/APISocketServer.swift`:
 
 ```swift
 #if os(macOS)
-    import ClaudeSpyNetworking
+    import CtrlxNetworking
     import Dependencies
     import DependenciesMacros
     import Foundation
@@ -1419,7 +1419,7 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swi
 
     /// Actor-based live implementation of the API socket server.
     actor LiveAPISocketServer {
-        private let logger = Logger(label: "com.claudespy.apisocket")
+        private let logger = Logger(label: "com.ctrlx.apisocket")
         private(set) var socketPath: String?
         private var serverFd: Int32 = -1
         private var isRunning = false
@@ -1627,20 +1627,20 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swi
 - [ ] **Step 2: Delete EditorSocketServer.swift**
 
 ```bash
-rm ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/EditorSocketServer.swift
+rm CtrlxPackage/Sources/CtrlxServerFeature/Services/EditorSocketServer.swift
 ```
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `$(cat ${TMPDIR:-/tmp}/claude-sandbox-$(echo $PPID))/bin/swift build --target ClaudeSpyServerFeature 2>&1 | head -50`
+Run: `$(cat ${TMPDIR:-/tmp}/claude-sandbox-$(echo $PPID))/bin/swift build --target CtrlxServerFeature 2>&1 | head -50`
 
 This will fail because AppCoordinator and EditorSessionManager still reference EditorSocketServer. That's expected — we'll fix those in Tasks 10 and 11.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APISocketServer.swift
-git rm ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/EditorSocketServer.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Services/APISocketServer.swift
+git rm CtrlxPackage/Sources/CtrlxServerFeature/Services/EditorSocketServer.swift
 git commit -m "feat: add APISocketServer, remove EditorSocketServer (#343)"
 ```
 
@@ -1651,17 +1651,17 @@ git commit -m "feat: add APISocketServer, remove EditorSocketServer (#343)"
 The router that dispatches JSON-RPC methods to existing services.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/APIRequestRouterTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/APIRequestRouterTests.swift`
 
 - [ ] **Step 1: Write failing tests for router dispatch**
 
-In `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/APIRequestRouterTests.swift`:
+In `CtrlxPackage/Tests/CtrlxServerFeatureTests/APIRequestRouterTests.swift`:
 
 ```swift
 import Testing
-@testable import ClaudeSpyServerFeature
-import ClaudeSpyNetworking
+@testable import CtrlxServerFeature
+import CtrlxNetworking
 
 @Test
 func pingReturns() async {
@@ -1700,11 +1700,11 @@ func capabilitiesListsMethods() async {
 
 - [ ] **Step 2: Create APIRequestRouter**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift`:
+In `CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift`:
 
 ```swift
 #if os(macOS)
-    import ClaudeSpyNetworking
+    import CtrlxNetworking
     import Dependencies
     import DependenciesMacros
     import Foundation
@@ -1760,7 +1760,7 @@ In `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.sw
     /// Service dependencies are injected via callbacks set by AppCoordinator,
     /// since the router needs access to @MainActor services (TmuxService, MirrorWindowManager).
     public final class LiveAPIRequestRouter: Sendable {
-        private let logger = Logger(label: "com.claudespy.apirouter")
+        private let logger = Logger(label: "com.ctrlx.apirouter")
 
         // Service callbacks set by AppCoordinator
         nonisolated(unsafe) var onSessionList: (@Sendable () async -> [[String: JSONValue]])?
@@ -1965,8 +1965,8 @@ Expected: All 3 tests PASS (ping, unknown method, capabilities)
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/APIRequestRouter.swift \
-       ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/APIRequestRouterTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Services/APIRequestRouter.swift \
+       CtrlxPackage/Tests/CtrlxServerFeatureTests/APIRequestRouterTests.swift
 git commit -m "feat: add APIRequestRouter with method dispatch (#343)"
 ```
 
@@ -1977,7 +1977,7 @@ git commit -m "feat: add APIRequestRouter with method dispatch (#343)"
 Remove its direct dependency on EditorSocketServer — it now works through the API router.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/EditorSessionManager.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Managers/EditorSessionManager.swift`
 
 - [ ] **Step 1: Read current EditorSessionManager**
 
@@ -2030,7 +2030,7 @@ The goal is to verify EditorSessionManager itself compiles without EditorSocketS
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/EditorSessionManager.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Managers/EditorSessionManager.swift
 git commit -m "refactor: decouple EditorSessionManager from socket server (#343)"
 ```
 
@@ -2041,8 +2041,8 @@ git commit -m "refactor: decouple EditorSessionManager from socket server (#343)
 Connect APISocketServer + APIRequestRouter in AppCoordinator, replacing the old EditorSocketServer setup.
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TmuxService.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/TmuxService.swift`
 
 - [ ] **Step 1: Read current AppCoordinator references**
 
@@ -2437,9 +2437,9 @@ In `setupAllServices()`, replace `await setupEditorSocketServer()` with `await s
 
 - [ ] **Step 5: Fix any remaining compilation errors**
 
-Build the full ClaudeSpyServerFeature target and fix any remaining references to `EditorSocketServer`, `editorSocketPath`, or `GALLAGER_EDITOR_SOCKET`.
+Build the full CtrlxServerFeature target and fix any remaining references to `EditorSocketServer`, `editorSocketPath`, or `GALLAGER_EDITOR_SOCKET`.
 
-Run: `$(cat ${TMPDIR:-/tmp}/claude-sandbox-$(echo $PPID))/bin/swift build --target ClaudeSpyServerFeature 2>&1 | head -80`
+Run: `$(cat ${TMPDIR:-/tmp}/claude-sandbox-$(echo $PPID))/bin/swift build --target CtrlxServerFeature 2>&1 | head -80`
 
 Iterate until it compiles clean.
 
@@ -2471,7 +2471,7 @@ If there are errors, fix them. Common issues:
 
 - [ ] **Step 2: Build the Xcode project (macOS scheme)**
 
-Use the `xcodebuild` skill to build the `ClaudeSpyServer` scheme for macOS.
+Use the `xcodebuild` skill to build the `CtrlxServer` scheme for macOS.
 
 This catches issues the SPM build misses (Xcode project references, Copy Files phases, auxiliary executable embedding).
 

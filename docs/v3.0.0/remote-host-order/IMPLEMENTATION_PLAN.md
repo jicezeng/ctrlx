@@ -16,7 +16,7 @@ macOS 与 iOS Viewer 当前按 `pairedHosts` 的配对写入顺序展示远程 H
 
 ## 实施范围
 
-- 在 `ClaudeSpyCommon` 增加小型纯函数，统一 Host ID 的拖放移动语义并覆盖边界测试。
+- 在 `CtrlxCommon` 增加小型纯函数，统一 Host ID 的拖放移动语义并覆盖边界测试。
 - 在 macOS `AppSettings` 与 iOS `IOSSettings` 中原子更新并持久化 `pairedHosts`。
 - macOS Host header 使用拖放载荷校验；iOS Manage Hosts 使用系统 `onMove` 坐标。
 - 验证 sidebar、iOS Sessions、Manage Hosts、菜单栏与快捷键入口都读取同一顺序。

@@ -7,7 +7,7 @@ pending. Last updated: 2026-06-19
 > **Layout is keyed by folder, not by session (revised 2026-06-19).** The first
 > cut keyed records by `host + tmux sessionName` (to give each running session
 > its own restore on cold launch — old R7). That backfired: tmux recycles
-> session names (kill `ClaudeSpy-2`, create a new one on the same repo), so a
+> session names (kill `Ctrlx-2`, create a new one on the same repo), so a
 > freshly-created session would match the *dead* session's stale record and
 > restore an old layout instead of the folder's current one. The folder-match
 > guard only caught recycled names on a *different* folder, not the common
@@ -175,7 +175,7 @@ struct SavedFolderRecord: Codable, Sendable {
 ```
 
 **Why folder, not `sessionName`?** tmux session names are recycled — kill
-`ClaudeSpy-2`, later create a new one on the same repo and it reuses the name.
+`Ctrlx-2`, later create a new one on the same repo and it reuses the name.
 Keying by name meant a brand-new session matched the dead session's stale record
 and restored an old layout instead of the folder's current one. A folder is a
 durable identity; a recycled name is not.
@@ -317,7 +317,7 @@ local and remote records — distinguished by the `host` field:
 
 ## 5. Data model & components
 
-New code (all in `ClaudeSpyServerFeature`, with the Codable models in a shared
+New code (all in `CtrlxServerFeature`, with the Codable models in a shared
 spot if iOS ever needs them — v1 keeps them macOS-side):
 
 | Component | Responsibility |

@@ -1,18 +1,18 @@
-# Terminal Rendering Investigation: Garbled Output in ClaudeSpy Mirror
+# Terminal Rendering Investigation: Garbled Output in Ctrlx Mirror
 
 > **Status (PR #179):** The core streaming architecture was rewritten to use `pipe-pane` for raw PTY byte delivery instead of control mode `%output` events. This resolved the truecolor animation rendering artifacts and eliminated the need for octal unescaping, UTF-8 reconstruction, and line-boundary splitting. Hypotheses H6 (octal unescaping) and H14 (readabilityHandler race) are no longer applicable. The architecture diagram below reflects the **old** architecture — see `streaming-architecture.md` for the current data flow.
 
 ## Problem Statement
 
-When mirroring complex terminal applications (like Claude Code) that use extensive cursor positioning, the ClaudeSpy mirror window shows:
+When mirroring complex terminal applications (like Claude Code) that use extensive cursor positioning, the Ctrlx mirror window shows:
 1. **Mispositioned text** — content appears at wrong row/column locations
 2. **Incorrect colors** — some text displays with wrong SGR attributes
 
-The issue is reproducible. A tmux-rec recording of the same session replayed via raw PTY bytes renders **correctly**, proving the data from tmux is fine but ClaudeSpy's processing introduces the problem.
+The issue is reproducible. A tmux-rec recording of the same session replayed via raw PTY bytes renders **correctly**, proving the data from tmux is fine but Ctrlx's processing introduces the problem.
 
 ## Evidence
 
-- Side-by-side screenshots of the same tmux session at roughly the same point in time — the ClaudeSpy mirror (text displaced, colors wrong) vs. a tmux-rec replay (correct rendering) — confirmed the mirror was at fault. (The screenshots contained a real working session and were removed from the repo before open-sourcing.)
+- Side-by-side screenshots of the same tmux session at roughly the same point in time — the Ctrlx mirror (text displaced, colors wrong) vs. a tmux-rec replay (correct rendering) — confirmed the mirror was at fault. (The screenshots contained a real working session and were removed from the repo before open-sourcing.)
 - E2E scenario screenshots in `E2ETests/16-terminal-rendering-bugs/` visually confirm H17 and scrollback corruption
 
 ## Architecture Summary: How Data Flows
@@ -26,7 +26,7 @@ The issue is reproducible. A tmux-rec recording of the same session replayed via
     │             │
     ▼             ▼
 [pipe-pane]   [control mode -C]
- (tmux-rec)    (ClaudeSpy)
+ (tmux-rec)    (Ctrlx)
     │             │
     │         ┌───┴────────────┐
     │         │                │
@@ -48,7 +48,7 @@ The issue is reproducible. A tmux-rec recording of the same session replayed via
 
 ## Key Difference: `pipe-pane` vs Control Mode
 
-| Aspect | tmux-rec (pipe-pane) | ClaudeSpy (control mode) |
+| Aspect | tmux-rec (pipe-pane) | Ctrlx (control mode) |
 |--------|---------------------|--------------------------|
 | **Initial state** | `capture-pane -e -p` → raw bytes, ALL escapes | `capture-pane -e -p` → **filtered**: only SGR (colors) kept |
 | **Live data** | Raw PTY bytes (every byte) | `%output` events (octal-escaped, newline-delimited) |
@@ -403,7 +403,7 @@ Create a test that:
 1. Sets up a tmux session with known dimensions
 2. Sends a complex terminal output sequence (with cursor positioning, colors, alternate screen, etc.)
 3. Captures the pane via `capture-pane -e -p` (ground truth)
-4. Connects ClaudeSpy's streaming pipeline
+4. Connects Ctrlx's streaming pipeline
 5. Feeds the initial capture + subsequent `%output` events to a SwiftTerm instance
 6. Compares SwiftTerm's buffer content with ground truth
 
@@ -418,7 +418,7 @@ Create a test that:
 
 Use the existing `.tmrec` recording to:
 1. Replay the raw bytes into a SwiftTerm instance (ground truth)
-2. Separately, process the same bytes through the ClaudeSpy pipeline:
+2. Separately, process the same bytes through the Ctrlx pipeline:
    - Pass initial snapshot through `capturePaneWithScrollbackForStreaming`'s processing
    - Pass incremental data through `unescapeOutputBytes` + `filterTmuxEscapeSequences`
 3. Compare terminal buffer state at key timestamps
@@ -493,7 +493,7 @@ This would isolate whether the problem is in initial capture processing or live 
 
 ### Fixes Applied (TmuxService.swift)
 
-All production fixes are in `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/TmuxService.swift`.
+All production fixes are in `CtrlxPackage/Sources/CtrlxServerFeature/Services/TmuxService.swift`.
 
 #### H2: Non-CSI escape byte leaking → Fixed
 
@@ -574,7 +574,7 @@ New tests added:
 
 ### Problem Statement
 
-Test 16 of `terminal-debug/term-stress.py` (Synchronized Output / Mode 2026) produces rendering artifacts in the ClaudeSpy mirror window:
+Test 16 of `terminal-debug/term-stress.py` (Synchronized Output / Mode 2026) produces rendering artifacts in the Ctrlx mirror window:
 - Gradient extends beyond the intended 50-column bounds
 - Literal escape sequence parameters (e.g., `m`, `2;5H`) appear as visible text
 - Colored blocks appear beyond the gradient area
@@ -710,7 +710,7 @@ The SwiftTerm TerminalView is sized to fit all columns (e.g., 227 columns), whic
 
 These approaches were used during the investigation and can be re-created if needed:
 
-- **Feed logging**: Logging every `feed()` call to `/tmp/claudespy-feeds.txt` with size, first/last bytes, truecolor BG count, bare CSI parameter detection, and starts-with-digit detection. Add to `TerminalContainerView.Coordinator.handleData`.
-- **Frame capture**: Binary capture of all frames fed to SwiftTerm to `/tmp/claudespy-frames.bin` with 4-byte little-endian length prefix per frame. Enables offline replay and analysis.
+- **Feed logging**: Logging every `feed()` call to `/tmp/ctrlx-feeds.txt` with size, first/last bytes, truecolor BG count, bare CSI parameter detection, and starts-with-digit detection. Add to `TerminalContainerView.Coordinator.handleData`.
+- **Frame capture**: Binary capture of all frames fed to SwiftTerm to `/tmp/ctrlx-frames.bin` with 4-byte little-endian length prefix per frame. Enables offline replay and analysis.
 - **Frame replay**: `terminal-debug/replay-frames.py` replays captured binary frames in a real terminal for visual comparison against the mirror window.
 - **Buffer dump**: Direct SwiftTerm buffer content extraction immediately after `feed()` calls, comparing buffer state against expected content. Confirms whether data reaches the terminal buffer correctly.

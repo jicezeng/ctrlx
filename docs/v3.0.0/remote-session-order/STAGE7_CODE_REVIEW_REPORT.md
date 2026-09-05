@@ -16,8 +16,8 @@
 
 - `RemoteSessionOrder` and settings tests: 8/8 passed.
 - macOS package compilation through `swift test`: passed.
-- macOS `ClaudeSpyServer` App target build: passed.
-- iOS `ClaudeSpy` generic-device App target build: passed.
+- macOS `CtrlxServer` App target build: passed.
+- iOS `Ctrlx` generic-device App target build: passed.
 - `git diff --check`: passed.
 - SwiftLint was unavailable locally; the macOS build reported the existing install hint only.
 

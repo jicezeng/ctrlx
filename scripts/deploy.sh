@@ -67,7 +67,7 @@ rsync -az --delete \
     --exclude='secrets' \
     --exclude='Tests' \
     -e ssh \
-    "$PROJECT_ROOT/ClaudeSpyPackage/" \
+    "$PROJECT_ROOT/CtrlxPackage/" \
     "$REMOTE_HOST:$REMOTE_DIR/"
 
 remote_identity="$({
@@ -100,7 +100,7 @@ remote_revision="${remote_identity#*$'\t'}"
 if [ -n "$CADDY_CONF_DIR" ]; then
     ssh "$REMOTE_HOST" "test -d '$CADDY_CONF_DIR'" \
         || log_error "Configured Caddy directory does not exist: $CADDY_CONF_DIR"
-    scp "$PROJECT_ROOT/ClaudeSpyPackage/caddy/ctrlx.caddy" \
+    scp "$PROJECT_ROOT/CtrlxPackage/caddy/ctrlx.caddy" \
         "$REMOTE_HOST:$CADDY_CONF_DIR/ctrlx.caddy"
 fi
 

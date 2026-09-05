@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# E2E Video Proof Attacher for ClaudeSpy
+# E2E Video Proof Attacher for Ctrlx
 # Uploads e2e --record videos as ephemeral release assets on the results repo
 # and posts a PR comment linking them — video proof that a feature works,
 # without committing the video to any repo's git history.

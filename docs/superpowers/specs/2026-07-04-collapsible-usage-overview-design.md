@@ -20,7 +20,7 @@ contracts it again.
 ## Decision
 
 Make the shared `UsageOverviewView`
-(`ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/UsageOverviewViews.swift`)
+(`CtrlxPackage/Sources/CtrlxCommon/UI/UsageOverviewViews.swift`)
 collapsible, and use it on both platforms.
 
 ### Behavior

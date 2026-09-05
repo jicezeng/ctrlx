@@ -1,6 +1,6 @@
 # End-to-End Encryption (E2EE) Implementation Plan
 
-This document outlines the implementation of end-to-end encryption for ClaudeSpy, ensuring that the relay server cannot decrypt messages exchanged between Mac and iOS devices.
+This document outlines the implementation of end-to-end encryption for Ctrlx, ensuring that the relay server cannot decrypt messages exchanged between Mac and iOS devices.
 
 ## Executive Summary
 
@@ -77,7 +77,7 @@ let sharedSecret = try macPrivateKey.sharedSecretFromKeyAgreement(
 // Derive symmetric key using HKDF
 let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
     using: SHA256.self,
-    salt: Data("ClaudeSpy-E2EE-v1".utf8),
+    salt: Data("Ctrlx-E2EE-v1".utf8),
     sharedInfo: Data(pairId.utf8),  // Bind to this pairing
     outputByteCount: 32
 )
@@ -104,14 +104,14 @@ let decryptedData = try ChaChaPoly.open(sealedBox, using: symmetricKey)
 
 ## Implementation Architecture
 
-### New Module: `ClaudeSpyEncryption`
+### New Module: `CtrlxEncryption`
 
 Create a new target in the Swift Package for encryption utilities:
 
 ```
-ClaudeSpyPackage/
+CtrlxPackage/
 ├── Sources/
-│   ├── ClaudeSpyEncryption/           # NEW MODULE
+│   ├── CtrlxEncryption/           # NEW MODULE
 │   │   ├── E2EEService.swift          # Main encryption service
 │   │   ├── KeyManager.swift           # Keychain storage
 │   │   ├── EncryptedPayload.swift     # Encrypted message wrapper
@@ -171,7 +171,7 @@ public final class E2EEService: Sendable {
 
 ```swift
 public actor KeyManager {
-    private let keychainService = "com.claudespy.e2ee"
+    private let keychainService = "com.ctrlx.e2ee"
 
     // Generate and store new key pair
     public func generateKeyPair() async throws -> StoredKeyPair
@@ -346,7 +346,7 @@ When devices unpair:
 ## Migration Strategy
 
 ### Phase 1: Infrastructure (No Breaking Changes)
-1. Add `ClaudeSpyEncryption` module
+1. Add `CtrlxEncryption` module
 2. Implement `E2EEService` and `KeyManager`
 3. Add `publicKey` field to pairing API (optional field)
 4. Add encrypted message variants to `WebSocketMessage`
@@ -451,7 +451,7 @@ let verificationCode = hash.prefix(3).map { String(format: "%02X", $0) }.joined(
 ## Implementation Checklist
 
 ### Module Setup
-- [ ] Create `ClaudeSpyEncryption` target in Package.swift
+- [ ] Create `CtrlxEncryption` target in Package.swift
 - [ ] Add CryptoKit/Swift Crypto dependencies
 - [ ] Implement `CryptoErrors.swift`
 

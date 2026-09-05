@@ -18,14 +18,14 @@ all surface the wastebasket.
 ## Layout
 
 ```
-ClaudeSpyPackage/Sources/GallagerEmoji/   # Foundation-only, no resources
+CtrlxPackage/Sources/GallagerEmoji/   # Foundation-only, no resources
 ├── Emoji.swift          # value type: glyph, label, keywords, group, version
 ├── EmojiCategory.swift  # the 8 picker sections (emojibase groups → categories)
 ├── EmojiDatabase.swift  # parse + version-cap + categorized() + search()
 └── EmojiData.swift      # GENERATED tab-separated table (do not hand-edit)
 ```
 
-- **`ClaudeSpyCommon/UI/GallagerEmojiPicker.swift`** — the SwiftUI picker
+- **`CtrlxCommon/UI/GallagerEmojiPicker.swift`** — the SwiftUI picker
   (search field + category-jump grid) that replaced `SwiftEmojiPicker`. Presented
   by `DescriptionEditing.swift` as a macOS popover / iOS detent sheet.
 - **`Gallager/EmojiNameLookup.swift`** — thin CLI adapter over `EmojiDatabase`.

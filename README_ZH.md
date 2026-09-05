@@ -72,11 +72,11 @@ APNs 凭据。
 ## 开发
 
 构建要求近期 Xcode、Swift 6.3 或更新版本，以及 macOS 15 或更新版本。打开
-`ClaudeSpy.xcworkspace`，macOS 使用 `ClaudeSpyServer` scheme，iOS 使用 `ClaudeSpy`
-scheme。内部 target 仍保留历史 `ClaudeSpy*` 名称。
+`Ctrlx.xcworkspace`，macOS 使用 `CtrlxServer` scheme，iOS 使用 `Ctrlx`
+scheme。内部 target 仍保留历史 `Ctrlx*` 名称。
 
 ```bash
-swift test --package-path ClaudeSpyPackage
+swift test --package-path CtrlxPackage
 
 ./sbin/auto-env.sh
 ./sbin/start_server.sh

@@ -57,7 +57,7 @@ a second general-purpose workspace synchronization system.
 ## Verification
 
 - Full SwiftPM suite: 1,770 tests passed in 258 suites.
-- macOS `ClaudeSpyServer` Debug Xcode build succeeded.
+- macOS `CtrlxServer` Debug Xcode build succeeded.
 - Wire compatibility tests cover new and legacy snapshots.
 - Host-store tests cover validation, ratio clamping, revision assignment,
   duplicate suppression and dead-window pruning.

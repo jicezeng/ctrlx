@@ -4,7 +4,7 @@ set -eu
 
 cd "$(git rev-parse --show-toplevel)"
 
-runtime_paths="ClaudeSpy ClaudeSpyServer ClaudeSpyNotificationExtension ClaudeSpyE2ERunner Config ClaudeSpyPackage/Sources ClaudeSpyPackage/caddy ClaudeSpyPackage/monitoring plugin plugins scripts sbin"
+runtime_paths="Ctrlx CtrlxServer CtrlxNotificationExtension CtrlxE2ERunner Config CtrlxPackage/Sources CtrlxPackage/caddy CtrlxPackage/monitoring plugin plugins scripts sbin"
 forbidden='GALLAGER_|CLAUDESPY_|@gallager-|\.gallager([/"[:space:]]|$)|\.claudespy([/"[:space:]]|$)|gallager\.sock|com\.claudespy|br\.eng\.gustavo|engineering\.dx\.gallager|XG2WG7U93U|relay\.gallager\.app|updates\.gallager\.app|gallager\.lemonsqueezy\.com'
 
 if rg -n -g '!check-ctrlx-technical-boundary.sh' "$forbidden" $runtime_paths; then
@@ -21,7 +21,7 @@ for pattern in $(printf '%s' "$required_patterns" | tr '|' ' '); do
 done
 
 if rg -n 'https?://([a-z0-9-]+\.)*ctrlx\.app' \
-  ClaudeSpy ClaudeSpyServer ClaudeSpyNotificationExtension Config ClaudeSpyPackage/Sources scripts sbin; then
+  Ctrlx CtrlxServer CtrlxNotificationExtension Config CtrlxPackage/Sources scripts sbin; then
   printf '\nCtrlX technical boundary check failed: an unowned production domain is hard-coded.\n' >&2
   exit 1
 fi

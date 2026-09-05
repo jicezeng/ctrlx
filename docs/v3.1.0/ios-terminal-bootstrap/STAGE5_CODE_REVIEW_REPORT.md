@@ -14,7 +14,7 @@
 ## Verification
 
 - `TerminalStreamBootstrap` 定向测试：7 项通过
-- `ClaudeSpyPackage` 完整测试：1756 项通过
+- `CtrlxPackage` 完整测试：1756 项通过
 - iPhoneOS Debug 构建通过
 - iPhone 真机安装与交互验收通过
 

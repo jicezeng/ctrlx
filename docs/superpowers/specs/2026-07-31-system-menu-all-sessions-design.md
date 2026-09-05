@@ -55,7 +55,7 @@ state, which the sidebar shows but the system menu cannot.
 
 ### 2. Pending badge count
 
-A shared helper in `ClaudeSpyNetworking` (next to `PaneState.displayedState`),
+A shared helper in `CtrlxNetworking` (next to `PaneState.displayedState`),
 operating on a collection of `PaneState`:
 
 > pendingSessionCount = (agent panes with `displayedState == .waiting`)
@@ -68,7 +68,7 @@ operating on a collection of `PaneState`:
   is already counted via its agent pane(s)).
 - Call sites: `MirrorWindowManager.pendingSessionCount` (drives the menu bar
   capsule, Dock badge, and `pendingCountDecrease()` for iOS pushes) and the
-  remote half of `totalPendingSessionCount` in `ClaudeSpyServerApp` — applied
+  remote half of `totalPendingSessionCount` in `CtrlxServerApp` — applied
   **per host** so same-named sessions on different hosts count separately.
 
 ### 3. Badge-decrease push
@@ -88,7 +88,7 @@ all three mutation paths.
 
 ### 4. Testing
 
-- **`ClaudeSpyNetworkingTests`:** the count helper — agent-waiting panes,
+- **`CtrlxNetworkingTests`:** the count helper — agent-waiting panes,
   pinned terminal-only session counted once across multiple panes, mixed
   session not double-counted, pin-to-idle suppression unchanged.
 - **`PluginRuntimeStatusWiringTests`:** extend the existing #702 wiring test so

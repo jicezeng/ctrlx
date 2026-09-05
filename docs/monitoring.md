@@ -5,7 +5,7 @@
 - **Collector:** Grafana Alloy (systemd) on the VM, push to Grafana Cloud Prometheus
 - **Storage / UI:** an operator-owned Grafana Cloud stack
 - **Alerts:** an operator-owned Discord webhook
-- **Config-as-code:** `ClaudeSpyPackage/monitoring/grizzly/` applied via `grr apply`
+- **Config-as-code:** `CtrlxPackage/monitoring/grizzly/` applied via `grr apply`
 
 ## Initial Setup
 
@@ -17,7 +17,7 @@ production service. Keep credentials outside the repository.
 - [ ] Create a `metrics:write` access token and a separate Grizzly service-account token.
 - [ ] Generate `METRICS_TOKEN` with `openssl rand -hex 32`; add it to `/opt/ctrlx/.env.production` and redeploy.
 - [ ] Verify `/metrics` through loopback with the bearer token and verify port 8080 is not public.
-- [ ] Copy `ClaudeSpyPackage/monitoring/agents` to `/opt/ctrlx-monitoring` on the Relay host.
+- [ ] Copy `CtrlxPackage/monitoring/agents` to `/opt/ctrlx-monitoring` on the Relay host.
 - [ ] Run `install.sh` with `METRICS_TOKEN`, `GRAFANA_PROM_URL`, `GRAFANA_PROM_USER`, and `GRAFANA_PROM_TOKEN`.
 - [ ] Confirm `node_exporter` and `alloy` are active.
 - [ ] Query `ctrlx_active_pairs` and `node_filesystem_avail_bytes` in Grafana.
@@ -40,7 +40,7 @@ production service. Keep credentials outside the repository.
 
 ### Re-apply after editing alerts/dashboards
 ```bash
-cd ClaudeSpyPackage/monitoring/grizzly
+cd CtrlxPackage/monitoring/grizzly
 set -a; . ./.env; set +a
 make diff   # see what would change
 make apply  # actually apply

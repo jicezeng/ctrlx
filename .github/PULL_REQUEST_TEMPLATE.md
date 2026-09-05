@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] `swift test` passes in `ClaudeSpyPackage/`
+- [ ] `swift test` passes in `CtrlxPackage/`
 - [ ] New behavior has tests; bug fixes have a test/scenario that reproduces the bug without the fix
 - [ ] New features / changed behavior: e2e scenario added or updated and passing (`./scripts/e2e-test.sh --scenario "Name"`)
 - [ ] No locally generated e2e screenshot baselines committed (CI owns baselines)

@@ -39,7 +39,7 @@ Codex TUI 仅在一次 paste 的完整内容是单个有效图片路径时创建
 
 ## Verification
 
-- `swift test --package-path ClaudeSpyPackage --filter RelayImagePreparerTests`：9/9 通过。
+- `swift test --package-path CtrlxPackage --filter RelayImagePreparerTests`：9/9 通过。
 - iPhoneOS arm64 Debug 无签名构建：通过。
 - macOS arm64 Debug 无签名构建：通过。
 - `NSCameraUsageDescription` 已进入 iOS 目标构建设置。

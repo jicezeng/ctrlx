@@ -21,20 +21,20 @@
 
 | File | Responsibility | Action |
 |---|---|---|
-| `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/AgentState.swift` | The state enum + derivations | **Create** |
-| `…/ClaudeSpyNetworking/Models/AgentSession.swift` | Store `state`, derive Bools | Modify |
-| `…/ClaudeSpyNetworking/Models/Plugin/PluginEvent.swift` | `state: AgentState?` replaces working/attention/responseRequest | Modify |
-| `…/ClaudeSpyNetworking/Models/Plugin/PluginWireMessages.swift` | `AgentSessionStatusMessage.state`; delete `AgentResponseRequestMessage` | Modify |
-| `…/ClaudeSpyNetworking/Models/WebSocketMessage.swift` | Delete `agentResponseRequest` case | Modify |
-| `…/ClaudeSpyNetworking/Models/RelayMessages.swift` | Delete `openResponseRequests` + `PaneOpenResponseRequest` | Modify |
-| `…/ClaudeSpyServerFeature/Plugins/PluginEventDispatcher.swift` | One `onState` sink + yolo | Modify |
-| `…/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift` | `applyState`; delete 3 maps | Modify |
-| `…/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` | Re-wire dispatcher sinks + snapshot | Modify |
+| `CtrlxPackage/Sources/CtrlxNetworking/Models/AgentState.swift` | The state enum + derivations | **Create** |
+| `…/CtrlxNetworking/Models/AgentSession.swift` | Store `state`, derive Bools | Modify |
+| `…/CtrlxNetworking/Models/Plugin/PluginEvent.swift` | `state: AgentState?` replaces working/attention/responseRequest | Modify |
+| `…/CtrlxNetworking/Models/Plugin/PluginWireMessages.swift` | `AgentSessionStatusMessage.state`; delete `AgentResponseRequestMessage` | Modify |
+| `…/CtrlxNetworking/Models/WebSocketMessage.swift` | Delete `agentResponseRequest` case | Modify |
+| `…/CtrlxNetworking/Models/RelayMessages.swift` | Delete `openResponseRequests` + `PaneOpenResponseRequest` | Modify |
+| `…/CtrlxServerFeature/Plugins/PluginEventDispatcher.swift` | One `onState` sink + yolo | Modify |
+| `…/CtrlxServerFeature/Managers/MirrorWindowManager.swift` | `applyState`; delete 3 maps | Modify |
+| `…/CtrlxServerFeature/Coordinators/AppCoordinator.swift` | Re-wire dispatcher sinks + snapshot | Modify |
 | `…/ClaudeCodePluginCore/ClaudeCodeTranslator.swift` | hook → `AgentState` | Modify |
 | `…/CodexPluginCore/CodexTranslator.swift` | hook → `AgentState` | Modify |
-| `…/ClaudeSpyCommon/Services/SessionStore.swift` | `state` from status; delete openResponseRequests | Modify |
-| `…/ClaudeSpyCommon/UI/SessionStatusIndicator.swift` | Derive from computed Bools (unchanged glyphs) | Verify |
-| `…/ClaudeSpyFeature/Services/SessionDetailService.swift` | `responseState` from `session.state` | Modify |
+| `…/CtrlxCommon/Services/SessionStore.swift` | `state` from status; delete openResponseRequests | Modify |
+| `…/CtrlxCommon/UI/SessionStatusIndicator.swift` | Derive from computed Bools (unchanged glyphs) | Verify |
+| `…/CtrlxFeature/Services/SessionDetailService.swift` | `responseState` from `session.state` | Modify |
 
 ---
 
@@ -43,8 +43,8 @@
 ### Task 1: Add the `AgentState` enum
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/AgentState.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/AgentStateTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxNetworking/Models/AgentState.swift`
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/AgentStateTests.swift`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -52,7 +52,7 @@
 // AgentStateTests.swift
 import Foundation
 import Testing
-@testable import ClaudeSpyNetworking
+@testable import CtrlxNetworking
 
 @Suite("AgentState")
 struct AgentStateTests {
@@ -161,16 +161,16 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/AgentState.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/AgentStateTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/AgentState.swift \
+        CtrlxPackage/Tests/CtrlxNetworkingTests/AgentStateTests.swift
 git commit -m "feat(plugins): add AgentState enum with derived isActiveWorking/needsAttention/openForm"
 ```
 
 ### Task 2: Make `AgentSession` store `AgentState`, derive the Bools
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/AgentSession.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/AgentSessionStateTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxNetworking/Models/AgentSession.swift`
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/AgentSessionStateTests.swift`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -178,7 +178,7 @@ git commit -m "feat(plugins): add AgentState enum with derived isActiveWorking/n
 // AgentSessionStateTests.swift
 import Foundation
 import Testing
-@testable import ClaudeSpyNetworking
+@testable import CtrlxNetworking
 
 @Suite("AgentSession state")
 struct AgentSessionStateTests {
@@ -279,8 +279,8 @@ Expected: only errors at *write* sites (`session.isWorking = …`, `markAutoAppr
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/AgentSession.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/AgentSessionStateTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/AgentSession.swift \
+        CtrlxPackage/Tests/CtrlxNetworkingTests/AgentSessionStateTests.swift
 git commit -m "refactor(plugins): AgentSession stores AgentState; isWorking/needsAttention derived"
 ```
 
@@ -291,8 +291,8 @@ git commit -m "refactor(plugins): AgentSession stores AgentState; isWorking/need
 ### Task 3: `PluginEvent.state` replaces working/attention/responseRequest
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/Plugin/PluginEvent.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/PluginEventStateTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxNetworking/Models/Plugin/PluginEvent.swift`
+- Test: `CtrlxPackage/Tests/CtrlxNetworkingTests/PluginEventStateTests.swift`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -300,7 +300,7 @@ git commit -m "refactor(plugins): AgentSession stores AgentState; isWorking/need
 // PluginEventStateTests.swift
 import Foundation
 import Testing
-@testable import ClaudeSpyNetworking
+@testable import CtrlxNetworking
 
 @Suite("PluginEvent state")
 struct PluginEventStateTests {
@@ -362,19 +362,19 @@ Expected: PASS (the build will still fail elsewhere — translators/dispatcher �
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/Plugin/PluginEvent.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/PluginEventStateTests.swift
+git add CtrlxPackage/Sources/CtrlxNetworking/Models/Plugin/PluginEvent.swift \
+        CtrlxPackage/Tests/CtrlxNetworkingTests/PluginEventStateTests.swift
 git commit -m "refactor(plugins): PluginEvent carries state: AgentState? (drop working/attention/responseRequest)"
 ```
 
-> **Note:** Tasks 3–6 are one compile unit — the package won't fully build until the dispatcher and both translators are updated. Implement Tasks 4, 5, 6 before running the full suite again. Commit each task's source regardless (the per-task unit tests added in earlier networking tasks still run because they only import `ClaudeSpyNetworking`, which compiles independently).
+> **Note:** Tasks 3–6 are one compile unit — the package won't fully build until the dispatcher and both translators are updated. Implement Tasks 4, 5, 6 before running the full suite again. Commit each task's source regardless (the per-task unit tests added in earlier networking tasks still run because they only import `CtrlxNetworking`, which compiles independently).
 
 ### Task 4: Collapse the dispatcher to one `onState` sink
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginEventDispatcher.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift` (sink wiring, ~lines 380-463)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeResponseWiringTests.swift` (rewrite for the new sink)
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginEventDispatcher.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift` (sink wiring, ~lines 380-463)
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeResponseWiringTests.swift` (rewrite for the new sink)
 
 - [ ] **Step 1: Rewrite the dispatcher's sink set**
 
@@ -484,9 +484,9 @@ func stateAndYolo() async {
 - [ ] **Step 4: Defer running** (build completes after Task 6). Commit source now.
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Plugins/PluginEventDispatcher.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeResponseWiringTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Plugins/PluginEventDispatcher.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeResponseWiringTests.swift
 git commit -m "refactor(plugins): dispatcher fans one AgentState sink; yolo keeps session working"
 ```
 
@@ -497,8 +497,8 @@ git commit -m "refactor(plugins): dispatcher fans one AgentState sink; yolo keep
 ### Task 5: `ClaudeCodeTranslator` emits `AgentState`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeTranslatorStateTests.swift`
+- Modify: `CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift`
+- Test: `CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeTranslatorStateTests.swift`
 
 - [ ] **Step 1: Write failing tests for the mapping rule**
 
@@ -558,16 +558,16 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift \
-        ClaudeSpyPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeTranslatorStateTests.swift
+git add CtrlxPackage/Sources/ClaudeCodePluginCore/ClaudeCodeTranslator.swift \
+        CtrlxPackage/Tests/ClaudeCodePluginCoreTests/ClaudeCodeTranslatorStateTests.swift
 git commit -m "refactor(claude): translate hooks into AgentState"
 ```
 
 ### Task 6: `CodexTranslator` emits `AgentState`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/CodexPluginCore/CodexTranslator.swift`
-- Test: `ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexTranslatorStateTests.swift`
+- Modify: `CtrlxPackage/Sources/CodexPluginCore/CodexTranslator.swift`
+- Test: `CtrlxPackage/Tests/CodexPluginCoreTests/CodexTranslatorStateTests.swift`
 
 - [ ] **Step 1–4:** Mirror Task 5 exactly (Codex shares `HookEvent.isWorking` and the same form-producing structure). Write per-row mapping tests, run-fail, apply the identical `state` rule (lines ~83-120), run-pass.
 - [ ] **Step 5: Verify the full package builds and the suite is green again**
@@ -578,8 +578,8 @@ Expected: All targets compile; only pre-existing tests that asserted on the dele
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/CodexPluginCore/CodexTranslator.swift \
-        ClaudeSpyPackage/Tests/CodexPluginCoreTests/CodexTranslatorStateTests.swift
+git add CtrlxPackage/Sources/CodexPluginCore/CodexTranslator.swift \
+        CtrlxPackage/Tests/CodexPluginCoreTests/CodexTranslatorStateTests.swift
 git commit -m "refactor(codex): translate hooks into AgentState"
 ```
 
@@ -590,8 +590,8 @@ git commit -m "refactor(codex): translate hooks into AgentState"
 ### Task 7: `MirrorWindowManager.applyState`; delete the three maps
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiringTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift`
+- Test: `CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeStatusWiringTests.swift`
 
 - [ ] **Step 1: Update the wiring tests**
 
@@ -638,9 +638,9 @@ Expected: PASS. Fix any AppCoordinator references to the deleted methods (yolo-e
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Managers/MirrorWindowManager.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Coordinators/AppCoordinator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyServerFeatureTests/PluginRuntimeStatusWiringTests.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Managers/MirrorWindowManager.swift \
+        CtrlxPackage/Sources/CtrlxServerFeature/Coordinators/AppCoordinator.swift \
+        CtrlxPackage/Tests/CtrlxServerFeatureTests/PluginRuntimeStatusWiringTests.swift
 git commit -m "refactor(plugins): MirrorWindowManager applies AgentState; delete blocking-form/pending-approval/open-form maps"
 ```
 
@@ -651,9 +651,9 @@ git commit -m "refactor(plugins): MirrorWindowManager applies AgentState; delete
 ### Task 8: `AgentSessionStatusMessage` carries `state`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyNetworking/Models/Plugin/PluginWireMessages.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Services/ConnectedViewer*.swift` + `AppCoordinator.swift` (status forward), `ExternalServerClient.swift` (decode dispatch)
-- Test: extend `ClaudeSpyNetworkingTests`
+- Modify: `CtrlxPackage/Sources/CtrlxNetworking/Models/Plugin/PluginWireMessages.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Services/ConnectedViewer*.swift` + `AppCoordinator.swift` (status forward), `ExternalServerClient.swift` (decode dispatch)
+- Test: extend `CtrlxNetworkingTests`
 
 - [ ] **Step 1: Failing test** — encode/decode an `AgentSessionStatusMessage` carrying `.awaitingReplies(...)`, assert the state survives and `withPairId` forwards it.
 
@@ -672,7 +672,7 @@ git commit -m "refactor(plugins): MirrorWindowManager applies AgentState; delete
 - Modify: `WebSocketMessage.swift` (delete `case agentResponseRequest` + its CodingKey, ~lines 104/195)
 - Modify: `RelayMessages.swift` (delete `openResponseRequests` field, `withPairId` forward, and `PaneOpenResponseRequest`)
 - Modify: `ConnectedViewer.swift` / `ConnectedViewerManager.swift` (delete `sendAgentResponseRequest*`), `ExternalServerClient.swift` (delete its decode/dispatch), `AppCoordinator.swift` snapshot builder (delete `openResponseRequests:`)
-- Delete: `ClaudeSpyPackage/Tests/ClaudeSpyNetworkingTests/SessionStateOpenRequestSyncTests.swift`
+- Delete: `CtrlxPackage/Tests/CtrlxNetworkingTests/SessionStateOpenRequestSyncTests.swift`
 
 - [ ] **Step 1:** Delete the types/cases/fields above and every reference (the compiler enumerates them). Delete the `SessionStateOpenRequestSyncTests.swift` file (its concern is now `AgentSession.state` in the snapshot, covered by Task 10).
 - [ ] **Step 2: Build** `./scripts/unit-tests.sh -- --filter __none__` → compiles clean.
@@ -685,8 +685,8 @@ git commit -m "refactor(plugins): MirrorWindowManager applies AgentState; delete
 ### Task 10: `SessionStore` reads state; delete `openResponseRequests`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/Services/SessionStore.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyFeatureTests/SessionDetailServiceTests.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/Services/SessionStore.swift`
+- Test: `CtrlxPackage/Tests/CtrlxFeatureTests/SessionDetailServiceTests.swift`
 
 - [ ] **Step 1: Update tests.** The `openRequest(...)` helper now pushes a status with an `awaiting*` state. The snapshot catch-up tests (added in `eef20ae9`) become: build a `SessionStateMessage` whose `paneStates["%1"].agentSession.state == .awaitingReplies(...)`, call `handleStateUpdate`, assert the service shows the form. Add: a `.working` status clears a prior `awaiting*` (it transitions, no separate dict). Delete tests that referenced `sessionStore.openResponseRequest(for:)` as a separate store.
 
@@ -701,7 +701,7 @@ git commit -m "refactor(plugins): MirrorWindowManager applies AgentState; delete
 ### Task 11: `SessionDetailService.responseState` from `session.state`
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Services/SessionDetailService.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxFeature/Services/SessionDetailService.swift`
 - Test: covered by `SessionDetailServiceTests` (Task 10).
 
 - [ ] **Step 1:** In `updateResponseState`, source the open form from `sessionStore.session(for:hostId:)?.state.openForm` instead of `sessionStore.openResponseRequest(...)`. Build `ResponseState` from `(request, requestID)`; clear it when `openForm == nil`.
@@ -711,7 +711,7 @@ git commit -m "refactor(plugins): MirrorWindowManager applies AgentState; delete
 ### Task 12: Verify `SessionStatusIndicator` and other read sites
 
 **Files:**
-- Verify: `ClaudeSpyCommon/UI/SessionStatusIndicator.swift`, `MenuBarExtraView.swift`, `SessionFieldsView.swift`, `WindowLayoutView.swift`.
+- Verify: `CtrlxCommon/UI/SessionStatusIndicator.swift`, `MenuBarExtraView.swift`, `SessionFieldsView.swift`, `WindowLayoutView.swift`.
 
 - [ ] **Step 1:** Confirm each compiles against the computed `isWorking`/`needsAttention` (they should, unchanged). Decide per the spec's open question whether to add per-state glyphs now; **default: keep the existing attention/working/idle mapping** to avoid baseline churn.
 - [ ] **Step 2: Build** the full package: `./scripts/unit-tests.sh -- --filter __none__` → clean.

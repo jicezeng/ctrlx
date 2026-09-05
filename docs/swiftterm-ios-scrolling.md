@@ -1,12 +1,12 @@
 # SwiftTerm iOS Scrolling Architecture
 
-This document details how SwiftTerm's `TerminalView` handles scrolling on iOS, the limitations discovered, and how ClaudeSpy works around them.
+This document details how SwiftTerm's `TerminalView` handles scrolling on iOS, the limitations discovered, and how Ctrlx works around them.
 
 > **SwiftTerm Version**: 1.9.0 (from Package.swift dependency)
 
 ## Overview
 
-SwiftTerm's iOS `TerminalView` is a `UIScrollView` subclass that handles terminal rendering and scrollback navigation. ClaudeSpy wraps it in an additional scroll view to support wide terminals (horizontal scrolling), creating a nested scroll view architecture.
+SwiftTerm's iOS `TerminalView` is a `UIScrollView` subclass that handles terminal rendering and scrollback navigation. Ctrlx wraps it in an additional scroll view to support wide terminals (horizontal scrolling), creating a nested scroll view architecture.
 
 ## SwiftTerm Source Files
 
@@ -76,9 +76,9 @@ SwiftTerm fully supports vertical scrolling for terminal scrollback history.
 
 For wide terminals (more columns than fit on screen), the content is clipped on the right. There's no way to scroll horizontally to see clipped content using SwiftTerm alone.
 
-## ClaudeSpy's Solution: Outer Scroll View + Content-Sized Terminal
+## Ctrlx's Solution: Outer Scroll View + Content-Sized Terminal
 
-ClaudeSpy wraps TerminalView in an outer UIScrollView. The terminal view is sized to match the terminal content exactly, and the outer scroll view handles both horizontal (wide terminals) and vertical (tall terminals) scrolling.
+Ctrlx wraps TerminalView in an outer UIScrollView. The terminal view is sized to match the terminal content exactly, and the outer scroll view handles both horizontal (wide terminals) and vertical (tall terminals) scrolling.
 
 ### Architecture
 
@@ -141,7 +141,7 @@ The content-sized approach avoids all these issues by working WITH SwiftTerm's l
 
 ## InteractiveTerminalView Subclass
 
-ClaudeSpy extends SwiftTerm's `TerminalView` with `InteractiveTerminalView`:
+Ctrlx extends SwiftTerm's `TerminalView` with `InteractiveTerminalView`:
 
 ### Features
 
@@ -264,7 +264,7 @@ reason to change tmux sizing.
 | Frame = terminal size expected | Can't make terminal smaller than buffer | Accept full-size frame |
 | updateScroller() not overridable | Can't customize scroll behavior | Content-sized view avoids the need |
 
-### ClaudeSpy Constraints
+### Ctrlx Constraints
 
 | Constraint | Reason |
 |------------|--------|
@@ -296,7 +296,7 @@ The content-sized terminal view approach works correctly for both short and tall
 - `SwiftTerm/Sources/SwiftTerm/iOS/iOSTerminalView.swift`
 - `SwiftTerm/Sources/SwiftTerm/Apple/AppleTerminalView.swift`
 
-### ClaudeSpy Source
+### Ctrlx Source
 
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/LiveTerminalView.swift` - Main terminal view
-- `ClaudeSpyPackage/Sources/ClaudeSpyFeature/Views/InteractiveTerminalView.swift` - SwiftTerm subclass
+- `CtrlxPackage/Sources/CtrlxFeature/Views/LiveTerminalView.swift` - Main terminal view
+- `CtrlxPackage/Sources/CtrlxFeature/Views/InteractiveTerminalView.swift` - SwiftTerm subclass

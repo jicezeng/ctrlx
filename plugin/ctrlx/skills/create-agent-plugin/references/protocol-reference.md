@@ -1,8 +1,8 @@
 # CtrlX Sidecar Plugin — Protocol Reference
 
 The durable external contract for a v2 **sidecar plugin**: a standalone executable
-CtrlX (the ClaudeSpy Mac app) spawns as a child process and drives over stdio
-with JSON-RPC. This file is self-contained — you do not need the ClaudeSpy source
+CtrlX (the Ctrlx Mac app) spawns as a child process and drives over stdio
+with JSON-RPC. This file is self-contained — you do not need the Ctrlx source
 to build a plugin against it.
 
 ## Contents

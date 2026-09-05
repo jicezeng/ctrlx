@@ -12,7 +12,7 @@
 
 - Recording is **strictly opt-in** via `--record`; with the flag absent there must be **zero behavior change** (no stage layout, no reporters added, no new dependencies exercised).
 - **Moves only, never resizes** any window — screenshot baselines depend on window size, not position.
-- Package platform floor is `.macOS(.v15)` (already set in `ClaudeSpyPackage/Package.swift:519`) — `SCRecordingOutput` requires exactly macOS 15.0+.
+- Package platform floor is `.macOS(.v15)` (already set in `CtrlxPackage/Package.swift:519`) — `SCRecordingOutput` requires exactly macOS 15.0+.
 - Swift tests use **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect`), never XCTest. Python tests use stdlib `unittest`, runnable as `python3 <file>`.
 - Swift concurrency only — actors for I/O, no GCD. All cross-boundary types `Sendable`.
 - Python scripts are **stdlib only** (no pip installs).
@@ -30,8 +30,8 @@
 Pure geometry for window "lanes" — no AX/CG calls, fully unit-testable. Instance 0 keeps the canonical `(10, 10)` origin every scenario already uses (`Shortcut.openPanesWindow`, `ScenarioShortcuts.swift:39`). Instance N gets a side-by-side lane when the display is wide enough, else a staggered diagonal clamped on-screen.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/StageLayout.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/StageLayoutTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/StageLayout.swift`
+- Test: `CtrlxPackage/Tests/CtrlxE2ETests/StageLayoutTests.swift`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -39,12 +39,12 @@ Pure geometry for window "lanes" — no AX/CG calls, fully unit-testable. Instan
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/StageLayoutTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxE2ETests/StageLayoutTests.swift`:
 
 ```swift
 import CoreGraphics
 import Testing
-@testable import ClaudeSpyE2ELib
+@testable import CtrlxE2ELib
 
 @Suite("StageLayout")
 struct StageLayoutTests {
@@ -87,12 +87,12 @@ struct StageLayoutTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter StageLayoutTests`
+Run: `swift test --package-path CtrlxPackage --filter StageLayoutTests`
 Expected: FAIL to compile — `cannot find 'StageLayout' in scope`.
 
 - [ ] **Step 3: Implement StageLayout**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/StageLayout.swift`:
+Create `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/StageLayout.swift`:
 
 ```swift
 import CoreGraphics
@@ -170,14 +170,14 @@ public struct StageLayout: Sendable {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter StageLayoutTests`
+Run: `swift test --package-path CtrlxPackage --filter StageLayoutTests`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/StageLayout.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/StageLayoutTests.swift
+git add CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/StageLayout.swift \
+        CtrlxPackage/Tests/CtrlxE2ETests/StageLayoutTests.swift
 git commit -m "e2e: StageLayout lane geometry for recorded runs (#621)"
 ```
 
@@ -190,8 +190,8 @@ An actor recording the main display to H.264 `.mov` at ≤15 fps, 1× point reso
 The real recorder needs Screen Recording TCC permission and a GUI session, which unit-test runners may lack — so its test is env-gated and run manually (the e2e machinery already gates the same permission in `scripts/e2e-test.sh:277`).
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Utilities/ScreenRecorder.swift`
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/ScreenRecorderTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Utilities/ScreenRecorder.swift`
+- Test: `CtrlxPackage/Tests/CtrlxE2ETests/ScreenRecorderTests.swift`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -199,19 +199,19 @@ The real recorder needs Screen Recording TCC permission and a GUI session, which
 
 - [ ] **Step 1: Write the (gated) failing test**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/ScreenRecorderTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxE2ETests/ScreenRecorderTests.swift`:
 
 ```swift
 import AVFoundation
 import Foundation
 import Testing
-@testable import ClaudeSpyE2ELib
+@testable import CtrlxE2ELib
 
 @Suite("ScreenRecorder integration")
 struct ScreenRecorderTests {
     /// Requires a GUI session + Screen Recording permission for the test
     /// runner, so it only runs when explicitly requested:
-    ///   E2E_RECORDING_TESTS=1 swift test --package-path ClaudeSpyPackage \
+    ///   E2E_RECORDING_TESTS=1 swift test --package-path CtrlxPackage \
     ///     --filter ScreenRecorderTests
     @Test(
         "Records the main display to a playable movie",
@@ -240,12 +240,12 @@ struct ScreenRecorderTests {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `E2E_RECORDING_TESTS=1 swift test --package-path ClaudeSpyPackage --filter ScreenRecorderTests`
+Run: `E2E_RECORDING_TESTS=1 swift test --package-path CtrlxPackage --filter ScreenRecorderTests`
 Expected: FAIL to compile — `cannot find 'ScreenRecorder' in scope`.
 
 - [ ] **Step 3: Implement ScreenRecorder**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Utilities/ScreenRecorder.swift`:
+Create `CtrlxPackage/Sources/CtrlxE2ELib/Utilities/ScreenRecorder.swift`:
 
 ```swift
 import CoreGraphics
@@ -359,21 +359,21 @@ private final class RecorderDelegate: NSObject, SCStreamDelegate, SCRecordingOut
 
 - [ ] **Step 4: Verify build + run the gated test from a permissioned terminal**
 
-Run: `swift build --package-path ClaudeSpyPackage --target ClaudeSpyE2ELib`
+Run: `swift build --package-path CtrlxPackage --target CtrlxE2ELib`
 Expected: builds clean.
 
 Then, from a local terminal that has Screen Recording permission (same grant e2e-test.sh checks):
 
-Run: `E2E_RECORDING_TESTS=1 swift test --package-path ClaudeSpyPackage --filter ScreenRecorderTests`
-Expected: PASS. Also verify without the env var: `swift test --package-path ClaudeSpyPackage --filter ScreenRecorderTests` → test is SKIPPED (so CI unit-test runs never need the permission).
+Run: `E2E_RECORDING_TESTS=1 swift test --package-path CtrlxPackage --filter ScreenRecorderTests`
+Expected: PASS. Also verify without the env var: `swift test --package-path CtrlxPackage --filter ScreenRecorderTests` → test is SKIPPED (so CI unit-test runs never need the permission).
 
 If the test fails with a TCC/permission error rather than an assertion: the invoking terminal lacks Screen Recording — grant it in System Settings › Privacy & Security › Screen & System Audio Recording and re-run. Do not weaken the assertions.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Utilities/ScreenRecorder.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/ScreenRecorderTests.swift
+git add CtrlxPackage/Sources/CtrlxE2ELib/Utilities/ScreenRecorder.swift \
+        CtrlxPackage/Tests/CtrlxE2ETests/ScreenRecorderTests.swift
 git commit -m "e2e: ScreenCaptureKit one-take ScreenRecorder (#621)"
 ```
 
@@ -388,10 +388,10 @@ Post-processing is injected as a closure so tests don't need ffmpeg; the product
 Also refactors the orchestrator's private `sanitizeForPath` into `static func scenarioDirName(for:)` so the coordinator derives the identical per-scenario directory.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/ScenarioTimeline.swift`
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/RecordingCoordinator.swift`
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift:137` and `:1620-1625` (sanitizeForPath → static scenarioDirName)
-- Test: `ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/RecordingCoordinatorTests.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/ScenarioTimeline.swift`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/RecordingCoordinator.swift`
+- Modify: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift:137` and `:1620-1625` (sanitizeForPath → static scenarioDirName)
+- Test: `CtrlxPackage/Tests/CtrlxE2ETests/RecordingCoordinatorTests.swift`
 
 **Interfaces:**
 - Consumes: `ScreenRecording` (Task 2), `TestProgressReporter` / `TestOrchestrator.ScenarioResult` (existing).
@@ -403,12 +403,12 @@ Also refactors the orchestrator's private `sanitizeForPath` into `static func sc
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/RecordingCoordinatorTests.swift`:
+Create `CtrlxPackage/Tests/CtrlxE2ETests/RecordingCoordinatorTests.swift`:
 
 ```swift
 import Foundation
 import Testing
-@testable import ClaudeSpyE2ELib
+@testable import CtrlxE2ELib
 
 /// Fake recorder that tracks calls and creates the output file.
 actor FakeRecorder: ScreenRecording {
@@ -527,12 +527,12 @@ struct RecordingCoordinatorTests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter RecordingCoordinatorTests`
+Run: `swift test --package-path CtrlxPackage --filter RecordingCoordinatorTests`
 Expected: FAIL to compile — `cannot find 'RecordingCoordinator'`, `'ScenarioTimeline'`, and `type 'TestOrchestrator' has no member 'scenarioDirName'`.
 
 - [ ] **Step 3: Refactor sanitizeForPath into a static scenarioDirName**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift`, replace (around line 1620):
+In `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift`, replace (around line 1620):
 
 ```swift
     /// Convert a scenario name into a safe directory name
@@ -564,7 +564,7 @@ and update the single call site (line 137):
 
 - [ ] **Step 4: Implement ScenarioTimeline**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/ScenarioTimeline.swift`:
+Create `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/ScenarioTimeline.swift`:
 
 ```swift
 import Foundation
@@ -602,7 +602,7 @@ public struct ScenarioTimeline: Codable, Sendable {
 
 - [ ] **Step 5: Implement RecordingCoordinator**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/RecordingCoordinator.swift`:
+Create `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/RecordingCoordinator.swift`:
 
 ```swift
 import Foundation
@@ -797,25 +797,25 @@ public actor RecordingCoordinator: TestProgressReporter {
 }
 ```
 
-Note: `ProcessRunner` is the existing actor in `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Utilities/ProcessRunner.swift` (same `runOrThrow(_:arguments:)` the orchestrator uses). If its init or method labels differ, match the existing call sites, e.g. `TestOrchestrator.swift:854`.
+Note: `ProcessRunner` is the existing actor in `CtrlxPackage/Sources/CtrlxE2ELib/Utilities/ProcessRunner.swift` (same `runOrThrow(_:arguments:)` the orchestrator uses). If its init or method labels differ, match the existing call sites, e.g. `TestOrchestrator.swift:854`.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter RecordingCoordinatorTests`
+Run: `swift test --package-path CtrlxPackage --filter RecordingCoordinatorTests`
 Expected: PASS (3 tests).
 
 Also run the full E2E-lib unit suite to catch the sanitizeForPath refactor:
 
-Run: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyE2ETests`
+Run: `swift test --package-path CtrlxPackage --filter CtrlxE2ETests`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/ScenarioTimeline.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/RecordingCoordinator.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift \
-        ClaudeSpyPackage/Tests/ClaudeSpyE2ETests/RecordingCoordinatorTests.swift
+git add CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/ScenarioTimeline.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/RecordingCoordinator.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift \
+        CtrlxPackage/Tests/CtrlxE2ETests/RecordingCoordinatorTests.swift
 git commit -m "e2e: RecordingCoordinator reporter + per-step timeline.json (#621)"
 ```
 
@@ -833,7 +833,7 @@ Stdlib-only Python that turns `recording-raw.mov` + `timeline.json` into `video.
 The script lives in the lib's bundled `Scenarios/Scripts/` directory (already a `.copy` resource in `Package.swift`, same mechanism as `fake_editor.py`) so `Bundle.module` finds it at runtime; its filename uses underscores so the unit tests can import it as a module.
 
 **Files:**
-- Create: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/Scripts/e2e_video_postprocess.py`
+- Create: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/Scripts/e2e_video_postprocess.py`
 - Test: `scripts/tests/test_e2e_video_postprocess.py`
 
 **Interfaces:**
@@ -856,7 +856,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..",
-    "ClaudeSpyPackage", "Sources", "ClaudeSpyE2ELib", "Scenarios", "Scripts",
+    "CtrlxPackage", "Sources", "CtrlxE2ELib", "Scenarios", "Scripts",
 ))
 import e2e_video_postprocess as vp
 
@@ -953,7 +953,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'e2e_video_postprocess'
 
 - [ ] **Step 3: Implement the script**
 
-Create `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/Scripts/e2e_video_postprocess.py`:
+Create `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/Scripts/e2e_video_postprocess.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -1265,7 +1265,7 @@ cat > timeline.json <<'EOF'
   ]
 }
 EOF
-python3 <repo>/ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/Scripts/e2e_video_postprocess.py \
+python3 <repo>/CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/Scripts/e2e_video_postprocess.py \
     --raw recording-raw.mov --timeline timeline.json --keep-raw
 open video.mp4
 ```
@@ -1275,7 +1275,7 @@ Expected: `video.mp4` plays; the step ribbon appears at the bottom; the timecode
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/Scripts/e2e_video_postprocess.py \
+git add CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/Scripts/e2e_video_postprocess.py \
         scripts/tests/test_e2e_video_postprocess.py
 git commit -m "e2e: ffmpeg post-processing — labels, dead-time compression, seek chapters (#621)"
 ```
@@ -1284,17 +1284,17 @@ git commit -m "e2e: ffmpeg post-processing — labels, dead-time compression, se
 
 ### Task 5: Wire `--record` end-to-end (CLI, orchestrator stage layout, Simulator placement, e2e-test.sh)
 
-Connects everything: the `--record` flag flows `e2e-test.sh` → `ClaudeSpyE2E` → `RecordingCoordinator` + orchestrator stage layout. The stage layout **translates** instance-N absolute coordinates (`macMoveWindow`, `macClickAtPoint`, `macDrag`) by the lane vector — deterministic and synchronous with step execution, so no window ever moves while a step is mid-interaction. The Simulator window is pinned top-right after `launchIOSApp`. (Settings windows opened via `macOpenSettings` stay centered — accepted residual occlusion; the Panes windows where terminal action happens are all positioned via `macMoveWindow` and therefore covered.)
+Connects everything: the `--record` flag flows `e2e-test.sh` → `CtrlxE2E` → `RecordingCoordinator` + orchestrator stage layout. The stage layout **translates** instance-N absolute coordinates (`macMoveWindow`, `macClickAtPoint`, `macDrag`) by the lane vector — deterministic and synchronous with step execution, so no window ever moves while a step is mid-interaction. The Simulator window is pinned top-right after `launchIOSApp`. (Settings windows opened via `macOpenSettings` stay centered — accepted residual occlusion; the Panes windows where terminal action happens are all positioned via `macMoveWindow` and therefore covered.)
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift` (flags at ~line 68, reporters at ~117, orchestrator init at ~134)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift` (init ~104, `.macMoveWindow` case at 797, `.macClickAtPoint` at 822, `.macDrag` at 825, `.launchIOSApp` at 468)
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Drivers/Simulator/SimulatorDriver.swift` (add `positionWindowTopRight`)
+- Modify: `CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift` (flags at ~line 68, reporters at ~117, orchestrator init at ~134)
+- Modify: `CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift` (init ~104, `.macMoveWindow` case at 797, `.macClickAtPoint` at 822, `.macDrag` at 825, `.launchIOSApp` at 468)
+- Modify: `CtrlxPackage/Sources/CtrlxE2ELib/Drivers/Simulator/SimulatorDriver.swift` (add `positionWindowTopRight`)
 - Modify: `scripts/e2e-test.sh` (arg parsing ~line 43, prerequisite gate after the permission checks ~line 413, E2E_ARGS ~line 586)
 
 **Interfaces:**
 - Consumes: `StageLayout` (Task 1), `ScreenRecorder` (Task 2), `RecordingCoordinator` + `makeFFmpegPostProcessor` (Task 3), bundled script (Task 4).
-- Produces: `TestOrchestrator.init(..., stageLayoutEnabled: Bool = false, ...)`; `SimulatorDriver.positionWindowTopRight(displayWidth: Int) async`; CLI flags `--record`, `--record-mode speedup|remove`, `--record-keep-raw` on both `ClaudeSpyE2E` and `e2e-test.sh`. After this task a recorded run drops `video.mp4` + `video.json` + `timeline.json` into `<screenshotsDir>/<scenario>/`.
+- Produces: `TestOrchestrator.init(..., stageLayoutEnabled: Bool = false, ...)`; `SimulatorDriver.positionWindowTopRight(displayWidth: Int) async`; CLI flags `--record`, `--record-mode speedup|remove`, `--record-keep-raw` on both `CtrlxE2E` and `e2e-test.sh`. After this task a recorded run drops `video.mp4` + `video.json` + `timeline.json` into `<screenshotsDir>/<scenario>/`.
 
 - [ ] **Step 1: Add stage layout to TestOrchestrator**
 
@@ -1397,9 +1397,9 @@ In `SimulatorDriver.swift`, add (near the other public app-lifecycle methods, us
 
 If `SimulatorDriver` exposes a dedicated AppleScript helper instead of raw `processRunner.run`, use that helper — follow the pattern of its existing osascript call sites.
 
-- [ ] **Step 3: Add the CLI flags and wire the coordinator in ClaudeSpyE2ECommand**
+- [ ] **Step 3: Add the CLI flags and wire the coordinator in CtrlxE2ECommand**
 
-In `ClaudeSpyE2ECommand.swift`, after the `--list-scenarios` flag (~line 70):
+In `CtrlxE2ECommand.swift`, after the `--list-scenarios` flag (~line 70):
 
 ```swift
     @Flag(name: .long, help: "Record each scenario as a full-display video (requires ffmpeg)")
@@ -1536,7 +1536,7 @@ fi
 
 - [ ] **Step 5: Build everything and run the existing unit suite**
 
-Run: `swift test --package-path ClaudeSpyPackage --filter ClaudeSpyE2ETests`
+Run: `swift test --package-path CtrlxPackage --filter CtrlxE2ETests`
 Expected: PASS (no regressions from the orchestrator changes).
 
 Run: `bash -n scripts/e2e-test.sh`
@@ -1545,7 +1545,7 @@ Expected: no syntax errors.
 - [ ] **Step 6: Verify unrecorded behavior is unchanged (regression guard)**
 
 Run: `./scripts/e2e-test.sh --scenario "Cursor Style Changes"`
-Expected: scenario PASSES exactly as on main; no `recording-raw.mov`/`video.mp4` anywhere under the screenshots dir (`find "${TMPDIR:-/tmp}/claudespy-e2e/e2e-screenshots" -name '*.mov' -o -name '*.mp4'` returns nothing).
+Expected: scenario PASSES exactly as on main; no `recording-raw.mov`/`video.mp4` anywhere under the screenshots dir (`find "${TMPDIR:-/tmp}/ctrlx-e2e/e2e-screenshots" -name '*.mov' -o -name '*.mp4'` returns nothing).
 
 - [ ] **Step 7: Verify a recorded single-instance scenario end-to-end**
 
@@ -1553,7 +1553,7 @@ Run: `./scripts/e2e-test.sh --skip-build --record --record-keep-raw --scenario "
 Expected: scenario PASSES; then
 
 ```bash
-ls "${TMPDIR:-/tmp}/claudespy-e2e/e2e-screenshots/cursor-style-changes/"
+ls "${TMPDIR:-/tmp}/ctrlx-e2e/e2e-screenshots/cursor-style-changes/"
 ```
 
 shows `recording-raw.mov`, `timeline.json`, `video.mp4`, `video.json` plus the usual PNGs. `open …/video.mp4` — confirm: step ribbon matches the running step, timecode counts real elapsed time, waits are sped up with the `>> 8x` badge, and `video.json`'s `durationSeconds` is meaningfully smaller than `rawDurationSeconds` on this wait-heavy scenario.
@@ -1573,9 +1573,9 @@ Expected: PASSES; in the video the Simulator window sits top-right and does not 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyE2E/ClaudeSpyE2ECommand.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Orchestrator/TestOrchestrator.swift \
-        ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Drivers/Simulator/SimulatorDriver.swift \
+git add CtrlxPackage/Sources/CtrlxE2E/CtrlxE2ECommand.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Orchestrator/TestOrchestrator.swift \
+        CtrlxPackage/Sources/CtrlxE2ELib/Drivers/Simulator/SimulatorDriver.swift \
         scripts/e2e-test.sh
 git commit -m "e2e: --record flag, stage-layout lanes, Simulator placement (#621)"
 ```
@@ -2031,7 +2031,7 @@ Open the served URL, navigate to the run published in Task 6 Step 6 (re-run that
 ```bash
 cd ../ClaudeSpyTestResults
 git add index.html
-git commit -m "Viewer: play scenario videos with step-seek chapters (ClaudeSpy #621)"
+git commit -m "Viewer: play scenario videos with step-seek chapters (Ctrlx #621)"
 git push origin main
 ```
 

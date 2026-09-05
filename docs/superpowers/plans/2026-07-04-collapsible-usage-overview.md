@@ -4,9 +4,9 @@
 
 **Goal:** Both iOS and macOS show the usage rollup as a compact one-line "Today" cell that expands in place (disclosure chevron) to the full Projects + Recent days details, proven by one paired mac+iOS E2E scenario.
 
-**Architecture:** The shared `UsageOverviewView` in `ClaudeSpyCommon` gains a transient `@State` `isExpanded` (always starts collapsed) and renders its header as a tappable plain-style button with a rotating chevron. macOS swaps its header-only call site for the full view; iOS's call site is unchanged. `OTELUsageOverviewScenario` converts from `macos-only` to a paired scenario (composing `FreshPairingScenario`) and exercises expand/contract on both platforms.
+**Architecture:** The shared `UsageOverviewView` in `CtrlxCommon` gains a transient `@State` `isExpanded` (always starts collapsed) and renders its header as a tappable plain-style button with a rotating chevron. macOS swaps its header-only call site for the full view; iOS's call site is unchanged. `OTELUsageOverviewScenario` converts from `macos-only` to a paired scenario (composing `FreshPairingScenario`) and exercises expand/contract on both platforms.
 
-**Tech Stack:** Swift 6.3+, SwiftUI (MV pattern), ClaudeSpyE2ELib scenario DSL.
+**Tech Stack:** Swift 6.3+, SwiftUI (MV pattern), CtrlxE2ELib scenario DSL.
 
 **Spec:** `docs/superpowers/specs/2026-07-04-collapsible-usage-overview-design.md`
 
@@ -16,8 +16,8 @@
 - Targets: macOS 15.0+, iOS 17.0+.
 - SF Symbols only via the `Symbols` enum (`Symbols.chevronRight` already exists — do NOT add a string literal).
 - Expanded state is transient `@State`, default collapsed — NO persistence (no `@AppStorage`).
-- Shared UI lives in `ClaudeSpyPackage/Sources/ClaudeSpyCommon/`.
-- All builds/tests go through XcodeBuildTools skills (`xcodebuild`, `swift-package`) — never raw `xcodebuild`/`swift` commands. macOS scheme: `ClaudeSpyServer`; iOS scheme: `ClaudeSpy`.
+- Shared UI lives in `CtrlxPackage/Sources/CtrlxCommon/`.
+- All builds/tests go through XcodeBuildTools skills (`xcodebuild`, `swift-package`) — never raw `xcodebuild`/`swift` commands. macOS scheme: `CtrlxServer`; iOS scheme: `Ctrlx`.
 - E2E work (Task 3, 4) requires invoking the repo `e2e-testing` skill first.
 - E2E screenshot baselines are CI-generated: never commit locally-captured baselines; `git rm` the affected dir and let CI capture them.
 - Run the E2E scenario locally 2–3 times and visually verify ALL screenshots before pushing.
@@ -28,7 +28,7 @@
 ### Task 1: Make the shared `UsageOverviewView` collapsible
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/UsageOverviewViews.swift:37-83` (the `UsageOverviewView` struct) and `:181-191` (previews)
+- Modify: `CtrlxPackage/Sources/CtrlxCommon/UI/UsageOverviewViews.swift:37-83` (the `UsageOverviewView` struct) and `:181-191` (previews)
 
 **Interfaces:**
 - Consumes: existing `UsageOverviewHeader` (unchanged), `UsageProjectRow`, `UsageDayRow`, `Symbols.chevronRight`.
@@ -36,7 +36,7 @@
 
 - [ ] **Step 1: Replace the `UsageOverviewView` struct**
 
-In `ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/UsageOverviewViews.swift`, replace the entire `UsageOverviewView` struct (lines 39–83, including its doc comment) with:
+In `CtrlxPackage/Sources/CtrlxCommon/UI/UsageOverviewViews.swift`, replace the entire `UsageOverviewView` struct (lines 39–83, including its doc comment) with:
 
 ```swift
 /// The full cross-session overview (issue #598): a compact "Today" header row
@@ -152,13 +152,13 @@ with:
 - [ ] **Step 3: Build both platforms**
 
 Use the XcodeBuildTools `xcodebuild` skill:
-1. Scheme `ClaudeSpyServer` (macOS destination). Expected: BUILD SUCCEEDED.
-2. Scheme `ClaudeSpy` (iOS Simulator destination). Expected: BUILD SUCCEEDED.
+1. Scheme `CtrlxServer` (macOS destination). Expected: BUILD SUCCEEDED.
+2. Scheme `Ctrlx` (iOS Simulator destination). Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyCommon/UI/UsageOverviewViews.swift
+git add CtrlxPackage/Sources/CtrlxCommon/UI/UsageOverviewViews.swift
 git commit -m "Make UsageOverviewView collapsible with disclosure chevron"
 ```
 
@@ -167,7 +167,7 @@ git commit -m "Make UsageOverviewView collapsible with disclosure chevron"
 ### Task 2: macOS sidebar uses the collapsible view
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift:489-493`
+- Modify: `CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift:489-493`
 
 **Interfaces:**
 - Consumes: `UsageOverviewView(overview:)` from Task 1 (one-argument form, defaults collapsed).
@@ -200,12 +200,12 @@ with:
 
 - [ ] **Step 2: Build macOS**
 
-Use the XcodeBuildTools `xcodebuild` skill: scheme `ClaudeSpyServer` (macOS destination). Expected: BUILD SUCCEEDED.
+Use the XcodeBuildTools `xcodebuild` skill: scheme `CtrlxServer` (macOS destination). Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyServerFeature/Views/MainView.swift
+git add CtrlxPackage/Sources/CtrlxServerFeature/Views/MainView.swift
 git commit -m "Show collapsible usage overview in mac sidebar"
 ```
 
@@ -216,7 +216,7 @@ git commit -m "Show collapsible usage overview in mac sidebar"
 **Invoke the repo `e2e-testing` skill before starting this task.**
 
 **Files:**
-- Modify: `ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/OTELUsageOverviewScenario.swift` (whole file)
+- Modify: `CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/OTELUsageOverviewScenario.swift` (whole file)
 
 **Interfaces:**
 - Consumes: `FreshPairingScenario.scenario` (starts server, launches mac + iOS, pairs them; leaves iOS on the Sessions list and mac Settings open), `Shortcut.openPanesWindow()`, the view from Tasks 1–2 whose header button carries label `"Today's usage: …"`.
@@ -282,7 +282,7 @@ public enum OTELUsageOverviewScenario {
     private static let commitMetricCurl =
         #"curl -s -o /dev/null -X POST ${otlpEndpoint}/v1/metrics -H 'Content-Type: application/json' -d '{"resourceMetrics":[{"scopeMetrics":[{"metrics":[{"name":"claude_code.commit.count","sum":{"dataPoints":[{"attributes":[{"key":"session.id","value":{"stringValue":"e2e-usage-session"}}],"asInt":"2"}]}}]}]}]}'"#
 
-    public static let scenario = ClaudeSpyE2ELib.scenario(
+    public static let scenario = CtrlxE2ELib.scenario(
         "OTEL Usage Overview",
         tags: ["telemetry", "otel"]
     ) {
@@ -373,7 +373,7 @@ Expected: build succeeds and the list includes `OTEL Usage Overview` (no `macos-
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ClaudeSpyPackage/Sources/ClaudeSpyE2ELib/Scenarios/OTELUsageOverviewScenario.swift
+git add CtrlxPackage/Sources/CtrlxE2ELib/Scenarios/OTELUsageOverviewScenario.swift
 git commit -m "Extend OTEL usage overview E2E to paired mac+iOS with expand/contract"
 ```
 

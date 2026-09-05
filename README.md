@@ -80,11 +80,11 @@ See [Self-hosting CtrlX Relay](docs/self-hosting.md) and the
 ## Development
 
 Building requires a recent Xcode, Swift 6.3 or later, and macOS 15 or later.
-Open `ClaudeSpy.xcworkspace` and use scheme `ClaudeSpyServer` for macOS or
-`ClaudeSpy` for iOS. Internal targets retain their historical `ClaudeSpy*` names.
+Open `Ctrlx.xcworkspace` and use scheme `CtrlxServer` for macOS or
+`Ctrlx` for iOS. Internal targets retain their historical `Ctrlx*` names.
 
 ```bash
-swift test --package-path ClaudeSpyPackage
+swift test --package-path CtrlxPackage
 
 ./sbin/auto-env.sh
 ./sbin/start_server.sh
