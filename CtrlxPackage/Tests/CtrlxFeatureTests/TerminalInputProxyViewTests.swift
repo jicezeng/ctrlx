@@ -67,3 +67,55 @@ struct TerminalInputProxyViewTests {
         ))
     }
 }
+
+@Suite("Terminal cursor tap navigation")
+struct TerminalCursorTapNavigationTests {
+    @Test("Moves left and right by logical character count")
+    func directions() {
+        let widths = [1, 1, 1, 1, 1]
+
+        #expect(TerminalCursorTapNavigation.signedStepCount(
+            cursorColumn: 4,
+            tappedColumn: 1,
+            cellWidths: widths
+        ) == -3)
+        #expect(TerminalCursorTapNavigation.signedStepCount(
+            cursorColumn: 1,
+            tappedColumn: 4,
+            cellWidths: widths
+        ) == 3)
+        #expect(TerminalCursorTapNavigation.signedStepCount(
+            cursorColumn: 2,
+            tappedColumn: 2,
+            cellWidths: widths
+        ) == 0)
+    }
+
+    @Test("Wide glyph trailing cells do not emit extra arrow keys")
+    func wideGlyphs() {
+        // A, 中 (two terminal cells), B
+        let widths = [1, 2, 0, 1]
+
+        #expect(TerminalCursorTapNavigation.signedStepCount(
+            cursorColumn: 4,
+            tappedColumn: 1,
+            cellWidths: widths
+        ) == -2)
+        #expect(TerminalCursorTapNavigation.signedStepCount(
+            cursorColumn: 0,
+            tappedColumn: 3,
+            cellWidths: widths
+        ) == 2)
+    }
+
+    @Test("Out-of-range terminal columns are clamped")
+    func clampsColumns() {
+        let widths = [1, 2, 0, 1]
+
+        #expect(TerminalCursorTapNavigation.signedStepCount(
+            cursorColumn: 99,
+            tappedColumn: -1,
+            cellWidths: widths
+        ) == -3)
+    }
+}

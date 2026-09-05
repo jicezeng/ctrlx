@@ -1,3 +1,28 @@
+enum TerminalCursorTapNavigation {
+    /// Returns the number of logical cursor steps needed to reach a tapped
+    /// terminal column. Positive values move right; negative values move left.
+    /// Width-zero cells are the trailing half of wide glyphs and must not
+    /// produce an extra arrow key.
+    static func signedStepCount(
+        cursorColumn: Int,
+        tappedColumn: Int,
+        cellWidths: [Int]
+    ) -> Int {
+        let cursor = min(max(0, cursorColumn), cellWidths.count)
+        let target = min(max(0, tappedColumn), cellWidths.count)
+        guard cursor != target else { return 0 }
+
+        let lower = min(cursor, target)
+        let upper = max(cursor, target)
+        let steps = cellWidths[lower..<upper].reduce(into: 0) { count, width in
+            if width > 0 {
+                count += 1
+            }
+        }
+        return target > cursor ? steps : -steps
+    }
+}
+
 #if os(iOS)
     import CtrlxCommon
     import CtrlxNetworking
@@ -95,6 +120,7 @@
         /// Highlight layer shown over detected URL during long-press
         private var urlHighlightLayer: CALayer?
         private var urlUnderlineLayers: [CALayer] = []
+        private var contentTapGesture: UITapGestureRecognizer?
 
         /// Cell size cached on first access to avoid recomputing CoreText
         /// measurements on every pan-gesture callback (60–120 Hz). The font
@@ -251,8 +277,16 @@
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleURLTap))
             tap.cancelsTouchesInView = false
             tap.require(toFail: longPress)
+            // SwiftTerm owns double/triple tap selection. Delay this shared
+            // URL/cursor tap until those recognizers fail so a copy gesture can
+            // never move the remote cursor first.
+            for case let multiTap as UITapGestureRecognizer in gestureRecognizers ?? []
+                where multiTap.numberOfTapsRequired > 1 {
+                tap.require(toFail: multiTap)
+            }
             tap.delegate = self
             addGestureRecognizer(tap)
+            contentTapGesture = tap
         }
 
         // MARK: - Mouse Mode Scrolling
@@ -341,6 +375,13 @@
         /// because `UIScrollView` already implements this method and Swift forbids
         /// extension overrides.
         override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            // SwiftTerm's own single tap is responsible for leaving selection
+            // mode. Reject this parallel content tap before either recognizer's
+            // action runs so that exit tap cannot also open a URL or move the
+            // terminal cursor.
+            if gestureRecognizer === contentTapGesture, selectionActive {
+                return false
+            }
             if gestureRecognizer === mouseModePanGesture {
                 guard isMouseModeActive, let mouseModePanGesture else { return false }
                 // Only consume vertical pans as wheel events — horizontal pans
@@ -516,7 +557,40 @@
                 ),
                 let nsURL = URL(string: url) {
                 UIApplication.shared.open(nsURL)
+                return
             }
+
+            moveInputCursor(to: pos)
+        }
+
+        /// Moves within the active terminal input row using the same arrow-key
+        /// path as the explicit keyboard controls. Terminal TUIs own their text
+        /// model, so the transparent native input proxy deliberately keeps its
+        /// local selection at the end of its shadow document.
+        private func moveInputCursor(to position: (col: Int, row: Int)) {
+            guard inputEnabled, inputProxy.isFirstResponder, !isMouseModeActive else { return }
+
+            let terminal = getTerminal()
+            let buffer = terminal.buffer
+            let contentRows = Int((contentSize.height / cellSize.height).rounded())
+            let liveDisplayRow = max(0, contentRows - terminal.rows)
+            guard buffer.yDisp == liveDisplayRow else { return }
+
+            let cursorRow = buffer.y + buffer.yDisp
+            guard position.row == cursorRow else { return }
+            guard let line = terminal.getScrollInvariantLine(row: cursorRow) else { return }
+
+            let cellCount = min(line.count, terminal.cols)
+            let cellWidths = (0..<cellCount).map { line.getWidth(index: $0) }
+            let signedSteps = TerminalCursorTapNavigation.signedStepCount(
+                cursorColumn: buffer.x,
+                tappedColumn: position.col,
+                cellWidths: cellWidths
+            )
+            guard signedSteps != 0 else { return }
+
+            let key: TmuxKey = signedSteps < 0 ? .left : .right
+            onInput?(Array(repeating: key, count: abs(signedSteps)))
         }
 
         @objc
