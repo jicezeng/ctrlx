@@ -16,6 +16,7 @@
 		81E2E1D52F8573260057AA49 /* GallagerCLI in Frameworks */ = {isa = PBXBuildFile; productRef = 81E2E1D42F8573260057AA49 /* GallagerCLI */; };
 		8B41F6832DEDD23B001A66F9 /* CtrlxFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6822DEDD23B001A66F9 /* CtrlxFeature */; };
 		8B41F6852DEDD25C001A66F9 /* CtrlxFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6842DEDD25C001A66F9 /* CtrlxFeature */; };
+		8E90F1AF303D271400E38928 /* CtrlxServerFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 819180932F467B82001A43BE /* CtrlxServerFeature */; };
 		AABBCC112F2A00000063PLGN /* plugin in Resources */ = {isa = PBXBuildFile; fileRef = AABBCC102F2A00000063PLGN /* plugin */; };
 		DCF13F6A89DA4860A5776FD7 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 0FF9E03F3BF7435B8FDA207D /* FlyingFox */; };
 /* End PBXBuildFile section */
@@ -206,6 +207,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8E90F1AF303D271400E38928 /* CtrlxServerFeature in Frameworks */,
 				817BF9BA2F09C7CC00BD1D53 /* CtrlxServerFeature in Frameworks */,
 				81E2E1D52F8573260057AA49 /* GallagerCLI in Frameworks */,
 			);
@@ -355,7 +357,7 @@
 			buildConfigurationList = 815F9E812F09BFF9003791F7 /* Build configuration list for PBXNativeTarget "CtrlxServer" */;
 			buildPhases = (
 				815F9E592F09BFF8003791F7 /* Sources */,
-				81E2E2332F8576310057AA49 /* Copy GallagerCLI to bundle */,
+				81E2E2332F8576310057AA49 /* Copy CtrlX CLI to bundle */,
 				815F9E5A2F09BFF8003791F7 /* Frameworks */,
 				815F9E5B2F09BFF8003791F7 /* Resources */,
 				81B5E4A02F90000100000001 /* Sync Codex Skills */,
@@ -373,7 +375,7 @@
 			packageProductDependencies = (
 				817BF9B92F09C7CC00BD1D53 /* CtrlxServerFeature */,
 				819180932F467B82001A43BE /* CtrlxServerFeature */,
-				81E2E1D42F8573260057AA49 /* Gallager */,
+				81E2E1D42F8573260057AA49 /* GallagerCLI */,
 			);
 			productName = CtrlxServer;
 			productReference = 815F9E5D2F09BFF8003791F7 /* CtrlX.app */;
@@ -673,6 +675,25 @@
 			shellScript = "\"${SRCROOT}/scripts/swiftlint.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		81B5E4A02F90000100000001 /* Sync Codex Skills */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync Codex Skills";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/sync-codex-skills.sh\"\n";
+		};
 		81E2E2332F8576310057AA49 /* Copy CtrlX CLI to bundle */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -692,25 +713,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Build the internal GallagerCLI target and install it as CtrlXCLI\nset -e\nEDITOR_PATH=\"${BUILD_DIR}/${CONFIGURATION}/GallagerCLI\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/CtrlXCLI\"\n\nif [ -f \"$EDITOR_PATH\" ]; then\n    cp \"$EDITOR_PATH\" \"$DEST\"\n    # GallagerEmoji is shared by the app and the CLI, so Xcode links it as a\n    # dynamic framework embedded in Contents/Frameworks. The bare copied CLI's\n    # rpaths don't cover that (Release has only /usr/lib/swift), so add it here\n    # or every CLI invocation dies in dyld before main().\n    install_name_tool -add_rpath \"@loader_path/../Frameworks\" \"$DEST\"\n    if [ \"${CODE_SIGNING_ALLOWED:-YES}\" = YES ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n        codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime --timestamp \"$DEST\"\n    fi\nelse\n    echo \"warning: GallagerCLI build product not found at $EDITOR_PATH — build the CtrlxPackage scheme first\"\nfi\n";
-		};
-		81B5E4A02F90000100000001 /* Sync Codex Skills */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Sync Codex Skills";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/scripts/sync-codex-skills.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1263,7 +1265,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				DEVELOPMENT_TEAM = KA86SH7344;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1292,7 +1294,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "$(CTRLX_IOS_DEVELOPMENT_TEAM)";
+				DEVELOPMENT_TEAM = KA86SH7344;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
