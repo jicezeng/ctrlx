@@ -142,6 +142,11 @@ final public class TerminalStreamService {
     /// Maximum batch size before forced send
     private let maxBatchSize = 8_192 // 8KB
 
+    /// Snapshot history is already held offscreen until complete, so larger
+    /// chunks reduce per-message encryption and WebSocket send overhead without
+    /// affecting the latency of live terminal output.
+    private let maxSnapshotChunkSize = 64 * 1_024
+
     /// Backlog beyond this point is already stale for an interactive terminal.
     /// Replace it with an authoritative snapshot instead of growing latency.
     private let streamHighWaterBytes = 512 * 1_024
@@ -527,7 +532,12 @@ final public class TerminalStreamService {
 
         guard streamSender != nil else { return }
         let bootstrapData = context.takeBootstrapData(for: viewerId)
-        await sendDataChunks(bootstrapData, paneId: paneId, recipients: [viewerId])
+        await sendDataChunks(
+            bootstrapData,
+            paneId: paneId,
+            recipients: [viewerId],
+            maximumChunkSize: maxBatchSize
+        )
 
         context.finishBootstrap(for: viewerId)
     }
@@ -568,20 +578,26 @@ final public class TerminalStreamService {
             )
         }
         await streamSender.sendTerminalStream(metadata, to: recipients)
-        await sendDataChunks(content, paneId: paneId, recipients: recipients)
+        await sendDataChunks(
+            content,
+            paneId: paneId,
+            recipients: recipients,
+            maximumChunkSize: maxSnapshotChunkSize
+        )
         return content.count
     }
 
     private func sendDataChunks(
         _ data: Data,
         paneId: String,
-        recipients: Set<String>
+        recipients: Set<String>,
+        maximumChunkSize: Int
     ) async {
         guard let streamSender else { return }
         var offset = data.startIndex
         while offset < data.endIndex {
             let remaining = data.distance(from: offset, to: data.endIndex)
-            let end = data.index(offset, offsetBy: min(maxBatchSize, remaining))
+            let end = data.index(offset, offsetBy: min(maximumChunkSize, remaining))
             let chunk = Data(data[offset..<end])
             TerminalTransportMetrics.shared.recordBatch(bytes: chunk.count)
             await streamSender.sendTerminalStream(

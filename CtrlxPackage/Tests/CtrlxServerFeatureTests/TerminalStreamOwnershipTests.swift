@@ -337,7 +337,7 @@
         func initialSnapshotUsesBoundedChunks() async {
             let sender = CapturingTerminalStreamSender()
             let service = TerminalStreamService(streamSender: sender)
-            let snapshot = Data(repeating: 0x61, count: 20_000)
+            let snapshot = Data(repeating: 0x61, count: 150_000)
 
             await service.sendSnapshot(
                 kind: .initial,
@@ -354,7 +354,7 @@
             #expect(sender.initialDeliveries[0].state.scrollbackLineLimit == 10_000)
             #expect(sender.initialDeliveries[0].state.contentByteCount == snapshot.count)
             #expect(sender.initialDeliveries[0].recipients == ["viewer-a"])
-            #expect(sender.dataDeliveries.map(\.data.count) == [8_192, 8_192, 3_616])
+            #expect(sender.dataDeliveries.map(\.data.count) == [65_536, 65_536, 18_928])
             #expect(sender.dataDeliveries.reduce(into: Data()) { $0.append($1.data) } == snapshot)
         }
 
