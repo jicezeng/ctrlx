@@ -164,6 +164,7 @@ actor TmuxControlClient {
     private var _onExit: (@Sendable (String?) -> Void)?
     private var _onOutput: (@MainActor @Sendable (String, Data) -> Void)?
     private var outputEnabledPaneIds: Set<String> = []
+    private var outputFramers: [String: TerminalOutputTokenFramer] = [:]
     private var outputSanitizers: [String: TerminalOutputSanitizer] = [:]
 
     // FIFO queue of pending command continuations, in the order commands were written to stdin.
@@ -387,6 +388,7 @@ actor TmuxControlClient {
             process = nil
             cachedDimensions.removeAll()
             byteBuffer.removeAll()
+            outputFramers.removeAll()
             outputSanitizers.removeAll()
         }
     }
@@ -410,6 +412,8 @@ actor TmuxControlClient {
     /// Unregisters a pane from dimension tracking.
     func unregisterPane(paneId: String) {
         cachedDimensions.removeValue(forKey: paneId)
+        outputFramers.removeValue(forKey: paneId)
+        outputSanitizers.removeValue(forKey: paneId)
         logger.debug("Unregistered pane", metadata: ["paneId": "\(paneId)"])
     }
 
@@ -481,11 +485,20 @@ actor TmuxControlClient {
     // MARK: - Line Parsing
 
     private func parseLine(_ lineData: Data) async {
-        guard let line = String(data: lineData, encoding: .utf8) else { return }
-
         // A notification never occurs inside a command output block. Treat all
         // non-terminator lines there as command text, even if captured pane text
         // itself begins with a control-looking `%output` prefix.
+        if currentCommandNumber == nil,
+           let output = TmuxControlOutputDecoder.decode(lineData) {
+            await handleOutput(output)
+            return
+        }
+
+        // Only tmux's textual control records and capture-pane response lines
+        // require UTF-8. A `%output` payload is an arbitrary byte stream and may
+        // legally end in the middle of a scalar.
+        guard let line = String(data: lineData, encoding: .utf8) else { return }
+
         if currentCommandNumber != nil {
             if line.hasPrefix("%end ") {
                 await parseEndBlock(line)
@@ -497,9 +510,7 @@ actor TmuxControlClient {
             return
         }
 
-        if let output = TmuxControlOutputDecoder.decode(lineData) {
-            await handleOutput(output)
-        } else if line.hasPrefix("%layout-change ") {
+        if line.hasPrefix("%layout-change ") {
             handleLayoutChange(line)
         } else if line.hasPrefix("%begin ") {
             parseBeginBlock(line)
@@ -511,9 +522,16 @@ actor TmuxControlClient {
     }
 
     private func handleOutput(_ output: TmuxControlOutput) async {
-        guard outputEnabledPaneIds.contains(output.paneId) else { return }
+        // Track every pane even while delivery is disabled. A subscriber may be
+        // enabled between the prefix and suffix of one terminal token; retaining
+        // that tiny prefix is what makes its first snapshot boundary safe.
+        var framer = outputFramers[output.paneId] ?? TerminalOutputTokenFramer()
+        let framedData = framer.frame(output.data)
+        outputFramers[output.paneId] = framer
+
+        guard outputEnabledPaneIds.contains(output.paneId), !framedData.isEmpty else { return }
         var sanitizer = outputSanitizers[output.paneId] ?? TerminalOutputSanitizer()
-        let data = sanitizer.sanitize(output.data)
+        let data = sanitizer.sanitize(framedData)
         outputSanitizers[output.paneId] = sanitizer
         guard !data.isEmpty else { return }
         await _onOutput?(output.paneId, data)

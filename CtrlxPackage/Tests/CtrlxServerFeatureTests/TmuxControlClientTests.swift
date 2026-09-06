@@ -49,6 +49,7 @@
     @MainActor
     final private class CapturingControlOutput {
         var events: [String] = []
+        var dataEvents: [Data] = []
     }
 
     @Suite("TmuxControlClient Tests")
@@ -75,6 +76,84 @@
                     Data(#"%output %2 keep\12x"#.utf8)
                 ))
                 #expect(output.data == Data(#"keep\12x"#.utf8))
+            }
+
+            @Test("A UTF-8 scalar split across output notifications is delivered byte-exactly")
+            @MainActor
+            func splitUTF8ScalarIsReassembled() async {
+                let client = TmuxControlClient()
+                let capture = CapturingControlOutput()
+                await client.setOnOutput { _, data in
+                    capture.dataEvents.append(data)
+                }
+                await client.testSetPaneOutputEnabled("%7", enabled: true)
+
+                var first = Data("%output %7 ".utf8)
+                first.append(0xE4)
+                first.append(0x0A)
+                var second = Data("%output %7 ".utf8)
+                second.append(contentsOf: [0xB8, 0xAD, 0x0A])
+
+                await client.testProcessIncomingData(first)
+                #expect(capture.dataEvents.isEmpty)
+                await client.testProcessIncomingData(second)
+
+                #expect(capture.dataEvents == [Data("中".utf8)])
+            }
+
+            @Test("An ANSI token crossing a snapshot response stays after the boundary")
+            @MainActor
+            func splitANSISequenceStaysAtomicAcrossSnapshotBoundary() async throws {
+                let client = TmuxControlClient()
+                let capture = CapturingControlOutput()
+                await client.testMarkInitialAttachHandled()
+                await client.setOnOutput { _, data in
+                    capture.dataEvents.append(data)
+                    capture.events.append("output")
+                }
+                await client.testSetPaneOutputEnabled("%7", enabled: true)
+
+                await client.testProcessIncomingData(Data(#"%output %7 \033[38;2;"#.utf8) + Data([0x0A]))
+                #expect(capture.events.isEmpty)
+
+                let command = Task {
+                    try await client.testEnqueueCommand(id: 1) { _ in
+                        capture.events.append("boundary")
+                    }
+                }
+                while await client.testPendingCommandCount != 1 {
+                    await Task.yield()
+                }
+
+                await client.testProcessIncomingData(Data("""
+                %begin 1000 100 1
+                snapshot
+                %end 1000 100 1
+                %output %7 48;226;213m&& rg --files
+
+                """.utf8))
+                _ = try await command.value
+
+                #expect(capture.events == ["boundary", "output"])
+                #expect(capture.dataEvents == [Data("\u{1B}[38;2;48;226;213m&& rg --files".utf8)])
+            }
+
+            @Test("A token prefix observed before subscription is retained")
+            @MainActor
+            func preSubscriptionPrefixIsRetained() async {
+                let client = TmuxControlClient()
+                let capture = CapturingControlOutput()
+                await client.setOnOutput { _, data in
+                    capture.dataEvents.append(data)
+                }
+
+                await client.testProcessIncomingData(
+                    Data(#"%output %7 \033[38;2;"#.utf8) + Data([0x0A])
+                )
+                await client.testSetPaneOutputEnabled("%7", enabled: true)
+                await client.testProcessIncomingData(Data("%output %7 48;226;213mX\n".utf8))
+
+                #expect(capture.dataEvents == [Data("\u{1B}[38;2;48;226;213mX".utf8)])
             }
 
             @Test("Snapshot callback is ordered between surrounding output")
