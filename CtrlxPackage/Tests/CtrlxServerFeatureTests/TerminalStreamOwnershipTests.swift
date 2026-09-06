@@ -228,6 +228,46 @@
             #expect(context.readyViewers == ["viewer-a", "viewer-b"])
         }
 
+        @Test("Snapshot boundary drops only joining viewer's pre-snapshot bytes")
+        func snapshotBoundaryDropsPreSnapshotBootstrapData() {
+            let context = StreamContext(paneId: "%1", viewerId: "viewer-a")
+            context.finishBootstrap(for: "viewer-a")
+            context.beginBootstrap(for: "viewer-b")
+
+            context.appendIncomingData(Data("before".utf8))
+            context.discardBootstrapData(for: "viewer-b")
+            context.appendIncomingData(Data("after".utf8))
+
+            #expect(context.flushPendingData().data == Data("beforeafter".utf8))
+            #expect(context.takeBootstrapData(for: "viewer-b") == Data("after".utf8))
+        }
+
+        @Test("Joining viewer snapshot boundary is ordered with queued terminal data")
+        func snapshotBoundaryIsAnOrderedInputEvent() {
+            let context = StreamContext(paneId: "%1", viewerId: "viewer-a")
+            context.finishBootstrap(for: "viewer-a")
+            context.beginBootstrap(for: "viewer-b")
+            let inputBuffer = TerminalStreamInputBuffer(paneId: "%1", highWaterBytes: 1_024)
+
+            #expect(inputBuffer.enqueueData(Data("before".utf8)) == .enqueued)
+            inputBuffer.enqueueControl(.snapshotBoundary(viewerId: "viewer-b"))
+            #expect(inputBuffer.enqueueData(Data("after".utf8)) == .enqueued)
+
+            while let input = inputBuffer.dequeue() {
+                switch input {
+                case let .data(data):
+                    context.appendIncomingData(data)
+                case let .snapshotBoundary(viewerId):
+                    context.discardBootstrapData(for: viewerId)
+                case .finishBootstrap, .reset, .resyncFailed:
+                    Issue.record("Unexpected control event")
+                }
+            }
+
+            #expect(context.flushPendingData().data == Data("beforeafter".utf8))
+            #expect(context.takeBootstrapData(for: "viewer-b") == Data("after".utf8))
+        }
+
         @Test("Removing a viewer excludes it from future batches")
         func removedViewerIsNotARouteRecipient() {
             let context = StreamContext(paneId: "%1", viewerId: "viewer-a")
@@ -342,6 +382,7 @@
             let barrierId = UUID()
 
             #expect(buffer.enqueueData(Data("abc".utf8)) == .enqueued)
+            buffer.enqueueControl(.snapshotBoundary(viewerId: "viewer-a"))
             buffer.enqueueControl(.finishBootstrap(viewerId: "viewer-a", barrierId: barrierId))
             #expect(buffer.enqueueData(Data("def".utf8)) == .resyncRequired)
             #expect(buffer.enqueueData(Data("ignored".utf8)) == .awaitingSnapshot)
@@ -360,6 +401,11 @@
                 return
             }
             #expect(received.initialContent == Data("snapshot".utf8))
+            guard case let .snapshotBoundary(boundaryViewerId)? = buffer.dequeue() else {
+                Issue.record("Expected preserved snapshot boundary")
+                return
+            }
+            #expect(boundaryViewerId == "viewer-a")
             guard case let .finishBootstrap(viewerId, receivedBarrier)? = buffer.dequeue() else {
                 Issue.record("Expected preserved bootstrap barrier")
                 return

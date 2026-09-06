@@ -13,6 +13,79 @@ struct CommandResponse: Sendable {
     }
 }
 
+/// One decoded `%output <pane-id> <value>` control-mode notification.
+struct TmuxControlOutput: Equatable, Sendable {
+    let paneId: String
+    let data: Data
+}
+
+/// Byte-level decoder for tmux control-mode output notifications.
+///
+/// tmux keeps the protocol line-oriented by encoding every non-printable byte
+/// and literal backslash as exactly three octal digits. Decoding bytes rather
+/// than a Swift `String` preserves UTF-8 sequences without depending on read or
+/// scalar boundaries.
+enum TmuxControlOutputDecoder {
+    private static let prefix = Data("%output ".utf8)
+
+    static func decode(_ line: Data) -> TmuxControlOutput? {
+        guard line.starts(with: prefix) else { return nil }
+        let remainder = line.dropFirst(prefix.count)
+        guard let separator = remainder.firstIndex(of: 0x20) else { return nil }
+        let paneBytes = remainder[..<separator]
+        guard let paneId = String(bytes: paneBytes, encoding: .utf8), !paneId.isEmpty else {
+            return nil
+        }
+        let encoded = remainder[remainder.index(after: separator)...]
+        return TmuxControlOutput(paneId: paneId, data: decodeOctalEscapes(encoded))
+    }
+
+    private static func decodeOctalEscapes(_ encoded: Data.SubSequence) -> Data {
+        var decoded = Data()
+        decoded.reserveCapacity(encoded.count)
+        var index = encoded.startIndex
+
+        while index < encoded.endIndex {
+            guard encoded[index] == 0x5C else { // "\\"
+                decoded.append(encoded[index])
+                index = encoded.index(after: index)
+                continue
+            }
+
+            let first = encoded.index(after: index)
+            guard first < encoded.endIndex else {
+                decoded.append(encoded[index])
+                break
+            }
+            let second = encoded.index(after: first)
+            let third = second < encoded.endIndex ? encoded.index(after: second) : encoded.endIndex
+            guard
+                second < encoded.endIndex,
+                third < encoded.endIndex,
+                isOctal(encoded[first]),
+                isOctal(encoded[second]),
+                isOctal(encoded[third])
+            else {
+                decoded.append(encoded[index])
+                index = first
+                continue
+            }
+
+            let byte = (encoded[first] - 0x30) * 64
+                + (encoded[second] - 0x30) * 8
+                + (encoded[third] - 0x30)
+            decoded.append(byte)
+            index = encoded.index(after: third)
+        }
+
+        return decoded
+    }
+
+    private static func isOctal(_ byte: UInt8) -> Bool {
+        byte >= 0x30 && byte <= 0x37
+    }
+}
+
 /// Errors that can occur with the tmux control client
 enum TmuxControlError: Error, LocalizedError {
     case notConnected
@@ -43,15 +116,9 @@ enum TmuxControlError: Error, LocalizedError {
     }
 }
 
-/// Manages a tmux control mode connection for commands and event notifications.
-///
-/// With `-f no-output` the control client only handles:
-/// - Command execution via `sendCommand()` (capture-pane, list-panes, pipe-pane, etc.)
-/// - `%layout-change` for dimension tracking
-/// - `%session-changed` for session monitoring
-/// - `%exit` for connection lifecycle
-///
-/// Live terminal data is delivered separately via `PipePaneReader` (pipe-pane raw bytes).
+/// Manages one ordered tmux control-mode connection for commands, notifications,
+/// and live pane output. Keeping `capture-pane` responses and `%output` on this
+/// single parser gives terminal bootstraps an exact snapshot boundary.
 actor TmuxControlClient {
     /// A control-mode client has no TTY, so GUI launches commonly inherit no
     /// `TERM` (or `dumb`). tmux exposes that value as `client_termname`, which
@@ -95,6 +162,9 @@ actor TmuxControlClient {
     private var _onLayoutChange: (@Sendable () -> Void)?
     private var _onSessionChanged: (@Sendable (String, String) -> Void)?
     private var _onExit: (@Sendable (String?) -> Void)?
+    private var _onOutput: (@MainActor @Sendable (String, Data) -> Void)?
+    private var outputEnabledPaneIds: Set<String> = []
+    private var outputSanitizers: [String: TerminalOutputSanitizer] = [:]
 
     // FIFO queue of pending command continuations, in the order commands were written to stdin.
     // tmux processes commands in FIFO order, so the front of this queue always corresponds
@@ -103,7 +173,13 @@ actor TmuxControlClient {
     // NOTE: The only non-client %begin/%end is the initial `attach` response (skipped via
     // receivedInitialResponse flag). All subsequent %begin/%end blocks correspond 1:1
     // with commands we wrote to stdin, in order.
-    private var pendingCommandQueue: [(id: Int, continuation: CheckedContinuation<CommandResponse, any Error>)] = []
+    private struct PendingCommand {
+        let id: Int
+        let continuation: CheckedContinuation<CommandResponse, any Error>
+        let onResponse: (@MainActor @Sendable (CommandResponse) -> Void)?
+    }
+
+    private var pendingCommandQueue: [PendingCommand] = []
     private var commandCounter = 0
 
     // Current command being accumulated (for %begin/%end blocks)
@@ -155,13 +231,26 @@ actor TmuxControlClient {
         _onExit = handler
     }
 
+    func setOnOutput(_ handler: @escaping @MainActor @Sendable (String, Data) -> Void) {
+        _onOutput = handler
+    }
+
+    func setPaneOutputEnabled(paneId: String, enabled: Bool) {
+        if enabled {
+            if outputEnabledPaneIds.insert(paneId).inserted {
+                outputSanitizers[paneId] = TerminalOutputSanitizer()
+            }
+        } else {
+            outputEnabledPaneIds.remove(paneId)
+            outputSanitizers.removeValue(forKey: paneId)
+        }
+    }
+
     // MARK: - Connection Management
 
-    /// Connects to a tmux session in control mode with `-f no-output,ignore-size`.
-    ///
-    /// The `no-output` flag suppresses `%output` events — live data is delivered
-    /// via `PipePaneReader` instead. The `ignore-size` flag prevents the control
-    /// client from affecting pane sizing.
+    /// Connects to tmux in control mode. `ignore-size` prevents this invisible
+    /// client from affecting pane geometry; output remains enabled so snapshots
+    /// and live bytes share one protocol stream.
     func connect(sessionTarget: String) async throws {
         guard process == nil else {
             throw TmuxControlError.alreadyConnected
@@ -177,7 +266,7 @@ actor TmuxControlClient {
         processGeneration &+= 1
         let generation = processGeneration
 
-        var arguments = ["-C", "-f", "no-output,ignore-size", "attach", "-t", sessionTarget]
+        var arguments = ["-C", "-f", "ignore-size", "attach", "-t", sessionTarget]
         if let socketPath, !socketPath.isEmpty {
             arguments = ["-S", socketPath] + arguments
         }
@@ -233,7 +322,7 @@ actor TmuxControlClient {
             }
         }
 
-        logger.info("Connected to tmux control mode (no-output mode)")
+        logger.info("Connected to tmux control mode")
     }
 
     /// Disconnects from tmux control mode
@@ -298,6 +387,7 @@ actor TmuxControlClient {
             process = nil
             cachedDimensions.removeAll()
             byteBuffer.removeAll()
+            outputSanitizers.removeAll()
         }
     }
 
@@ -329,7 +419,8 @@ actor TmuxControlClient {
     func sendCommand(
         _ command: String,
         timeout: TimeInterval = 5,
-        onWritten: (@Sendable () -> Void)? = nil
+        onWritten: (@Sendable () -> Void)? = nil,
+        onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
     ) async throws -> CommandResponse {
         guard let stdin else {
             throw TmuxControlError.notConnected
@@ -356,7 +447,11 @@ actor TmuxControlClient {
         // Wait for response
         do {
             let response = try await withCheckedThrowingContinuation { continuation in
-                pendingCommandQueue.append((id: commandNumber, continuation: continuation))
+                pendingCommandQueue.append(PendingCommand(
+                    id: commandNumber,
+                    continuation: continuation,
+                    onResponse: onResponse
+                ))
             }
             timeoutTask.cancel()
             return response
@@ -379,31 +474,49 @@ actor TmuxControlClient {
             let lineData = Data(byteBuffer[..<newlineIndex])
             byteBuffer = Data(byteBuffer[(newlineIndex + 1)...])
 
-            // All lines are control messages (no %output with no-output flag)
-            guard let line = String(data: lineData, encoding: .utf8) else { continue }
-            parseLine(line)
+            await parseLine(lineData)
         }
     }
 
     // MARK: - Line Parsing
 
-    private func parseLine(_ line: String) {
-        if line.hasPrefix("%layout-change ") {
+    private func parseLine(_ lineData: Data) async {
+        guard let line = String(data: lineData, encoding: .utf8) else { return }
+
+        // A notification never occurs inside a command output block. Treat all
+        // non-terminator lines there as command text, even if captured pane text
+        // itself begins with a control-looking `%output` prefix.
+        if currentCommandNumber != nil {
+            if line.hasPrefix("%end ") {
+                await parseEndBlock(line)
+            } else if line.hasPrefix("%error ") {
+                await parseErrorBlock(line)
+            } else {
+                currentCommandOutput.append(line)
+            }
+            return
+        }
+
+        if let output = TmuxControlOutputDecoder.decode(lineData) {
+            await handleOutput(output)
+        } else if line.hasPrefix("%layout-change ") {
             handleLayoutChange(line)
         } else if line.hasPrefix("%begin ") {
             parseBeginBlock(line)
-        } else if line.hasPrefix("%end ") {
-            parseEndBlock(line)
-        } else if line.hasPrefix("%error ") {
-            parseErrorBlock(line)
         } else if line.hasPrefix("%exit") {
             parseExit(line)
         } else if line.hasPrefix("%session-changed ") {
             parseSessionChanged(line)
-        } else if currentCommandNumber != nil {
-            // Accumulating command output
-            currentCommandOutput.append(line)
         }
+    }
+
+    private func handleOutput(_ output: TmuxControlOutput) async {
+        guard outputEnabledPaneIds.contains(output.paneId) else { return }
+        var sanitizer = outputSanitizers[output.paneId] ?? TerminalOutputSanitizer()
+        let data = sanitizer.sanitize(output.data)
+        outputSanitizers[output.paneId] = sanitizer
+        guard !data.isEmpty else { return }
+        await _onOutput?(output.paneId, data)
     }
 
     // MARK: - Layout Change Handling
@@ -532,22 +645,22 @@ actor TmuxControlClient {
         currentCommandIsError = false
     }
 
-    private func parseEndBlock(_ line: String) {
+    private func parseEndBlock(_ line: String) async {
         // Format: %end <timestamp> <command-number> <flags>
-        finalizeBlock(line: line, isError: currentCommandIsError)
+        await finalizeBlock(line: line, isError: currentCommandIsError)
     }
 
-    private func parseErrorBlock(_ line: String) {
+    private func parseErrorBlock(_ line: String) async {
         // Format: %error <timestamp> <command-number> <flags>
         // tmux uses %error as the block terminator for failed commands (in place of %end).
         // Resolve the queued entry with an error response so the caller unblocks immediately;
         // otherwise the next command's %end would silently pop this queue slot, misaligning
         // every subsequent response and eventually causing 5-second timeouts.
-        finalizeBlock(line: line, isError: true)
+        await finalizeBlock(line: line, isError: true)
     }
 
     /// Shared handling for `%end` and `%error` — both terminate a command block.
-    private func finalizeBlock(line: String, isError: Bool) {
+    private func finalizeBlock(line: String, isError: Bool) async {
         let parts = line.split(separator: " ")
         guard
             parts.count >= 3,
@@ -573,6 +686,7 @@ actor TmuxControlClient {
         // initial attach corresponds 1:1 with a sendCommand() call.
         if !pendingCommandQueue.isEmpty {
             let entry = pendingCommandQueue.removeFirst()
+            await entry.onResponse?(response)
             entry.continuation.resume(returning: response)
         }
 
@@ -645,10 +759,21 @@ actor TmuxControlClient {
 
     /// Enqueues a continuation that would be resumed by a `%end` or `%error` block.
     /// Returns the resolved response (or throws on error/timeout). Tests only.
-    func testEnqueueCommand(id: Int) async throws -> CommandResponse {
+    func testEnqueueCommand(
+        id: Int,
+        onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
+    ) async throws -> CommandResponse {
         try await withCheckedThrowingContinuation { continuation in
-            pendingCommandQueue.append((id: id, continuation: continuation))
+            pendingCommandQueue.append(PendingCommand(
+                id: id,
+                continuation: continuation,
+                onResponse: onResponse
+            ))
         }
+    }
+
+    func testSetPaneOutputEnabled(_ paneId: String, enabled: Bool) {
+        setPaneOutputEnabled(paneId: paneId, enabled: enabled)
     }
 
     /// Number of pending commands awaiting a response. Tests only.

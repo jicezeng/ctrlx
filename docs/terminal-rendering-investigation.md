@@ -1,6 +1,6 @@
 # Terminal Rendering Investigation: Garbled Output in Ctrlx Mirror
 
-> **Status (PR #179):** The core streaming architecture was rewritten to use `pipe-pane` for raw PTY byte delivery instead of control mode `%output` events. This resolved the truecolor animation rendering artifacts and eliminated the need for octal unescaping, UTF-8 reconstruction, and line-boundary splitting. Hypotheses H6 (octal unescaping) and H14 (readabilityHandler race) are no longer applicable. The architecture diagram below reflects the **old** architecture — see `streaming-architecture.md` for the current data flow.
+> **Historical status (PR #179):** The first fix moved live terminal bytes to `pipe-pane`, resolving corruption in the original String-based `%output` parser. In September 2026, terminal content moved back to a single ordered control-mode stream to eliminate snapshot/FIFO overlap: `%output` is now decoded at the byte level, one consumer preserves protocol order, and the visible capture's `%end` is the bootstrap boundary. `pipe-pane` remains scan-only for OSC side effects. The diagrams and hypotheses below document the historical investigation; see `streaming-architecture.md` for the current data flow.
 
 ## Problem Statement
 

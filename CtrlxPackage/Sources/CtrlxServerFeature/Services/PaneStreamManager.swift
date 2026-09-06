@@ -9,26 +9,50 @@
     /// snapshot was being captured. Nothing reaches `onData` until `finish`
     /// makes the subscription live.
     struct PaneSubscriptionBootstrap {
+        private enum State: Equatable {
+            case beforeSnapshotBoundary
+            case afterSnapshotBoundary
+            case live
+        }
+
         private var bufferedData = Data()
-        private(set) var isCollecting = true
+        private var state = State.beforeSnapshotBoundary
+
+        var isCollecting: Bool {
+            state != .live
+        }
+
+        var hasSnapshotBoundary: Bool {
+            state == .afterSnapshotBoundary
+        }
 
         /// Returns data only after the bootstrap has finished. While collecting,
         /// the bytes are retained for the initial payload instead.
         mutating func route(_ data: Data) -> Data? {
             guard !data.isEmpty else { return nil }
-            guard !isCollecting else {
+            guard state == .live else {
                 bufferedData.append(data)
                 return nil
             }
             return data
         }
 
-        /// Completes the bootstrap and returns the only valid initial ordering.
+        /// Drops bytes emitted before the capture completed. They are already
+        /// represented by the authoritative snapshot and must never be replayed.
+        mutating func markSnapshotBoundary() {
+            guard state == .beforeSnapshotBoundary else { return }
+            bufferedData.removeAll(keepingCapacity: true)
+            state = .afterSnapshotBoundary
+        }
+
+        /// Completes the bootstrap as snapshot followed only by bytes emitted
+        /// after the ordered control-mode boundary.
         mutating func finish(with snapshot: Data) -> Data {
+            precondition(state == .afterSnapshotBoundary)
             var result = snapshot
             result.append(bufferedData)
             bufferedData.removeAll(keepingCapacity: false)
-            isCollecting = false
+            state = .live
             return result
         }
     }
@@ -138,21 +162,17 @@
         }
     }
 
-    /// Manages a single persistent `PipePaneReader` per tmux pane and routes its
-    /// events to subscribers.
+    /// Owns pane snapshots/live output plus one scan-only OSC reader per pane.
     ///
-    /// One reader is created when a pane is discovered and torn down only when
-    /// the pane disappears. Mirroring a pane never restarts the reader; it
-    /// merely toggles the reader's data-delivery mode (`scanOnly` → `buffering`
-    /// → `live`) and adds the caller to the subscriber set. This keeps OSC
-    /// event handlers wired in exactly one place and removes the FIFO
-    /// detach/reattach window that used to lose bytes on every mirror toggle.
+    /// Terminal content has exactly one source: the tmux control connection.
+    /// The persistent FIFO reader never forwards terminal bytes; it only parses
+    /// notifications, titles, clipboard updates, and progress events.
     ///
     /// Usage:
     /// 1. Call `subscribe(paneId:target:...)` to get a subscription ID.
     /// 2. Data and dimension changes flow to your callbacks.
     /// 3. Call `unsubscribe(_:)` when done.
-    /// 4. Reader returns to scan-only mode when the last subscriber leaves.
+    /// 4. Control output is disabled when the last subscriber leaves.
     @Observable
     @MainActor
     final public class PaneStreamManager: PipePaneReaderDelegate {
@@ -175,10 +195,8 @@
         /// Per-pane state owned by the manager.
         ///
         /// One context exists for every known pane regardless of subscriber
-        /// count — `subscriberIds` is empty while the reader is in scan-only
-        /// mode and non-empty while it's in live mode. Dimensions live here
-        /// so they can be queried for a pane that doesn't (yet) have a
-        /// subscriber.
+        /// count. Dimensions live here so they can be queried for a pane that
+        /// doesn't (yet) have a subscriber.
         private struct ReaderContext {
             let reader: PipePaneReader
             var target: String
@@ -233,6 +251,7 @@
         private var pendingResyncRequests = PaneResyncRequestQueue()
         private var resyncTasks: [String: Task<Void, Never>] = [:]
         private var resyncingPaneIds: Set<String> = []
+        private var resyncBootstraps: [String: PaneSubscriptionBootstrap] = [:]
 
         /// A terminated FIFO is restarted in place so existing subscriptions,
         /// dimensions, and title state remain authoritative. One recovery task
@@ -339,6 +358,9 @@
             // Wire up dimension changes from control client
             controlClientManager.setOnDimensionChange { [weak self] paneId, width, height in
                 self?.updateDimensions(paneId: paneId, width: width, height: height)
+            }
+            controlClientManager.setOnOutput { [weak self] paneId, data in
+                self?.handleControlOutput(paneId: paneId, data: data)
             }
         }
 
@@ -458,10 +480,16 @@
             subscriptions[subscriptionId] = subscription
 
             if isFirstSubscriber {
-                // The persistent reader is scan-only without subscribers. Retain
-                // its bytes until the initial capture completes; flushBuffer then
-                // routes them into the per-subscription bootstrap gate above.
-                await context.reader.setBuffering(true)
+                do {
+                    try await controlClientManager.setPaneOutputEnabled(
+                        paneId: paneId,
+                        sessionName: sessionName,
+                        enabled: true
+                    )
+                } catch {
+                    await rollbackBootstrap(subscriptionId: subscriptionId, paneId: paneId)
+                    throw error
+                }
             }
 
             // Refresh dimensions for every bootstrap. A pane may have changed
@@ -479,9 +507,7 @@
                   captureContext.subscriberIds.contains(subscriptionId) else {
                 await rollbackBootstrap(
                     subscriptionId: subscriptionId,
-                    paneId: paneId,
-                    reader: context.reader,
-                    flushRetainedData: isFirstSubscriber
+                    paneId: paneId
                 )
                 throw TmuxError.invalidPane(target: target)
             }
@@ -516,34 +542,32 @@
                     height: captureContext.height,
                     controlClientManager: controlClientManager,
                     sessionName: captureContext.sessionName,
-                    scrollbackLineLimit: snapshotScrollbackLineLimit
+                    scrollbackLineLimit: snapshotScrollbackLineLimit,
+                    onSnapshotBoundary: { [weak self] in
+                        guard var pending = self?.subscriptions[subscriptionId] else { return }
+                        pending.bootstrap.markSnapshotBoundary()
+                        self?.subscriptions[subscriptionId] = pending
+                    }
                 )
             } catch {
                 await rollbackBootstrap(
                     subscriptionId: subscriptionId,
-                    paneId: paneId,
-                    reader: context.reader,
-                    flushRetainedData: isFirstSubscriber
+                    paneId: paneId
                 )
                 throw error
-            }
-
-            if isFirstSubscriber {
-                await context.reader.flushBuffer()
             }
 
             // No await after this transition: MainActor cannot deliver another
             // pipe event between making the subscription live and returning its
             // complete initial byte stream to the caller.
             guard var readySubscription = subscriptions[subscriptionId],
+                  readySubscription.bootstrap.hasSnapshotBoundary,
                   let readyContext = readers[paneId],
                   readyContext.reader === context.reader,
                   readyContext.subscriberIds.contains(subscriptionId) else {
                 await rollbackBootstrap(
                     subscriptionId: subscriptionId,
-                    paneId: paneId,
-                    reader: context.reader,
-                    flushRetainedData: false
+                    paneId: paneId
                 )
                 throw TmuxError.invalidPane(target: target)
             }
@@ -574,9 +598,8 @@
 
         /// Unsubscribe from a pane stream.
         ///
-        /// If this is the last subscriber, the reader returns to scan-only
-        /// mode (data discarded, OSC events still parsed) but stays attached
-        /// to the FIFO. The reader is only torn down when the pane disappears.
+        /// If this is the last subscriber, control-mode output is disabled. The
+        /// scan-only OSC reader stays attached until the pane disappears.
         ///
         /// - Parameter subscriptionId: The subscription ID returned from subscribe()
         public func unsubscribe(_ subscriptionId: UUID) async {
@@ -597,8 +620,12 @@
             readers[paneId] = context
 
             if context.subscriberIds.isEmpty {
-                await context.reader.setBuffering(false)
-                logger.info("Last subscriber gone, reader returned to scan-only mode", metadata: [
+                try? await controlClientManager.setPaneOutputEnabled(
+                    paneId: paneId,
+                    sessionName: context.sessionName,
+                    enabled: false
+                )
+                logger.info("Last subscriber gone, control output disabled", metadata: [
                     "paneId": "\(paneId)",
                 ])
             } else {
@@ -658,27 +685,43 @@
             forwardTitleChange(paneId: paneId, title: title, excludingSubscription: fromSubscription)
         }
 
-        /// Capture current content for a pane that is already streaming.
+        /// Captures current content for a pane that is already streaming.
         ///
-        /// This is used when a second viewer wants to view an already-streaming pane.
-        /// Instead of creating a duplicate PaneStreamManager subscription (which would cause
-        /// duplicate data forwarding), this captures the current terminal state.
+        /// A second remote viewer reuses the existing PaneStreamManager
+        /// subscription. Its private downstream bootstrap buffer is cut at
+        /// `onSnapshotBoundary`, ordered against live output on the same control
+        /// connection, so it receives exactly `snapshot + post-boundary bytes`.
         ///
         /// - Parameter paneId: The pane ID to capture content for
         /// - Returns: Current content, width, and height if the pane has subscribers; nil otherwise
         public func currentContent(
             for paneId: String,
-            maximumSnapshotScrollbackLineLimit: Int? = nil
+            maximumSnapshotScrollbackLineLimit: Int? = nil,
+            onSnapshotBoundary: (@MainActor @Sendable () -> Void)? = nil
         ) async -> (content: Data, width: Int, height: Int, scrollbackLineLimit: Int)? {
-            guard let context = readers[paneId], !context.subscriberIds.isEmpty else { return nil }
+            guard var context = readers[paneId], !context.subscriberIds.isEmpty else { return nil }
+            if let dimensions = try? await tmuxService.getPaneDimensions(context.target) {
+                guard var refreshed = readers[paneId], refreshed.reader === context.reader else {
+                    return nil
+                }
+                refreshed.width = dimensions.width
+                refreshed.height = dimensions.height
+                readers[paneId] = refreshed
+                context = refreshed
+            }
             let viewerScrollbackLineLimit = configuredScrollbackLineLimit
             let snapshotScrollbackLineLimit = resolvedSnapshotScrollbackLineLimit(
                 maximum: maximumSnapshotScrollbackLineLimit
             )
             guard
-                let content = try? await tmuxService.capturePaneWithScrollbackForStreaming(
-                    context.target,
-                    scrollbackLineLimit: snapshotScrollbackLineLimit
+                let content = try? await tmuxService.capturePaneViaControlMode(
+                    paneId: paneId,
+                    width: context.width,
+                    height: context.height,
+                    controlClientManager: controlClientManager,
+                    sessionName: context.sessionName,
+                    scrollbackLineLimit: snapshotScrollbackLineLimit,
+                    onSnapshotBoundary: onSnapshotBoundary
                 )
             else {
                 return nil
@@ -710,11 +753,7 @@
             startResyncTaskIfNeeded(paneId: paneId)
         }
 
-        private func startResyncTaskIfNeeded(
-            paneId: String,
-            whileRecovering: Bool = false
-        ) {
-            guard whileRecovering || readerRecoveryTasks[paneId] == nil else { return }
+        private func startResyncTaskIfNeeded(paneId: String) {
             guard resyncTasks[paneId] == nil else { return }
             resyncTasks[paneId] = Task { @MainActor [weak self] in
                 await self?.runResyncLoop(paneId: paneId)
@@ -771,6 +810,7 @@
             subscriptions.removeAll()
             pendingResyncRequests.removeAll()
             resyncingPaneIds.removeAll()
+            resyncBootstraps.removeAll()
             paneRefreshTask?.cancel()
             paneRefreshTask = nil
             logger.info("Disconnected all pane readers")
@@ -970,8 +1010,15 @@
             }
             pendingResyncRequests.discard(paneId: paneId)
             resyncingPaneIds.remove(paneId)
+            resyncBootstraps.removeValue(forKey: paneId)
 
             guard let context = readers.removeValue(forKey: paneId) else { return }
+
+            try? await controlClientManager.setPaneOutputEnabled(
+                paneId: paneId,
+                sessionName: context.sessionName,
+                enabled: false
+            )
 
             // Drop subscriptions belonging to this pane (caller likely already
             // unsubscribed, but this guards against shutdown ordering bugs).
@@ -995,18 +1042,6 @@
         }
 
         // MARK: - PipePaneReaderDelegate
-
-        public func pipePaneReader(_ paneId: String, didReceiveData data: Data) {
-            TerminalTransportMetrics.shared.recordLocalOutput(paneId: paneId)
-            forwardData(paneId: paneId, data: data)
-        }
-
-        public func pipePaneReaderDidOverflow(_ paneId: String) {
-            guard let context = readers[paneId] else { return }
-            for subscriptionId in context.subscriberIds {
-                requestResync(subscriptionId: subscriptionId)
-            }
-        }
 
         public func pipePaneReader(
             _ paneId: String,
@@ -1042,7 +1077,6 @@
                 "paneId": "\(paneId)",
                 "reason": "\(reason)",
             ])
-            resyncingPaneIds.insert(paneId)
             readerRecoveryTasks[paneId] = Task { @MainActor [weak self] in
                 await self?.recoverReader(paneId: paneId, reader: reader)
             }
@@ -1050,8 +1084,18 @@
 
         // MARK: - Private Forwarding
 
+        private func handleControlOutput(paneId: String, data: Data) {
+            TerminalTransportMetrics.shared.recordLocalOutput(paneId: paneId)
+            forwardData(paneId: paneId, data: data)
+        }
+
         private func forwardData(paneId: String, data: Data) {
-            guard !resyncingPaneIds.contains(paneId) else { return }
+            if resyncingPaneIds.contains(paneId) {
+                guard var bootstrap = resyncBootstraps[paneId] else { return }
+                _ = bootstrap.route(data)
+                resyncBootstraps[paneId] = bootstrap
+                return
+            }
             guard let context = readers[paneId] else { return }
 
             for subscriberId in context.subscriberIds {
@@ -1065,45 +1109,31 @@
         }
 
         /// Removes a failed bootstrap without disturbing subscribers that were
-        /// already live. If this subscriber activated a scan-only reader, either
-        /// return it to scan-only or release its retained bytes to a concurrent
-        /// subscriber that joined while capture was suspended.
+        /// already live. If it was the first subscriber, disable control output.
         private func rollbackBootstrap(
             subscriptionId: UUID,
-            paneId: String,
-            reader: PipePaneReader,
-            flushRetainedData: Bool
+            paneId: String
         ) async {
             subscriptions.removeValue(forKey: subscriptionId)
-            guard var context = readers[paneId], context.reader === reader else { return }
+            guard var context = readers[paneId] else { return }
             context.subscriberIds.remove(subscriptionId)
             readers[paneId] = context
 
             if context.subscriberIds.isEmpty {
-                await reader.setBuffering(false)
-            } else if flushRetainedData {
-                await reader.flushBuffer()
+                try? await controlClientManager.setPaneOutputEnabled(
+                    paneId: paneId,
+                    sessionName: context.sessionName,
+                    enabled: false
+                )
             }
         }
 
-        /// Restarts the failed FIFO reader without replacing its pane context.
-        /// On success, active subscribers cross the existing snapshot boundary;
-        /// panes without subscribers simply return to scan-only monitoring.
+        /// Restarts the notification-only FIFO reader without disturbing the
+        /// terminal stream, whose bytes use the independent control connection.
         private func recoverReader(paneId: String, reader: PipePaneReader) async {
-            var handedOffToResync = false
             defer {
                 readerRecoveryTasks[paneId] = nil
-                if !handedOffToResync {
-                    resyncingPaneIds.remove(paneId)
-                }
             }
-
-            if let task = resyncTasks.removeValue(forKey: paneId) {
-                task.cancel()
-                _ = await task.value
-            }
-            pendingResyncRequests.discard(paneId: paneId)
-            resyncingPaneIds.insert(paneId)
 
             while !Task.isCancelled, !isShuttingDown {
                 guard let context = readers[paneId], context.reader === reader else { return }
@@ -1128,22 +1158,9 @@
                 }
 
                 if await reader.isHealthy {
-                    guard let refreshed = readers[paneId], refreshed.reader === reader else { return }
-                    if refreshed.subscriberIds.isEmpty {
-                        logger.info("Recovered scan-only pane reader", metadata: ["paneId": "\(paneId)"])
-                        return
-                    }
-
-                    pendingResyncRequests.request(
-                        paneId: paneId,
-                        subscriptionIds: refreshed.subscriberIds
-                    )
-                    resyncingPaneIds.insert(paneId)
-                    startResyncTaskIfNeeded(paneId: paneId, whileRecovering: true)
-                    handedOffToResync = true
-                    logger.info("Recovered pane reader and requested snapshot", metadata: [
+                    guard readers[paneId]?.reader === reader else { return }
+                    logger.info("Recovered notification-only pane reader", metadata: [
                         "paneId": "\(paneId)",
-                        "subscribers": "\(refreshed.subscriberIds.count)",
                     ])
                     return
                 }
@@ -1156,6 +1173,7 @@
             defer {
                 resyncTasks[paneId] = nil
                 resyncingPaneIds.remove(paneId)
+                resyncBootstraps.removeValue(forKey: paneId)
             }
 
             while !Task.isCancelled {
@@ -1167,7 +1185,7 @@
                 // same subscriber must remain visible for a following capture.
                 let targets = pendingResyncRequests.take(paneId: paneId)
 
-                await context.reader.setBuffering(true)
+                resyncBootstraps[paneId] = PaneSubscriptionBootstrap()
                 if let dimensions = try? await tmuxService.getPaneDimensions(context.target) {
                     context.width = dimensions.width
                     context.height = dimensions.height
@@ -1191,18 +1209,16 @@
                         height: context.height,
                         controlClientManager: controlClientManager,
                         sessionName: context.sessionName,
-                        scrollbackLineLimit: snapshotScrollbackLineLimit
+                        scrollbackLineLimit: snapshotScrollbackLineLimit,
+                        onSnapshotBoundary: { [weak self] in
+                            guard var bootstrap = self?.resyncBootstraps[paneId] else { return }
+                            bootstrap.markSnapshotBoundary()
+                            self?.resyncBootstraps[paneId] = bootstrap
+                        }
                     )
                 } catch {
-                    // A reader recovery cancels any in-flight snapshot before
-                    // restarting the FIFO. Do not turn that internal handoff
-                    // into a user-visible terminal error.
-                    if Task.isCancelled || readerRecoveryTasks[paneId] != nil {
-                        await context.reader.setBuffering(false)
-                        return
-                    }
+                    if Task.isCancelled { return }
                     let failureTargets = targets.union(pendingResyncRequests.take(paneId: paneId))
-                    await context.reader.setBuffering(false)
                     for subscriptionId in failureTargets {
                         guard let subscription = subscriptions[subscriptionId],
                               !subscription.bootstrap.isCollecting else { continue }
@@ -1215,8 +1231,11 @@
                     return
                 }
 
-                guard !Task.isCancelled else {
-                    await context.reader.setBuffering(false)
+                guard !Task.isCancelled else { return }
+                guard var bootstrap = resyncBootstraps[paneId], bootstrap.hasSnapshotBoundary else {
+                    logger.error("Missing ordered snapshot boundary", metadata: [
+                        "paneId": "\(paneId)",
+                    ])
                     return
                 }
 
@@ -1233,10 +1252,14 @@
                     )))
                 }
 
-                // Reset callbacks are synchronous MainActor work. Once they all
-                // ran, allow the reader's buffered post-snapshot bytes through.
+                // Reset callbacks are synchronous MainActor work. Only bytes
+                // emitted after the visible capture's `%end` are replayed.
+                let postSnapshotData = bootstrap.finish(with: Data())
+                resyncBootstraps.removeValue(forKey: paneId)
                 resyncingPaneIds.remove(paneId)
-                await context.reader.flushBuffer()
+                if !postSnapshotData.isEmpty {
+                    forwardData(paneId: paneId, data: postSnapshotData)
+                }
 
                 guard pendingResyncRequests.hasRequests(paneId: paneId) else { return }
                 resyncingPaneIds.insert(paneId)

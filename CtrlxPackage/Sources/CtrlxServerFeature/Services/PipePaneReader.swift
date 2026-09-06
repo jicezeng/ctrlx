@@ -37,14 +37,9 @@
     /// Receives events parsed by `PipePaneReader`.
     ///
     /// All methods are called on the main actor. The reader coalesces pending
-    /// events into one MainActor delivery loop. Normal live delivery remains
-    /// fire-and-forget; `flushBuffer()` inserts a barrier when a subscriber
-    /// needs proof that bootstrap bytes reached the delegate. Individual data
-    /// chunks remain separate delegate calls and retain their FIFO order.
+    /// events into one MainActor delivery loop.
     @MainActor
     protocol PipePaneReaderDelegate: AnyObject, Sendable {
-        func pipePaneReader(_ paneId: String, didReceiveData data: Data)
-        func pipePaneReaderDidOverflow(_ paneId: String)
         func pipePaneReader(
             _ paneId: String,
             didReceiveNotification notification: TerminalStreamMessage.TerminalNotification
@@ -59,17 +54,12 @@
         )
     }
 
-    /// Manages FIFO-based raw byte delivery from tmux pipe-pane for a single pane.
+    /// Scans one pane's raw FIFO output for OSC side effects.
     ///
     /// A single `PipePaneReader` lives for the full lifetime of its tmux pane.
-    /// It starts in scan-only mode (data discarded, OSC notifications still
-    /// extracted) and switches into buffering / live modes via
-    /// `setBuffering(_:)` and `flushBuffer()` when subscribers attach.
-    ///
-    /// Instead of parsing `%output` events from control mode (which requires octal unescaping,
-    /// UTF-8 reconstruction, and line-boundary handling), this reads raw PTY bytes directly
-    /// via `pipe-pane -O` piped through a FIFO. The only filtering needed is stripping
-    /// tmux's `ESC k ... ESC \` title sequences.
+    /// It never delivers terminal bytes: the ordered control connection owns
+    /// snapshots and live output. This independent scan-only path exists solely
+    /// for notifications, titles, clipboard updates, and progress events.
     ///
     /// FIFO connection sequence:
     /// 1. Create FIFO with `mkfifo()`
@@ -77,20 +67,6 @@
     /// 3. tmux starts `cat > fifo` subprocess (blocks on open until reader connects)
     /// 4. Open FIFO for reading (unblocks writer, data flows)
     actor PipePaneReader {
-        /// Three data-delivery modes the reader can be in.
-        ///
-        /// - `scanOnly`: parser is in scan-only mode (no `filteredData` built),
-        ///   incoming bytes are discarded. OSC notification/title/clipboard/progress
-        ///   events still flow to the delegate. This is the default after start
-        ///   and the resting state when no subscribers are attached.
-        /// - `buffering`: parser builds `filteredData`, but bytes are queued
-        ///   for a later `flushBuffer()` instead of being forwarded. Used during
-        ///   an initial `capture-pane` snapshot so live bytes that arrive
-        ///   between "buffering on" and "snapshot taken" aren't dropped.
-        /// - `live`: parser builds `filteredData` and bytes flow directly to the
-        ///   delegate. The state after `flushBuffer()` returns.
-        private enum Mode: Equatable { case scanOnly, buffering, live }
-
         /// `paneId` never changes after init; expose nonisolated so the delegate
         /// (which receives the id with every callback) doesn't need to cross
         /// actor boundaries to read it.
@@ -107,15 +83,9 @@
 
         // Delivery
         private weak var delegate: (any PipePaneReaderDelegate)?
-        private var mode: Mode = .scanOnly
-        private var buffer: [Data] = []
-        private var bufferedBytes = 0
-        private var bufferOverflowed = false
         private var pendingDelegateEvents: [DelegateEvent] = []
         private var pendingDelegateHeadIndex = 0
-        private var pendingDelegateBytes = 0
         private var delegateDeliveryScheduled = false
-        private var delegateBackpressured = false
 
         // AsyncStream for FIFO-ordered data processing.
         // readabilityHandler yields into this stream; a single consumer task
@@ -126,19 +96,12 @@
         private let ingressBuffer: PipeIngressBuffer
 
         /// Eight maximum-size FIFO reads keep at most 512 KiB before the parser.
-        /// An overflow resets parser state and asks subscribers for a snapshot;
-        /// continuing with a byte gap would corrupt ANSI state.
+        /// An overflow resets the scan parser; terminal delivery is unaffected.
         private static let ingressBufferChunks = 8
-        private static let maximumCaptureBufferBytes = 2 * 1_024 * 1_024
-        private static let maximumPendingDelegateBytes = 512 * 1_024
         private static let maximumDelegateEventsPerTurn = 32
         private static let maximumDelegateBytesPerTurn = 256 * 1_024
 
-        /// Incomplete tmux escape sequence buffer (ESC k ... ESC \ split across reads)
-        private var tmuxEscapeBuffer = Data()
-
-        /// Parser for OSC 9/777 notification sequences. `scanOnly` is flipped
-        /// by `setBuffering(_:)` so the same instance can be reused across modes.
+        /// Parser for OSC events. `scanOnly` avoids rebuilding terminal data.
         private var notificationParser = TerminalNotificationParser(scanOnly: true)
 
         init(paneId: String) {
@@ -169,9 +132,7 @@
 
         /// Starts pipe-pane for this pane, creating the FIFO and opening it for reading.
         ///
-        /// The reader begins in scan-only mode — bytes are parsed for OSC events
-        /// but discarded otherwise. Use `setBuffering(true)` + `flushBuffer()`
-        /// when a subscriber attaches and wants live bytes.
+        /// Terminal bytes are always discarded after OSC side effects are parsed.
         ///
         /// - Parameter controlClientManager: Used to send the pipe-pane command
         /// - Parameter sessionName: The tmux session name for the control client
@@ -186,11 +147,7 @@
 
             isStopping = false
             terminationReported = false
-            mode = .scanOnly
             notificationParser.scanOnly = true
-            buffer = []
-            bufferedBytes = 0
-            bufferOverflowed = false
 
             // Clean up any stale FIFO from a previous crash
             cleanupFifo()
@@ -298,64 +255,6 @@
             logger.info("pipe-pane started for \(paneId)")
         }
 
-        /// Switches data-delivery mode.
-        ///
-        /// - `true`: Switch to buffering mode. The parser starts building
-        ///   `filteredData` and incoming bytes are queued instead of forwarded
-        ///   to the delegate. Drop any prior buffered bytes first — buffering
-        ///   is meant to start clean before a `capture-pane` snapshot.
-        /// - `false`: Switch back to scan-only mode. The parser stops building
-        ///   `filteredData`, the queue is discarded, and only OSC events keep
-        ///   flowing. Call when the last subscriber leaves.
-        ///
-        /// Use `flushBuffer()` to drain the queue and transition into live mode
-        /// (bytes flow directly to the delegate).
-        func setBuffering(_ enabled: Bool) {
-            buffer = []
-            bufferedBytes = 0
-            bufferOverflowed = false
-            delegateBackpressured = false
-            if enabled {
-                // A snapshot supersedes queued live bytes. Keep control events
-                // and barriers, but do not spend MainActor time replaying output
-                // that every subscriber will immediately replace.
-                _ = discardPendingDelegateData()
-                recordDelegateQueue()
-                notificationParser.scanOnly = false
-                mode = .buffering
-            } else {
-                notificationParser.scanOnly = true
-                mode = .scanOnly
-            }
-        }
-
-        /// Drains any queued bytes through the delegate in the order they were
-        /// received, then transitions to live mode (subsequent bytes flow
-        /// directly to the delegate). The buffer is empty after this call.
-        ///
-        /// The method returns only after all buffered chunks have reached the
-        /// delegate. Live chunks that arrive after the inserted barrier remain
-        /// fire-and-forget and continue through the same FIFO queue.
-        func flushBuffer() async {
-            notificationParser.scanOnly = false
-            let toFlush = bufferOverflowed ? [] : buffer
-            let didOverflow = bufferOverflowed
-            buffer = []
-            bufferedBytes = 0
-            bufferOverflowed = false
-            mode = .live
-
-            await withCheckedContinuation { continuation in
-                var events = toFlush.map(DelegateEvent.data)
-                if didOverflow {
-                    events.append(.overflow)
-                }
-                events.append(.barrier(continuation))
-                enqueueDelegateEvents(events)
-            }
-            logger.debug("Flushed \(toFlush.count) buffered chunks for \(paneId)")
-        }
-
         /// Stops pipe-pane and cleans up all resources.
         ///
         /// - Parameter controlClientManager: Used to send the stop pipe-pane command
@@ -393,13 +292,8 @@
             isRunning = false
             isStopping = false
             terminationReported = false
-            mode = .scanOnly
-            buffer = []
-            bufferedBytes = 0
-            bufferOverflowed = false
             discardPendingDelegateEvents()
             ingressBuffer.removeAll()
-            tmuxEscapeBuffer = Data()
             notificationParser.reset()
             notificationParser.scanOnly = true
             logger.info("pipe-pane stopped for \(paneId)")
@@ -417,61 +311,14 @@
         private func processIncomingData(_ data: Data) {
             guard !data.isEmpty else { return }
 
-            // Terminal output is overwhelmingly plain UTF-8. Avoid six full
-            // Data scans and the OSC parser when this chunk cannot contain a
-            // control sequence. Buffered fragments disable this path because
-            // the current chunk may complete a sequence begun by the previous
-            // read without containing another introducer itself.
-            if canUsePlainDataPath(data) {
-                processPlainData(data)
-                return
-            }
+            // Most output has no OSC introducer. A buffered sequence disables
+            // this fast path because this chunk may contain only its remainder.
+            guard notificationParser.hasBufferedSequence
+                || data.contains(0x1B)
+                || data.contains(0x9D)
+            else { return }
 
-            // Filter tmux-specific escape sequences (ESC k ... ESC \)
-            let tmuxFiltered = filterTmuxEscapeSequences(data)
-            guard !tmuxFiltered.isEmpty else { return }
-
-            // Strip DA query sequences so mirroring SwiftTerm instances never
-            // see them and never generate response bytes in their send() delegate.
-            let daFiltered = TerminalResponseFilter.stripDAQueries(tmuxFiltered)
-            guard !daFiltered.isEmpty else { return }
-
-            // Strip DSR query sequences (CPR, DECXCPR, status) for the same reason.
-            let dsrFiltered = TerminalResponseFilter.stripDSRQueries(daFiltered)
-            guard !dsrFiltered.isEmpty else { return }
-
-            // Strip DECRQM (Request Mode) queries — e.g. mode 2026 synchronized output.
-            let decrqmFiltered = TerminalResponseFilter.stripDECRQMQueries(dsrFiltered)
-            guard !decrqmFiltered.isEmpty else { return }
-
-            // Strip Kitty keyboard protocol negotiation sequences so mirroring
-            // SwiftTerm instances never enter an unsupported keyboard mode.
-            let kittyFiltered = TerminalResponseFilter.stripKittyKeyboardProtocol(decrqmFiltered)
-            guard !kittyFiltered.isEmpty else { return }
-
-            // Strip OSC color queries (background/foreground/cursor/palette probes)
-            // so mirroring SwiftTerm instances never emit a color report that would
-            // leak back into the pane as typed input (e.g. `11;rgb:…`) — issue #669.
-            let oscFiltered = TerminalResponseFilter.stripOSCColorQueries(kittyFiltered)
-            guard !oscFiltered.isEmpty else { return }
-
-            // Parse and strip OSC 9/777 notification sequences
-            let parseResult = notificationParser.parse(oscFiltered)
-
-            // Determine what (if any) data goes to the live delegate; for
-            // buffering mode we append synchronously so the buffer's order
-            // is determined by actor serialization, not by MainActor timing.
-            let filtered = parseResult.filteredData
-            let liveData: Data?
-            switch mode {
-            case .scanOnly:
-                liveData = nil
-            case .buffering:
-                appendToCaptureBuffer(filtered)
-                liveData = nil
-            case .live:
-                liveData = filtered.isEmpty ? nil : filtered
-            }
+            let parseResult = notificationParser.parse(data)
 
             let notifications = parseResult.notifications
             let title = parseResult.titleChange.map(TerminalTitleStabilizer.stabilize)
@@ -483,34 +330,13 @@
                 || title != nil
                 || clipboard != nil
                 || progress != nil
-                || liveData != nil
             else { return }
 
             var events = notifications.map(DelegateEvent.notification)
             if let title { events.append(.title(title)) }
             if let clipboard { events.append(.clipboard(clipboard)) }
             if let progress { events.append(.progress(progress)) }
-            if let liveData { events.append(.data(liveData)) }
             enqueueDelegateEvents(events)
-        }
-
-        private func canUsePlainDataPath(_ data: Data) -> Bool {
-            tmuxEscapeBuffer.isEmpty
-                && !notificationParser.hasBufferedSequence
-                && !data.contains(0x1B) // ESC
-                && !data.contains(0x9B) // C1 CSI
-                && !data.contains(0x9D) // C1 OSC
-        }
-
-        private func processPlainData(_ data: Data) {
-            switch mode {
-            case .scanOnly:
-                return
-            case .buffering:
-                appendToCaptureBuffer(data)
-            case .live:
-                enqueueDelegateEvents([.data(data)])
-            }
         }
 
         /// Adds events to the FIFO delivery queue. One MainActor task drains
@@ -518,30 +344,7 @@
         /// every pipe read.
         private func enqueueDelegateEvents(_ events: [DelegateEvent]) {
             guard !events.isEmpty else { return }
-            for event in events {
-                switch event {
-                case let .data(data):
-                    guard !delegateBackpressured else { continue }
-                    guard pendingDelegateBytes + data.count <= Self.maximumPendingDelegateBytes else {
-                        let alreadyHasOverflow = discardPendingDelegateData()
-                        delegateBackpressured = true
-                        if !alreadyHasOverflow {
-                            pendingDelegateEvents.append(.overflow)
-                        }
-                        continue
-                    }
-                    pendingDelegateEvents.append(event)
-                    pendingDelegateBytes += data.count
-
-                case .overflow:
-                    guard !delegateBackpressured else { continue }
-                    delegateBackpressured = true
-                    pendingDelegateEvents.append(event)
-
-                case .notification, .title, .clipboard, .progress, .barrier:
-                    pendingDelegateEvents.append(event)
-                }
-            }
+            pendingDelegateEvents.append(contentsOf: events)
             recordDelegateQueue()
             guard !delegateDeliveryScheduled else { return }
 
@@ -561,22 +364,11 @@
             }
 
             let availableCount = pendingDelegateEvents.count - pendingDelegateHeadIndex
-            var eventCount = 0
-            var byteCount = 0
-            while eventCount < availableCount,
-                  eventCount < Self.maximumDelegateEventsPerTurn {
-                let nextBytes = pendingDelegateEvents[pendingDelegateHeadIndex + eventCount].byteCount
-                if eventCount > 0, byteCount + nextBytes > Self.maximumDelegateBytesPerTurn {
-                    break
-                }
-                byteCount += nextBytes
-                eventCount += 1
-            }
+            let eventCount = min(availableCount, Self.maximumDelegateEventsPerTurn)
 
             let endIndex = pendingDelegateHeadIndex + eventCount
             let events = Array(pendingDelegateEvents[pendingDelegateHeadIndex..<endIndex])
             pendingDelegateHeadIndex = endIndex
-            pendingDelegateBytes -= byteCount
             compactPendingDelegateEvents()
             recordDelegateQueue()
             return DelegateDelivery(
@@ -591,14 +383,6 @@
             case title(String)
             case clipboard(String)
             case progress(TerminalProgressState)
-            case data(Data)
-            case overflow
-            case barrier(CheckedContinuation<Void, Never>)
-
-            var byteCount: Int {
-                if case let .data(data) = self { return data.count }
-                return 0
-            }
         }
 
         private struct DelegateDelivery: Sendable {
@@ -618,46 +402,14 @@
                         delegate.value?.pipePaneReader(paneId, didReceiveClipboard: clipboard)
                     case let .progress(progress):
                         delegate.value?.pipePaneReader(paneId, didReceiveProgress: progress)
-                    case let .data(data):
-                        delegate.value?.pipePaneReader(paneId, didReceiveData: data)
-                    case .overflow:
-                        delegate.value?.pipePaneReaderDidOverflow(paneId)
-                    case let .barrier(continuation):
-                        continuation.resume()
                     }
                 }
             }
         }
 
-        private func appendToCaptureBuffer(_ data: Data) {
-            guard !data.isEmpty, !bufferOverflowed else { return }
-            guard bufferedBytes + data.count <= Self.maximumCaptureBufferBytes else {
-                buffer.removeAll(keepingCapacity: true)
-                bufferedBytes = 0
-                bufferOverflowed = true
-                return
-            }
-            buffer.append(data)
-            bufferedBytes += data.count
-        }
-
         private func handleIngressOverflow() {
-            tmuxEscapeBuffer = Data()
             notificationParser.reset()
-            notificationParser.scanOnly = mode == .scanOnly
-            buffer.removeAll(keepingCapacity: true)
-            bufferedBytes = 0
-            switch mode {
-            case .scanOnly:
-                bufferOverflowed = false
-            case .buffering:
-                // Keep the marker until flushBuffer. This forces a second
-                // snapshot if the gap raced the current capture boundary.
-                bufferOverflowed = true
-            case .live:
-                bufferOverflowed = false
-                enqueueDelegateEvents([.overflow])
-            }
+            notificationParser.scanOnly = true
         }
 
         private func drainIngressBuffer() async {
@@ -686,7 +438,7 @@
                 .pipeIngress,
                 id: "\(paneId):delegate",
                 depth: pendingDelegateEvents.count - pendingDelegateHeadIndex,
-                bytes: pendingDelegateBytes
+                bytes: 0
             )
         }
 
@@ -702,33 +454,9 @@
         }
 
         private func discardPendingDelegateEvents() {
-            let pending = pendingDelegateEvents[pendingDelegateHeadIndex...]
-            let barriers = pending.compactMap { event -> CheckedContinuation<Void, Never>? in
-                if case let .barrier(continuation) = event { return continuation }
-                return nil
-            }
             pendingDelegateEvents.removeAll(keepingCapacity: false)
             pendingDelegateHeadIndex = 0
-            pendingDelegateBytes = 0
-            delegateBackpressured = false
             recordDelegateQueue()
-            for continuation in barriers {
-                continuation.resume()
-            }
-        }
-
-        private func discardPendingDelegateData() -> Bool {
-            let retained = pendingDelegateEvents[pendingDelegateHeadIndex...].filter { event in
-                if case .data = event { return false }
-                return true
-            }
-            pendingDelegateEvents = retained
-            pendingDelegateHeadIndex = 0
-            pendingDelegateBytes = 0
-            return retained.contains { event in
-                if case .overflow = event { return true }
-                return false
-            }
         }
 
         /// Tiny weak holder so we can capture the delegate reference into a
@@ -740,80 +468,7 @@
             }
         }
 
-        /// Filters out tmux/screen-specific escape sequences that standard terminals don't handle.
-        /// - `ESC k ... ESC \` : tmux title sequence (sets pane title)
-        /// Without filtering, terminals output the sequence content as literal text.
-        /// Buffers incomplete sequences across reads to handle split data.
-        private func filterTmuxEscapeSequences(_ data: Data) -> Data {
-            var result = Data()
-
-            // Prepend any buffered incomplete sequence from previous read
-            var dataToProcess = data
-            if !tmuxEscapeBuffer.isEmpty {
-                dataToProcess = tmuxEscapeBuffer + data
-                tmuxEscapeBuffer = Data()
-            }
-
-            var i = dataToProcess.startIndex
-
-            while i < dataToProcess.endIndex {
-                if dataToProcess[i] == 0x1B { // ESC
-                    if i + 1 >= dataToProcess.endIndex {
-                        // Incomplete: just ESC at end, buffer it
-                        tmuxEscapeBuffer = Data(dataToProcess[i...])
-                        break
-                    }
-
-                    if dataToProcess[i + 1] == 0x6B { // 'k'
-                        // ESC k - start of tmux title sequence
-                        // Skip until we find ESC \ (0x1B 0x5C) or end of data
-                        var j = dataToProcess.index(i, offsetBy: 2)
-                        var foundEnd = false
-
-                        while j < dataToProcess.endIndex {
-                            if dataToProcess[j] == 0x1B {
-                                if j + 1 >= dataToProcess.endIndex {
-                                    // ESC at end while inside sequence - buffer from start
-                                    tmuxEscapeBuffer = Data(dataToProcess[i...])
-                                    return result
-                                }
-                                if dataToProcess[j + 1] == 0x5C { // '\'
-                                    // Found ESC \ - skip entire sequence
-                                    j = dataToProcess.index(j, offsetBy: 2)
-                                    foundEnd = true
-                                    break
-                                }
-                            }
-                            j = dataToProcess.index(after: j)
-                        }
-
-                        if foundEnd {
-                            i = j
-                        } else {
-                            // Reached end without finding ESC \ - buffer incomplete sequence
-                            tmuxEscapeBuffer = Data(dataToProcess[i...])
-                            break
-                        }
-                    } else {
-                        // ESC followed by something other than 'k' - pass through
-                        result.append(dataToProcess[i])
-                        i = dataToProcess.index(after: i)
-                    }
-                } else {
-                    result.append(dataToProcess[i])
-                    i = dataToProcess.index(after: i)
-                }
-            }
-
-            return result
-        }
-
         // MARK: - Test Helpers
-
-        /// Exposes filterTmuxEscapeSequences for testing.
-        func testFilterTmuxEscapeSequences(_ data: Data) -> Data {
-            filterTmuxEscapeSequences(data)
-        }
 
         /// Exposes processIncomingData for testing. The data path itself is
         /// synchronous, but delegate delivery is fire-and-forget on MainActor;
@@ -823,14 +478,8 @@
             processIncomingData(data)
         }
 
-        /// Enqueues one atomic delegate batch so tests can exercise the
-        /// downstream high-water boundary without scheduler timing.
-        func testEnqueueDelegateData(_ chunks: [Data]) {
-            enqueueDelegateEvents(chunks.map(DelegateEvent.data))
-        }
-
         /// Drains any MainActor delivery work dispatched by prior
-        /// `testProcessIncomingData` / `flushBuffer` calls. Tests assert on
+        /// `testProcessIncomingData` calls. Tests assert on
         /// delegate state only after this returns.
         func testWaitForDelivery() async {
             while delegateDeliveryScheduled {

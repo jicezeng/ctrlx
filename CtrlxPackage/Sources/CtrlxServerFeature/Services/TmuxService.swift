@@ -872,10 +872,9 @@ final public class TmuxService {
         return result.stdout
     }
 
-    /// Captures pane content with scrollback for streaming initialization via subprocess.
-    /// Used for re-captures (existing stream path) and fallback scenarios.
-    /// For new stream initialization, prefer `capturePaneViaControlMode` which eliminates
-    /// the timing gap between capture and stream registration.
+    /// Captures pane content with scrollback via subprocess.
+    /// Kept for standalone capture tests and fallback scenarios. Streaming must
+    /// use `capturePaneViaControlMode` so snapshots and live output are ordered.
     /// - Parameters:
     ///   - target: The pane target
     ///   - scrollbackLineLimit: Maximum retained history lines to capture
@@ -944,7 +943,8 @@ final public class TmuxService {
         height: Int,
         controlClientManager: TmuxControlClientManager,
         sessionName: String,
-        scrollbackLineLimit: Int = TerminalScrollbackPolicy.defaultLineLimit
+        scrollbackLineLimit: Int = TerminalScrollbackPolicy.defaultLineLimit,
+        onSnapshotBoundary: (@MainActor @Sendable () -> Void)? = nil
     ) async throws -> Data {
         // Address the pane by its stable tmux pane ID rather than a
         // session:window.pane target string. With `renumber-windows on`,
@@ -967,18 +967,26 @@ final public class TmuxService {
             CommandResponse(commandNumber: 0, output: "", isError: false)
         }
 
+        // Query cursor state before the authoritative visible capture. tmux
+        // never emits `%output` inside a command response block, so the end of
+        // the following capture is the exact boundary between the snapshot and
+        // later live bytes on this same control connection.
+        let cursorResponse = try await controlClientManager.sendCommand(
+            "display-message -t '\(paneId)' -p '#{cursor_x},#{cursor_y},#{cursor_flag}'",
+            sessionName: sessionName
+        )
         let visibleResponse = try await controlClientManager.sendCommand(
             "capture-pane -t '\(paneId)' -p -e -N",
-            sessionName: sessionName
+            sessionName: sessionName,
+            onResponse: { response in
+                guard !response.isError else { return }
+                onSnapshotBoundary?()
+            }
         )
 
         guard !visibleResponse.isError else {
             throw TmuxError.invalidPane(target: paneId)
         }
-        let cursorResponse = try await controlClientManager.sendCommand(
-            "display-message -t '\(paneId)' -p '#{cursor_x},#{cursor_y},#{cursor_flag}'",
-            sessionName: sessionName
-        )
 
         return processCapturePaneForStreaming(
             scrollbackOutput: scrollbackResponse.isError ? nil : scrollbackResponse.output,

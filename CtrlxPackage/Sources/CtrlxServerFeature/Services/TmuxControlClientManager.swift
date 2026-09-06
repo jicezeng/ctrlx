@@ -9,8 +9,8 @@
     /// a single control mode connection. This reduces resource usage and ensures
     /// consistent event handling across all panes in a session.
     ///
-    /// The control client operates in `no-output` mode — it only handles commands
-    /// and event notifications. Live data is delivered via `PipePaneReader`.
+    /// Commands and pane output share each session's control connection so
+    /// snapshot boundaries and incremental terminal bytes have one ordering.
     @Observable
     @MainActor
     final public class TmuxControlClientManager {
@@ -29,6 +29,12 @@
         /// Listeners should refresh their pane list and clean up stale sessions.
         private var _onPanesChanged: (@MainActor () -> Void)?
 
+        /// Decoded and sanitized live terminal bytes.
+        private var _onOutput: (@MainActor (String, Data) -> Void)?
+
+        /// Pane output remains disabled until at least one mirror subscribes.
+        private var outputEnabledPaneIdsBySession: [String: Set<String>] = [:]
+
         public init(tmuxPath: String = "/opt/homebrew/bin/tmux", socketPath: String? = nil) {
             self.tmuxPath = tmuxPath
             self.socketPath = socketPath
@@ -45,6 +51,10 @@
         /// Listeners should refresh their pane list and clean up stale sessions.
         public func setOnPanesChanged(_ handler: @escaping @MainActor () -> Void) {
             _onPanesChanged = handler
+        }
+
+        public func setOnOutput(_ handler: @escaping @MainActor (String, Data) -> Void) {
+            _onOutput = handler
         }
 
         /// Gets or creates a control client for the specified session.
@@ -88,13 +98,25 @@
             }
 
             // Set up exit handler (entire session ended)
-            await client.setOnExit { [weak self] reason in
+            await client.setOnExit { [weak self, weak client] reason in
+                guard let client else { return }
                 Task { @MainActor [weak self] in
-                    self?.handleClientExit(sessionName: sessionName, reason: reason)
+                    self?.handleClientExit(
+                        client,
+                        sessionName: sessionName,
+                        reason: reason
+                    )
                 }
             }
 
+            await client.setOnOutput { [weak self] paneId, data in
+                self?._onOutput?(paneId, data)
+            }
+
             try await client.connect(sessionTarget: sessionName)
+            for paneId in outputEnabledPaneIdsBySession[sessionName] ?? [] {
+                await client.setPaneOutputEnabled(paneId: paneId, enabled: true)
+            }
             clients[sessionName] = client
 
             return client
@@ -124,10 +146,37 @@
         func sendCommand(
             _ command: String,
             sessionName: String,
-            timeout: TimeInterval = 5
+            timeout: TimeInterval = 5,
+            onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
         ) async throws -> CommandResponse {
             let client = try await getClient(for: sessionName)
-            return try await client.sendCommand(command, timeout: timeout)
+            return try await client.sendCommand(
+                command,
+                timeout: timeout,
+                onResponse: onResponse
+            )
+        }
+
+        /// Enables or disables terminal output delivery for one pane. Enabling
+        /// also creates the session control client before a snapshot starts.
+        func setPaneOutputEnabled(
+            paneId: String,
+            sessionName: String,
+            enabled: Bool
+        ) async throws {
+            if enabled {
+                let client = try await getClient(for: sessionName)
+                outputEnabledPaneIdsBySession[sessionName, default: []].insert(paneId)
+                await client.setPaneOutputEnabled(paneId: paneId, enabled: true)
+            } else {
+                outputEnabledPaneIdsBySession[sessionName]?.remove(paneId)
+                if outputEnabledPaneIdsBySession[sessionName]?.isEmpty == true {
+                    outputEnabledPaneIdsBySession.removeValue(forKey: sessionName)
+                }
+                if let client = clients[sessionName] {
+                    await client.setPaneOutputEnabled(paneId: paneId, enabled: false)
+                }
+            }
         }
 
         /// Sends a small interactive key batch through an existing control client.
@@ -192,6 +241,9 @@
         /// tmux keeps the connection attached across `rename-session`; only our
         /// lookup key and exit callback need to follow the new name.
         func sessionRenamed(from oldName: String, to newName: String) async {
+            if let outputPaneIds = outputEnabledPaneIdsBySession.removeValue(forKey: oldName) {
+                outputEnabledPaneIdsBySession[newName, default: []].formUnion(outputPaneIds)
+            }
             guard oldName != newName, let client = clients.removeValue(forKey: oldName) else { return }
 
             if clients[newName] != nil {
@@ -203,9 +255,14 @@
                 return
             }
 
-            await client.setOnExit { [weak self] reason in
+            await client.setOnExit { [weak self, weak client] reason in
+                guard let client else { return }
                 Task { @MainActor [weak self] in
-                    self?.handleClientExit(sessionName: newName, reason: reason)
+                    self?.handleClientExit(
+                        client,
+                        sessionName: newName,
+                        reason: reason
+                    )
                 }
             }
             clients[newName] = client
@@ -221,6 +278,7 @@
             logger.info("Disconnecting all control clients")
             let clientsToDisconnect = clients
             clients.removeAll()
+            outputEnabledPaneIdsBySession.removeAll()
 
             // Each client owns an independent child process. Stop them in
             // parallel so one wedged session cannot consume the shutdown budget
@@ -272,13 +330,30 @@
             _onPanesChanged?()
         }
 
-        private func handleClientExit(sessionName: String, reason: String?) {
+        private func handleClientExit(
+            _ client: TmuxControlClient,
+            sessionName: String,
+            reason: String?
+        ) {
+            guard clients[sessionName] === client else { return }
             logger.warning("Control client exited", metadata: [
                 "session": "\(sessionName)",
                 "reason": "\(reason ?? "unknown")",
             ])
             clients.removeValue(forKey: sessionName)
             handlePanesChanged(reason: "session \(sessionName) disconnected")
+
+            guard outputEnabledPaneIdsBySession[sessionName]?.isEmpty == false else { return }
+            Task { @MainActor [weak self] in
+                do {
+                    _ = try await self?.getClient(for: sessionName)
+                } catch {
+                    self?.logger.warning("Failed to reconnect output control client", metadata: [
+                        "session": "\(sessionName)",
+                        "error": "\(error)",
+                    ])
+                }
+            }
         }
     }
 #endif

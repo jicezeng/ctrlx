@@ -62,11 +62,13 @@ Key files: `EditorOverride.swift` (pure helpers + `EditorOverrideMode`/`VisualPr
 
 ### TmuxControlClient (`CtrlxServerFeature/Services/TmuxControlClient.swift`)
 
-Actor managing a `tmux -C attach -f no-output,ignore-size` control mode connection for commands and event notifications. Live terminal data is delivered separately via `PipePaneReader`.
+Actor managing a `tmux -C attach -f ignore-size` control connection for commands, event notifications, snapshots, and live pane output.
 
 **Features:**
-- Connects to tmux session in control mode with `-f no-output,ignore-size` (suppresses `%output` events)
+- Connects with `-f ignore-size`, so the invisible client cannot affect geometry but `%output` remains available
 - Sends commands and receives responses via `%begin/%end` blocks (FIFO command queue)
+- Decodes tmux's byte-level octal escaping in `%output` and sanitizes the result before delivery
+- Invokes an optional response-boundary callback before parsing later notifications
 - Parses event notifications: `%layout-change`, `%session-changed`, `%exit`
 - Tracks per-pane cached dimensions for change detection
 - Uses AsyncStream + single consumer for strict ordering of control mode messages
@@ -76,6 +78,7 @@ Actor managing a `tmux -C attach -f no-output,ignore-size` control mode connecti
 - `onPaneExited(paneId)` - pane closed
 - `onSessionChanged(sessionId, name)` - session switched
 - `onExit(reason)` - control mode connection closed
+- `onOutput(paneId, data)` - decoded live bytes for enabled panes
 
 ### TmuxControlClientManager (`CtrlxServerFeature/Services/TmuxControlClientManager.swift`)
 
@@ -85,38 +88,32 @@ Actor managing a `tmux -C attach -f no-output,ignore-size` control mode connecti
 - `getClient(for:)` - returns existing or creates new client for session
 - `registerPaneDimensions()` / `unregisterPane()` - register/unregister pane for dimension tracking
 - `sendCommand(_:sessionName:)` - send tmux command through the control client
+- `setPaneOutputEnabled()` - enable/disable live output for a pane with subscribers
 - `setOnDimensionChange()` - forward dimension changes to PaneStreamManager
 - `setOnPanesChanged()` - callback when panes exit (for cleanup)
 - `extractSessionName(from:)` - parses session from pane target
 
-Multiple panes in the same session share one control client connection. The control client operates in `no-output` mode — it only handles commands and event notifications.
+Multiple panes in the same session share one control connection. Snapshots and live output therefore have one observable order.
 
 ### PipePaneReader (`CtrlxServerFeature/Services/PipePaneReader.swift`)
 
-`actor` managing FIFO-based raw byte delivery from tmux `pipe-pane` for a single pane. One reader instance lives for the pane's full lifetime — mirror toggling never restarts it.
+`actor` managing a scan-only FIFO copy from tmux `pipe-pane` for a single pane. One reader lives for the pane's full lifetime and never feeds terminal content.
 
 **Features:**
 - Creates per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`)
 - Starts `pipe-pane -O "cat > fifo"` via control mode command
-- Reads raw PTY bytes, filtering tmux `ESC k ... ESC \` title sequences and parsing OSC 9/777/9;4/0/2/52 events
+- Reads raw PTY bytes only to parse OSC 9/777/9;4/0/2/52 side effects
 - AsyncStream + single consumer task for strict FIFO ordering
-- Forwards events through a single `PipePaneReaderDelegate` (`@MainActor` protocol, one method per event type)
-
-**Three data-delivery modes:**
-- **`scanOnly`** (default after `startPipePane`): parser doesn't build `filteredData`, data bytes are discarded. OSC events still flow.
-- **`buffering`** (`setBuffering(true)`): bytes queued instead of forwarded. Used while a `capture-pane` snapshot is being taken.
-- **`live`** (`flushBuffer`): drains the queue to the delegate in order, then forwards subsequent bytes directly.
+- Forwards notifications, titles, clipboard updates, and progress through `PipePaneReaderDelegate`; all ordinary terminal bytes are discarded
 
 **Lifecycle:**
-- `setDelegate(_:)` - attach the delegate that receives data + OSC events
-- `startPipePane(controlClientManager:sessionName:)` - create FIFO, send pipe-pane command, open for reading. Reader starts in scan-only mode
-- `setBuffering(_:)` - flip into buffering mode (bytes queued) or back to scan-only mode (queue dropped, bytes discarded)
-- `flushBuffer()` - drain the queue through the delegate and switch to live mode
+- `setDelegate(_:)` - attach the delegate that receives OSC side effects
+- `startPipePane(controlClientManager:sessionName:)` - create FIFO, send pipe-pane command, and start scanning
 - `stopPipePane()` - clean up FIFO, close file handle (called when the pane disappears)
 
 ### PaneStreamManager (`CtrlxServerFeature/Services/PaneStreamManager.swift`)
 
-`@Observable @MainActor` owning one `PipePaneReader` per known pane and multiplexing its events to subscribers. Conforms to `PipePaneReaderDelegate`, so all event wiring lives in one place.
+`@Observable @MainActor` owning one scan-only `PipePaneReader` per known pane and multiplexing control-mode terminal output to subscribers.
 
 **Per-pane lifecycle:**
 - New pane discovered → `startReader` creates a `PipePaneReader`, attaches the manager as delegate, calls `startPipePane()` (scan-only mode)
@@ -124,28 +121,25 @@ Multiple panes in the same session share one control client connection. The cont
 
 **Data Flow:**
 ```
-tmux PTY ──pipe-pane──→ FIFO ──→ PipePaneReader ──→ PipePaneReaderDelegate
-                                                            ↓
-                                                   subscriber callbacks
+tmux ──control mode──→ TmuxControlClient ──%output──→ PaneStreamManager ──→ subscribers
 
-TmuxControlClient ──%layout-change──→ updateDimensions → subscriber onDimensionChange
+tmux ──pipe-pane──→ FIFO ──→ PipePaneReader ──OSC side effects──→ PaneStreamManager
 ```
 
 **Subscribe flow (first subscriber on a pane):**
-1. `setBuffering(true)` — start retaining live bytes
-2. Refresh dimensions via `tmuxService.getPaneDimensions`, register pane for control-mode dimension tracking
-3. `capture-pane` snapshot via control mode
-4. Add subscriber to the reader's context
-5. `flushBuffer()` — buffered bytes flow through `didReceiveData` → `forwardData` → subscriber's `onData`. Subsequent bytes flow live.
+1. Register a private subscriber bootstrap gate and enable `%output`
+2. Refresh dimensions and capture through the same control connection
+3. At the visible capture's `%end`, discard pre-boundary overlap already present in the snapshot
+4. Publish `snapshot + post-boundary bytes`, then switch the subscriber to live routing
 
 **Unsubscribe flow (last subscriber leaves):**
-- `setBuffering(false)` returns the reader to scan-only mode. The reader stays attached to the FIFO so OSC events keep flowing for desktop notifications + sidebar UI.
+- Disable `%output` for the pane. The scan-only FIFO stays attached so OSC side effects keep flowing.
 
 **Methods:**
 - `startMonitoring(panes:)` - create readers for all initial panes (called once on startup)
 - `updateMonitoring(panes:)` - tear down readers for dead panes, start readers for new panes (called on periodic refresh and on `%session-changed`)
 - `subscribe(paneId:target:onData:onDimensionChange:onTitleChange:onNotification:onClipboard:)` - subscribe with callbacks
-- `unsubscribe(_:)` - remove subscription (returns reader to scan-only if last)
+- `unsubscribe(_:)` - remove subscription (disables pane output if last)
 - `currentContent(for:)` - capture current terminal content without subscribing (for multi-device initial state)
 - `updateDimensions(paneId:width:height:)` - propagate dimension changes
 - `reportTitleChange(paneId:title:fromSubscription:)` - forward a title detected by a subscriber's SwiftTerm to other subscribers
@@ -278,6 +272,7 @@ Two **aggregate** consumers built on the same OTEL stream, surfacing data that o
 **Multi-Device Support:**
 - Idempotent Viewer-ID ownership set per pane
 - `startStreaming()` reuses an existing stream and stages a private bootstrap for the requester
+- A joining Viewer's snapshot boundary is itself queued with terminal data, so unprocessed pre-boundary bytes cannot re-enter its private buffer
 - Bootstrap success waits for initial state and all pre-barrier bytes to enter the encrypted send chain
 - `stopStreaming()` removes one owner; the stream stops when no owners remain
 - `stopStreaming(force: true)` bypasses ownership for system-level cleanup

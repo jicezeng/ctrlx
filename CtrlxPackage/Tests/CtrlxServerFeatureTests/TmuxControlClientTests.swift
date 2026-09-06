@@ -12,21 +12,11 @@
     /// `PipePaneReaderDelegate` isolation).
     @MainActor
     final private class CapturingDelegate: PipePaneReaderDelegate {
-        var data: [Data] = []
         var notifications: [TerminalStreamMessage.TerminalNotification] = []
         var titles: [String] = []
         var clipboards: [String] = []
         var progress: [TerminalProgressState] = []
-        var overflowCount = 0
         var terminations: [PipePaneReaderTermination] = []
-
-        func pipePaneReader(_ paneId: String, didReceiveData data: Data) {
-            self.data.append(data)
-        }
-
-        func pipePaneReaderDidOverflow(_ paneId: String) {
-            overflowCount += 1
-        }
 
         func pipePaneReader(
             _ paneId: String,
@@ -54,14 +44,73 @@
         ) {
             terminations.append(reason)
         }
+    }
 
-        var concatenatedData: Data {
-            data.reduce(Data()) { $0 + $1 }
-        }
+    @MainActor
+    final private class CapturingControlOutput {
+        var events: [String] = []
     }
 
     @Suite("TmuxControlClient Tests")
     struct TmuxControlClientTests {
+        @Suite("Control Output")
+        struct ControlOutputTests {
+            @Test("Octal escapes decode without changing UTF-8 bytes")
+            func octalEscapesDecodeAtByteLevel() throws {
+                var line = Data("%output %7 中文".utf8)
+                line.append(Data(#"\012\033\134tail"#.utf8))
+
+                let output = try #require(TmuxControlOutputDecoder.decode(line))
+
+                #expect(output.paneId == "%7")
+                var expected = Data("中文".utf8)
+                expected.append(contentsOf: [0x0A, 0x1B, 0x5C])
+                expected.append(Data("tail".utf8))
+                #expect(output.data == expected)
+            }
+
+            @Test("Malformed escape remains literal")
+            func malformedEscapeIsPreserved() throws {
+                let output = try #require(TmuxControlOutputDecoder.decode(
+                    Data(#"%output %2 keep\12x"#.utf8)
+                ))
+                #expect(output.data == Data(#"keep\12x"#.utf8))
+            }
+
+            @Test("Snapshot callback is ordered between surrounding output")
+            @MainActor
+            func snapshotBoundaryIsOrdered() async throws {
+                let client = TmuxControlClient()
+                let capture = CapturingControlOutput()
+                await client.testMarkInitialAttachHandled()
+                await client.setOnOutput { _, data in
+                    capture.events.append("output:\(String(decoding: data, as: UTF8.self))")
+                }
+                await client.testSetPaneOutputEnabled("%7", enabled: true)
+
+                let command = Task {
+                    try await client.testEnqueueCommand(id: 1) { _ in
+                        capture.events.append("boundary")
+                    }
+                }
+                while await client.testPendingCommandCount != 1 {
+                    await Task.yield()
+                }
+
+                await client.testProcessIncomingData(Data("""
+                %output %7 before
+                %begin 1000 100 1
+                snapshot
+                %end 1000 100 1
+                %output %7 after
+
+                """.utf8))
+                _ = try await command.value
+
+                #expect(capture.events == ["output:before", "boundary", "output:after"])
+            }
+        }
+
         @Suite("Control Client Environment")
         struct ControlClientEnvironmentTests {
             @Test("Unavailable TERM uses xterm-256color")
@@ -129,6 +178,46 @@
                     let panes = await tmux.refreshPanes()
                     #expect(panes.contains { $0.paneId == created.paneId })
                     _ = try await tmux.capturePaneText(created.paneId)
+                }
+            }
+
+            @Test("A real control client delivers pane output bytes")
+            @MainActor
+            func realControlOutputDelivery() async throws {
+                let tmuxPath = try #require(TmuxBinaryLocator.liveValue.find())
+                let suffix = UUID().uuidString.lowercased()
+                let socketPath = "/tmp/ctrlx-output-\(suffix.prefix(8)).sock"
+                let sessionName = "ctrlx-output-\(suffix)"
+                defer { killTmuxServer(tmuxPath: tmuxPath, socketPath: socketPath) }
+
+                try await withDependencies {
+                    $0[ProcessRunner.self] = .liveValue
+                } operation: {
+                    let tmux = TmuxService(tmuxPath: tmuxPath, socketPath: socketPath)
+                    let created = try await tmux.createSession(
+                        baseName: sessionName,
+                        width: 80,
+                        height: 24,
+                        runCommand: "cat"
+                    )
+                    let client = TmuxControlClient(tmuxPath: tmuxPath, socketPath: socketPath)
+                    let capture = CapturingControlOutput()
+                    await client.setOnOutput { _, data in
+                        capture.events.append(String(decoding: data, as: UTF8.self))
+                    }
+                    try await client.connect(sessionTarget: created.sessionName)
+                    await client.setPaneOutputEnabled(paneId: created.paneId, enabled: true)
+
+                    let marker = "CTRLX_CONTROL_OUTPUT_\(suffix.prefix(8))"
+                    try await tmux.sendKeys(created.paneId, keys: marker, literal: true)
+
+                    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+                    while !capture.events.joined().contains(marker), ContinuousClock.now < deadline {
+                        try? await Task.sleep(for: .milliseconds(10))
+                    }
+
+                    #expect(capture.events.joined().contains(marker))
+                    await client.disconnect()
                 }
             }
 
@@ -408,21 +497,6 @@
                 #expect(buffer.dequeue()?.data == nil)
             }
 
-            @Test("Delegate backlog collapses to one snapshot boundary")
-            @MainActor
-            func delegateHighWater() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let delegate = CapturingDelegate()
-                await reader.setDelegate(delegate)
-
-                let chunk = Data(repeating: 0x61, count: 65_536)
-                await reader.testEnqueueDelegateData(Array(repeating: chunk, count: 9))
-                await reader.testWaitForDelivery()
-
-                #expect(delegate.data.isEmpty)
-                #expect(delegate.overflowCount == 1)
-            }
-
             @Test("Normal FIFO delivery does not request a snapshot")
             func normalDelivery() {
                 let buffer = PipeIngressBuffer(paneId: "%0", maximumChunks: 2)
@@ -438,19 +512,19 @@
             }
         }
 
-        @Suite("Tmux Escape Filtering")
-        struct TmuxEscapeFilteringTests {
+        @Suite("Terminal output sanitizing")
+        struct TerminalOutputSanitizingTests {
             @Test("Regular data passes through unchanged")
-            func regularData() async {
-                let reader = PipePaneReader(paneId: "%0")
+            func regularData() {
+                var sanitizer = TerminalOutputSanitizer()
                 let input = Data("Hello, World!".utf8)
-                let result = await reader.testFilterTmuxEscapeSequences(input)
+                let result = sanitizer.sanitize(input)
                 #expect(String(data: result, encoding: .utf8) == "Hello, World!")
             }
 
             @Test("ESC k title sequence is stripped")
-            func escKTitleSequence() async {
-                let reader = PipePaneReader(paneId: "%0")
+            func escKTitleSequence() {
+                var sanitizer = TerminalOutputSanitizer()
                 // ESC k title ESC \ followed by regular data
                 var input = Data()
                 input.append(0x1B) // ESC
@@ -460,31 +534,31 @@
                 input.append(0x5C) // backslash
                 input.append(contentsOf: "visible".utf8)
 
-                let result = await reader.testFilterTmuxEscapeSequences(input)
+                let result = sanitizer.sanitize(input)
                 #expect(String(data: result, encoding: .utf8) == "visible")
             }
 
             @Test("Other ESC sequences pass through")
-            func otherEscSequences() async {
-                let reader = PipePaneReader(paneId: "%0")
+            func otherEscSequences() {
+                var sanitizer = TerminalOutputSanitizer()
                 // ESC [ 31m (red color) should pass through
                 let input = Data([0x1B, 0x5B, 0x33, 0x31, 0x6D]) // ESC[31m
-                let result = await reader.testFilterTmuxEscapeSequences(input)
+                let result = sanitizer.sanitize(input)
                 #expect(result == input)
             }
 
             @Test("Raw UTF-8 bytes pass through")
-            func rawUtf8() async {
-                let reader = PipePaneReader(paneId: "%0")
+            func rawUtf8() {
+                var sanitizer = TerminalOutputSanitizer()
                 let input = Data([0xE2, 0x94, 0x80]) // ─ (box drawing)
-                let result = await reader.testFilterTmuxEscapeSequences(input)
+                let result = sanitizer.sanitize(input)
                 #expect(result == input)
                 #expect(String(data: result, encoding: .utf8) == "─")
             }
 
             @Test("Mixed content with title sequence in the middle")
-            func mixedContent() async {
-                let reader = PipePaneReader(paneId: "%0")
+            func mixedContent() {
+                var sanitizer = TerminalOutputSanitizer()
                 var input = Data("before".utf8)
                 input.append(0x1B) // ESC
                 input.append(0x6B) // k
@@ -493,14 +567,31 @@
                 input.append(0x5C) // backslash
                 input.append(contentsOf: "after".utf8)
 
-                let result = await reader.testFilterTmuxEscapeSequences(input)
+                let result = sanitizer.sanitize(input)
                 #expect(String(data: result, encoding: .utf8) == "beforeafter")
             }
 
+            @Test("A title sequence split across output events is stripped")
+            func splitTitleSequence() {
+                var sanitizer = TerminalOutputSanitizer()
+                var first = Data("before".utf8)
+                first.append(contentsOf: [0x1B, 0x6B])
+                first.append(contentsOf: "partial".utf8)
+                var second = Data(" title".utf8)
+                second.append(contentsOf: [0x1B, 0x5C])
+                second.append(contentsOf: "after".utf8)
+
+                let prefix = sanitizer.sanitize(first)
+                let suffix = sanitizer.sanitize(second)
+
+                #expect(prefix == Data("before".utf8))
+                #expect(suffix == Data("after".utf8))
+            }
+
             @Test("Empty data returns empty")
-            func emptyData() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let result = await reader.testFilterTmuxEscapeSequences(Data())
+            func emptyData() {
+                var sanitizer = TerminalOutputSanitizer()
+                let result = sanitizer.sanitize(Data())
                 #expect(result.isEmpty)
             }
         }
@@ -516,38 +607,14 @@
             }
         }
 
-        @Suite("Buffering")
+        @Suite("Scan-only OSC parsing")
         @MainActor
-        struct BufferingTests {
-            @Test("setBuffering(true) → bytes arrive → flushBuffer() delivers them in order")
-            func bufferedBytesFlushedInOrder() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let delegate = CapturingDelegate()
-                await reader.setDelegate(delegate)
-
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("first ".utf8))
-                await reader.testProcessIncomingData(Data("second ".utf8))
-                await reader.testProcessIncomingData(Data("third".utf8))
-
-                #expect(delegate.data.isEmpty, "Buffered bytes must not reach delegate before flush")
-
-                await reader.flushBuffer()
-
-                #expect(delegate.data.count == 3)
-                let combined = String(data: delegate.concatenatedData, encoding: .utf8)
-                #expect(combined == "first second third")
-            }
-
-            @Test("setBuffering(false) stops Data delivery but keeps OSC events flowing")
+        struct ScanOnlyOSCParsingTests {
+            @Test("Plain data is discarded while OSC events keep flowing")
             func scanOnlyStillEmitsOSC() async {
                 let reader = PipePaneReader(paneId: "%0")
                 let delegate = CapturingDelegate()
                 await reader.setDelegate(delegate)
-
-                // Default mode after creation is scan-only — explicit toggle just
-                // mirrors what the manager does on last-unsubscribe.
-                await reader.setBuffering(false)
 
                 // OSC 9 notification + plain text in one chunk.
                 var input = Data()
@@ -561,7 +628,6 @@
                 await reader.testProcessIncomingData(input)
                 await reader.testWaitForDelivery()
 
-                #expect(delegate.data.isEmpty, "Scan-only mode must not deliver data bytes")
                 #expect(delegate.notifications.count == 1, "OSC 9 notification must still flow")
             }
 
@@ -570,106 +636,12 @@
                 let reader = PipePaneReader(paneId: "%0")
                 let delegate = CapturingDelegate()
                 await reader.setDelegate(delegate)
-                await reader.setBuffering(false)
 
                 await reader.testProcessIncomingData(Data([0x1B, 0x5D]) + Data("9;split".utf8))
                 await reader.testProcessIncomingData(Data(" message".utf8) + Data([0x07]))
                 await reader.testWaitForDelivery()
 
-                #expect(delegate.data.isEmpty)
                 #expect(delegate.notifications.map(\.body) == ["split message"])
-            }
-
-            @Test("flushBuffer keeps order even when bytes arrive during the drain")
-            func flushBufferOrderingUnderConcurrentInput() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let delegate = CapturingDelegate()
-                await reader.setDelegate(delegate)
-
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("A".utf8))
-                await reader.testProcessIncomingData(Data("B".utf8))
-
-                // Actor serialization: whichever method enters the actor first
-                // runs to completion. If flushBuffer wins, it dispatches a Task
-                // for [A, B] then flips mode to .live; the late C call then sees
-                // .live and dispatches its own Task. If the late call wins, it
-                // appends C to the buffer; flushBuffer then dispatches a Task
-                // for [A, B, C]. Either way, MainActor processes the dispatched
-                // Tasks in submission order, yielding "ABC".
-                async let flushTask: () = reader.flushBuffer()
-                async let lateTask: () = reader.testProcessIncomingData(Data("C".utf8))
-                _ = await (flushTask, lateTask)
-                await reader.testWaitForDelivery()
-
-                let combined = String(data: delegate.concatenatedData, encoding: .utf8) ?? ""
-                #expect(combined == "ABC", "Expected A,B,C in order, got: \(combined)")
-            }
-
-            @Test("flushBuffer returns only after buffered bytes reach the delegate")
-            func flushWaitsForDelegateDelivery() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let delegate = CapturingDelegate()
-                await reader.setDelegate(delegate)
-
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("ready".utf8))
-                await reader.flushBuffer()
-
-                #expect(delegate.concatenatedData == Data("ready".utf8))
-            }
-
-            @Test("flushBuffer completes when the weak delegate is gone")
-            func flushWithoutDelegateDoesNotHang() async {
-                let reader = PipePaneReader(paneId: "%0")
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("discarded".utf8))
-
-                await reader.flushBuffer()
-            }
-
-            @Test("flushBuffer transitions to live: subsequent bytes flow directly")
-            func flushTransitionsToLive() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let delegate = CapturingDelegate()
-                await reader.setDelegate(delegate)
-
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("buffered".utf8))
-                await reader.flushBuffer()
-                await reader.testWaitForDelivery()
-
-                #expect(delegate.data.count == 1)
-
-                // Live mode: bytes go straight to the delegate, in the same order
-                // relative to the previously buffered chunk.
-                await reader.testProcessIncomingData(Data(" live".utf8))
-                await reader.testWaitForDelivery()
-                #expect(delegate.data.count == 2)
-                let combined = String(data: delegate.concatenatedData, encoding: .utf8)
-                #expect(combined == "buffered live")
-            }
-
-            @Test("Toggling buffering on→off→on starts a fresh buffer (off drops queue)")
-            func togglingBufferingDropsQueueOnDisable() async {
-                let reader = PipePaneReader(paneId: "%0")
-                let delegate = CapturingDelegate()
-                await reader.setDelegate(delegate)
-
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("dropped".utf8))
-
-                // Manager calls setBuffering(false) when the last subscriber leaves;
-                // any bytes that hadn't been flushed are intentionally discarded.
-                await reader.setBuffering(false)
-
-                // Re-enable buffering and confirm the queue starts fresh.
-                await reader.setBuffering(true)
-                await reader.testProcessIncomingData(Data("kept".utf8))
-                await reader.flushBuffer()
-                await reader.testWaitForDelivery()
-                #expect(delegate.data.count == 1)
-                #expect(String(data: delegate.data[0], encoding: .utf8) == "kept")
             }
         }
     }

@@ -17,10 +17,10 @@ Coding-agent integration is gated by a `CodingAgent` enum (`.claudeCode` / `.cod
 | Component | Type | Responsibility |
 |-----------|------|----------------|
 | **TmuxService** | `@Observable @MainActor` | Abstracts all tmux CLI interactions — pane discovery, content capture, session creation |
-| **TmuxControlClient** | `actor` | Control mode connection (`-f no-output`) for commands and event notifications |
+| **TmuxControlClient** | `actor` | Ordered control connection for commands, snapshots, live `%output`, and events |
 | **TmuxControlClientManager** | `@Observable @MainActor` | Manages TmuxControlClient instances per tmux session (one client per session) |
-| **PipePaneReader** | `actor` | Per-pane FIFO reader for raw PTY bytes via pipe-pane. One instance lives for the pane's full lifetime, with three internal modes (`scanOnly` → `buffering` → `live`) toggled by the manager |
-| **PaneStreamManager** | `@Observable @MainActor` | Owns one `PipePaneReader` per known pane and multiplexes events to subscribers (mirror windows, iOS streaming). Conforms to `PipePaneReaderDelegate` |
+| **PipePaneReader** | `actor` | Persistent per-pane FIFO scanner for OSC notifications, titles, clipboard, and progress only |
+| **PaneStreamManager** | `@Observable @MainActor` | Multiplexes the single ordered control-mode terminal stream and routes scan-only OSC side effects |
 
 ### Window Management
 
@@ -122,19 +122,15 @@ System wake → ConnectedViewerManager.reconnectAllImmediately()
 ```
 tmux session
     │
-    ├── tmux -C attach -f no-output,ignore-size (control mode: commands + events only)
+    ├── tmux -C attach -f ignore-size
+    │      commands + capture responses + ordered live %output + layout events
     │
-    ├── pipe-pane -O "cat > /tmp/ctrlx-pipe-<id>.fifo" (raw PTY bytes)
-    │
-    ▼
-PipePaneReader (actor, one per pane)
-    │ Reads raw bytes from FIFO, filters tmux title sequences,
-    │ parses OSC notification/title/clipboard/progress events,
-    │ and forwards via PipePaneReaderDelegate
+    └── pipe-pane -O "cat > /tmp/ctrlx-pipe-<id>.fifo"
+           scan-only OSC notification/title/clipboard/progress parsing
     │
     ▼
-PaneStreamManager (delegate + multiplexer)
-    │ Routes events to subscribers, owns reader lifecycle
+PaneStreamManager (snapshot boundary + multiplexer)
+    │ Routes terminal bytes and side effects to subscribers
     │
     ├──→ Mirror Window (SwiftTerm) — immediate display
     │
@@ -177,10 +173,10 @@ The same bridge script (`plugin/gallager/scripts/hook.py`) backs both agents. Cl
 Multiple iOS devices can watch the same pane simultaneously:
 
 - **TerminalStreamService** uses an idempotent Viewer-ID ownership set per stream
-- First subscriber creates the PaneStreamManager subscription, which switches the per-pane reader from scan-only into live mode
-- Additional subscribers reuse the existing stream and receive a private initial snapshot plus capture-time buffered data
+- First subscriber creates the PaneStreamManager subscription, which enables control-mode terminal output; the FIFO remains scan-only
+- Additional subscribers reuse the existing stream and receive a private initial snapshot plus only post-boundary buffered data
 - The start command succeeds only after the requesting Viewer crosses the ordered bootstrap barrier
-- Each `stopStreaming` removes one owner; the manager subscription is dropped when the owner set becomes empty, returning the reader to scan-only mode (it stays attached to the FIFO for the pane's full lifetime)
+- Each `stopStreaming` removes one owner; the manager subscription and control output are dropped when the owner set becomes empty (the scan-only FIFO stays attached for the pane's full lifetime)
 - System-level cleanups (`stopAllStreams`, `stopStreamsForClosedPanes`) use `force: true` to bypass count
 
 **ConnectedViewerManager** broadcasts shared state but routes terminal bytes:

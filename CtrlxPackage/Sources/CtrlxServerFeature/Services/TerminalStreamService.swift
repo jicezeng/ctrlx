@@ -5,6 +5,7 @@ import Logging
 
 enum TerminalStreamInput {
     case data(Data)
+    case snapshotBoundary(viewerId: String)
     case finishBootstrap(viewerId: String, barrierId: UUID)
     case reset(PaneStreamManager.SubscriptionResult)
     case resyncFailed(Error)
@@ -218,12 +219,18 @@ final public class TerminalStreamService {
         // subscription. Only the joining viewer is staged while the existing
         // viewers continue receiving live output.
         if let context = activeStreams[paneId] {
+            guard let inputBuffer = inputBuffers[paneId] else {
+                throw StreamError.paneNotAvailable
+            }
             context.beginBootstrap(for: viewerId, leaseId: leaseId)
 
             let captureStart = ContinuousClock.now
             guard let current = await paneStreamManager.currentContent(
                 for: paneId,
-                maximumSnapshotScrollbackLineLimit: TerminalScrollbackPolicy.maximumRemoteSnapshotLineLimit
+                maximumSnapshotScrollbackLineLimit: TerminalScrollbackPolicy.maximumRemoteSnapshotLineLimit,
+                onSnapshotBoundary: {
+                    inputBuffer.enqueueControl(.snapshotBoundary(viewerId: viewerId))
+                }
             ) else {
                 await stopStreaming(
                     paneId: paneId,
@@ -451,6 +458,9 @@ final public class TerminalStreamService {
                     switch input {
                     case let .data(data):
                         await self.handleIncomingData(context: context, paneId: paneId, data: data)
+
+                    case let .snapshotBoundary(viewerId):
+                        context.discardBootstrapData(for: viewerId)
 
                     case let .finishBootstrap(viewerId, barrierId):
                         await self.completeBootstrap(
@@ -1048,7 +1058,7 @@ final class TerminalStreamInputBuffer {
     private func remainingControlItems() -> [TerminalStreamInput] {
         items[headIndex...].filter { input in
             switch input {
-            case .finishBootstrap:
+            case .snapshotBoundary, .finishBootstrap:
                 true
             case .data, .reset, .resyncFailed:
                 false
@@ -1170,6 +1180,15 @@ final class StreamContext {
         bootstrapData[viewerId] = Data()
         recordBufferedQueue()
         return data
+    }
+
+    /// Discards bytes already represented by an authoritative snapshot. The
+    /// callback is ordered on the same tmux control stream, so later bytes remain
+    /// buffered and are replayed after the snapshot reaches this viewer.
+    func discardBootstrapData(for viewerId: String) {
+        guard bootstrapData[viewerId] != nil else { return }
+        bootstrapData[viewerId] = Data()
+        recordBufferedQueue()
     }
 
     func finishBootstrap(for viewerId: String) {

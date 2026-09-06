@@ -28,10 +28,10 @@ graph TB
         IV[iOS Terminal View<br/>SwiftTerm]
     end
 
-    TMUX -->|"control mode (-f no-output)"| TCC
-    TCC -->|commands, events| PSM
-    TMUX -->|"pipe-pane raw bytes"| PPR
-    PPR -->|"PipePaneReaderDelegate (data + OSC)"| PSM
+    TMUX -->|"control mode (-f ignore-size)"| TCC
+    TCC -->|"ordered snapshots + live output + events"| PSM
+    TMUX -->|"pipe-pane copy"| PPR
+    PPR -->|"OSC side effects only"| PSM
     PSM -->|subscriber| MV
     PSM -->|subscriber| TSS
     TSS -->|batched| DCM
@@ -47,7 +47,7 @@ graph TB
 
 ### 1. Tmux Data Capture (Mac)
 
-The Mac app uses a **hybrid approach**: tmux control mode for commands and event notifications, and `pipe-pane` for raw PTY byte delivery.
+The Mac app has one authoritative terminal-content path: tmux control mode carries both `capture-pane` responses and live `%output`. A separate persistent `pipe-pane` FIFO is scan-only and exists solely to extract OSC side effects such as notifications, titles, clipboard updates, and progress.
 
 ```mermaid
 sequenceDiagram
@@ -56,7 +56,7 @@ sequenceDiagram
     participant PPR as PipePaneReader
     participant PSM as PaneStreamManager
 
-    TCC->>T: tmux -C attach -t session -f no-output,ignore-size
+    TCC->>T: tmux -C attach -t session -f ignore-size
     T-->>TCC: (control mode ready)
 
     PSM->>PPR: setDelegate(self) + startPipePane()
@@ -64,11 +64,16 @@ sequenceDiagram
     PPR->>T: pipe-pane -O "cat > /tmp/fifo"
     PPR->>PPR: Open FIFO for reading
 
-    loop Raw PTY Bytes
+    loop OSC side-effect scan
         T->>PPR: raw bytes via FIFO
-        PPR->>PPR: Filter tmux ESC k title sequences
         PPR->>PPR: Parse OSC notification/title/clipboard/progress
-        PPR->>PSM: PipePaneReaderDelegate.didReceive*
+        PPR->>PSM: side-effect callbacks
+    end
+
+    loop Authoritative terminal output
+        T->>TCC: %output pane-id octal-escaped-bytes
+        TCC->>TCC: Decode + sanitize bytes
+        TCC->>PSM: live terminal bytes
     end
 
     T->>TCC: %layout-change
@@ -82,45 +87,41 @@ sequenceDiagram
 - `CtrlxServerFeature/Services/TmuxService.swift`
 
 **PipePaneReader** is an actor that:
-- Manages a per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`) for raw byte delivery. One reader instance per tmux pane lives for the pane's full lifetime — mirror toggling never restarts it
+- Manages a per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`) for scan-only OSC parsing. One reader instance per tmux pane lives for the pane's full lifetime
 - Reads raw PTY bytes via `pipe-pane -O` piped through the FIFO
-- Filters only tmux's `ESC k ... ESC \` title sequences and parses OSC 9/777/9;4/0/2/52 notification, title, clipboard, and progress events
+- Parses OSC 9/777/9;4/0/2/52 notification, title, clipboard, and progress events without rebuilding terminal data
 - Uses AsyncStream + single consumer task for strict FIFO ordering of data chunks
-- Forwards events through a single `PipePaneReaderDelegate` (`@MainActor`) — one method per event type so missing a wiring becomes a compile error
-- Has three data-delivery modes:
-  - **`scanOnly`** (default after `startPipePane`): parser doesn't build `filteredData`, data bytes are discarded. OSC events still flow.
-  - **`buffering`** (`setBuffering(true)`): bytes queued instead of forwarded; used while a `capture-pane` snapshot is being taken so live bytes that arrive during the snapshot aren't dropped.
-  - **`live`** (`flushBuffer`): drains the queue to the delegate in order, then forwards subsequent bytes directly.
+- Forwards only side-effect events through `PipePaneReaderDelegate`; terminal bytes are always discarded
 
 **TmuxControlClient** is an actor that:
-- Maintains a long-lived `tmux -C attach -f no-output,ignore-size` process
+- Maintains a long-lived `tmux -C attach -f ignore-size` process
 - Handles commands via `sendCommand()` (capture-pane, list-panes, pipe-pane, etc.)
 - Parses event notifications (`%layout-change`, `%session-changed`, `%exit`)
-- Does **not** handle `%output` events (suppressed by `-f no-output`)
+- Decodes and sanitizes `%output` bytes for panes with active subscribers
+- Runs a snapshot-boundary callback at the authoritative visible capture's `%end`, before parsing later `%output`
 
 ### 2. Local Stream Management (Mac)
 
-**PaneStreamManager** owns one `PipePaneReader` per known pane and multiplexes its events to subscribers. It conforms to `PipePaneReaderDelegate` so all event wiring lives in exactly one place.
-
-The reader's data-delivery mode is the state machine that used to belong to a separate `PaneStream`:
+**PaneStreamManager** owns one scan-only `PipePaneReader` per known pane and multiplexes control-mode terminal output to subscribers. It conforms to `PipePaneReaderDelegate` only for OSC side effects.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> scanOnly: startPipePane (pane discovered)
-    scanOnly --> buffering: subscribe → setBuffering(true)
-    buffering --> live: capture-pane done → flushBuffer
-    live --> scanOnly: last unsubscribe → setBuffering(false)
-    scanOnly --> [*]: pane removed → stopPipePane
+    [*] --> outputDisabled: pane discovered
+    outputDisabled --> bootstrapping: first subscriber enables %output
+    bootstrapping --> live: visible capture %end
+    live --> resyncing: resize/backpressure requests snapshot
+    resyncing --> live: visible capture %end + reset
+    live --> outputDisabled: last subscriber leaves
 ```
 
 `subscribe(paneId:target:...)` follows the canonical sequence:
 
-1. `setBuffering(true)` — start retaining live bytes.
-2. `capture-pane` snapshot via control mode.
-3. Add subscriber.
-4. `flushBuffer()` — drain the queue through the delegate (this manager) → `forwardData` → subscriber's `onData`. Subsequent bytes flow live.
+1. Register the subscriber's private bootstrap gate and enable `%output` for the pane.
+2. Capture scrollback/cursor/visible state through the same control connection.
+3. At the visible capture's `%end`, discard pre-boundary bytes already represented by the snapshot.
+4. Return `snapshot + post-boundary bytes`, then route subsequent `%output` live.
 
-When the last subscriber leaves, the manager only calls `setBuffering(false)`. The reader stays attached to the FIFO, so OSC events (notifications, titles, progress, clipboard) keep flowing for desktop notifications and sidebar UI.
+When the last subscriber leaves, the manager disables `%output` for that pane. The FIFO remains attached in scan-only mode, so OSC side effects keep flowing for desktop notifications and sidebar UI.
 
 ```mermaid
 graph LR
@@ -190,6 +191,7 @@ sequenceDiagram
 - `TerminalStreamService` tracks an idempotent set of Viewer IDs per pane
 - The first Viewer creates the PaneStreamManager subscription
 - Additional Viewers reuse that stream and receive a private bootstrap snapshot
+- The second-Viewer snapshot boundary is an ordered ingress control event: preceding queued bytes are discarded for that Viewer and following bytes are retained
 - Bootstrap data is drained before `StartTerminalStream` returns success
 - Live chunks and terminal control events are sent only to ready subscribers; a joining Viewer cannot refresh others or receive pre-initial updates
 - `stopStreaming()` removes one owner; the stream stops when the set becomes empty
@@ -383,17 +385,13 @@ sequenceDiagram
     SRV->>DCM: Forward command
     DCM->>TSS: Start stream for pane
     TSS->>PSM: subscribe(paneId)
-    PSM->>PPR: setBuffering(true)
-    Note over PPR: bytes now queued, not discarded
+    PSM->>TCC: enable %output for pane
     PSM->>TCC: sendCommand("capture-pane ...")
     TCC->>TMUX: capture-pane command
-    TMUX-->>TCC: capture result
-    TCC-->>PSM: initial content
-    PSM->>PPR: flushBuffer()
-    PPR->>PSM: didReceiveData (queued bytes, in order)
-    Note over PPR,PSM: flush returns after delegate delivery barrier
-    Note over PPR: subsequent bytes flow live to delegate
-    PSM-->>TSS: subscriber callback (initial + buffered)
+    TMUX-->>TCC: capture result + ordered %end
+    TCC->>PSM: snapshot boundary callback
+    Note over PSM: discard pre-boundary overlap
+    PSM-->>TSS: snapshot + post-boundary bytes
     TSS->>DCM: sendTerminalStream(initialState, to: requester)
     DCM->>SRV: Encrypted per device
     SRV->>RC: Forward to iOS
@@ -408,9 +406,13 @@ sequenceDiagram
     RC->>SRV: StartTerminalStream (same pane)
     SRV->>DCM: Forward command
     DCM->>TSS: startStreaming() — stream exists
-    TSS->>PSM: currentContent(for: paneId)
-    PSM-->>TSS: current terminal content
     TSS->>TSS: Add Viewer ID in bootstrapping state
+    TSS->>PSM: currentContent(for: paneId)
+    PSM->>TCC: capture through same control stream
+    TCC->>TSS: ordered snapshot boundary
+    TSS->>TSS: enqueue boundary behind preceding bytes
+    Note over TSS: ordered consumer discards only this viewer's pre-boundary overlap
+    PSM-->>TSS: current terminal content
     TSS->>DCM: sendTerminalStream(initialState, to: requester)
     TSS->>DCM: drain private bootstrap data to requester
     DCM-->>RC: StartTerminalStream success
@@ -418,8 +420,8 @@ sequenceDiagram
     Note over TMUX,IV: Live Updates (to ready subscribers only)
 
     loop Terminal Output
-        TMUX->>PPR: raw PTY bytes via FIFO
-        PPR->>PSM: didReceiveData(data)
+        TMUX->>TCC: %output via control mode
+        TCC->>PSM: decoded terminal bytes
         PSM-->>MV: subscriber callback (immediate)
         PSM-->>TSS: subscriber callback
         TSS->>TSS: Buffer (batch)
@@ -434,19 +436,19 @@ sequenceDiagram
 
     DCM->>TSS: stopStreaming
     TSS->>PSM: unsubscribe
-    PSM->>PPR: setBuffering(false)
-    Note over PPR: returns to scan-only mode<br/>FIFO stays attached for OSC events
+    PSM->>TCC: disable %output for pane
+    Note over PPR: FIFO stays attached for OSC side effects
 ```
 
 ## Key Architectural Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| **Hybrid: control mode + pipe-pane** | Control mode for commands/events, pipe-pane for raw PTY bytes. Eliminates octal unescaping, UTF-8 reconstruction, and line-boundary splitting that caused rendering artifacts |
-| **FIFO-based pipe-pane delivery** | Per-pane FIFO (`/tmp/ctrlx-pipe-<id>.fifo`) avoids spawning a persistent subprocess; tmux's `cat > fifo` blocks until reader connects |
+| **Single ordered terminal source** | Snapshots and live `%output` share one control stream, providing an exact boundary and preventing gaps or duplicated non-idempotent terminal sequences |
+| **Scan-only pipe-pane** | Per-pane FIFO parses OSC side effects independently but can never feed terminal content, so it cannot race the authoritative control stream |
 | **AsyncStream ordering** | Single consumer task per data source (PipePaneReader, TmuxControlClient, TerminalStreamService) prevents reordering that occurs with unstructured `Task {}` per callback |
-| **One persistent reader per pane** | PipePaneReader is created at pane discovery and lives until the pane is removed. Mirror toggling switches its delivery mode (`scanOnly`/`buffering`/`live`) instead of detaching/reattaching `pipe-pane`, eliminating the FIFO swap window where bytes could be lost. All event wiring lives on a single `PipePaneReaderDelegate` so missing a handler is a compile error |
-| **Buffering during initial capture** | PipePaneReader queues raw bytes during the `capture-pane` snapshot, then `flushBuffer()` drains the queue to the delegate in order before switching to live mode — eliminates the gap between capture and live stream |
+| **One persistent OSC reader per pane** | PipePaneReader is created at pane discovery and lives until pane removal; mirror toggling never detaches it, preserving notification/title/progress parsing |
+| **Boundary-aware bootstrap** | Per-subscriber gates discard `%output` before the visible capture's `%end`, retain output after it, and publish `snapshot + retained suffix` atomically |
 | **Stream manager decoupling** | Streaming works without mirror window open, only needs iOS connection |
 | **Data batching (8KB/16ms)** | Bounds latency without saturating the relay |
 | **Subscription model** | Multiple consumers (UI + remote) share one stream efficiently |
@@ -461,9 +463,9 @@ sequenceDiagram
 
 | Type | Location | Purpose |
 |------|----------|---------|
-| `PipePaneReader` | ServerFeature | Per-pane FIFO reader for raw PTY bytes via pipe-pane. Three delivery modes (scanOnly/buffering/live), one per pane lifetime |
-| `PipePaneReaderDelegate` | ServerFeature | `@MainActor` protocol for receiving data + OSC events from a reader |
-| `TmuxControlClient` | ServerFeature | Control mode connection for commands and event notifications |
+| `PipePaneReader` | ServerFeature | Persistent per-pane FIFO scanner for OSC side effects only |
+| `PipePaneReaderDelegate` | ServerFeature | `@MainActor` protocol for receiving OSC side effects from a reader |
+| `TmuxControlClient` | ServerFeature | Ordered control connection for commands, snapshots, live output, and events |
 | `PaneStreamManager` | ServerFeature | Owns one reader per pane, conforms to `PipePaneReaderDelegate`, multiplexes events to subscribers |
 | `TerminalStreamService` | ServerFeature | Batches and sends to remote, ref-counted per device |
 | `ConnectedViewerManager` | ServerFeature | Multi-Viewer WebSocket coordinator |
