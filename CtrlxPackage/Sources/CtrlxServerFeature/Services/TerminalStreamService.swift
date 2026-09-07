@@ -134,6 +134,13 @@ final public class TerminalStreamService {
     private var inputBuffers: [String: TerminalStreamInputBuffer] = [:]
     private var dataConsumerTasks: [String: Task<Void, Never>] = [:]
 
+    /// A snapshot is a multi-message transaction: metadata followed by one or
+    /// more data chunks. MainActor can run another task at every send `await`,
+    /// so serialize complete snapshot transactions per pane rather than merely
+    /// relying on the per-message WebSocket send chain.
+    private var activeSnapshotTransactionPaneIds: Set<String> = []
+    private var snapshotTransactionWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+
     // MARK: - Batching Configuration
 
     /// Maximum time the oldest pending bytes wait before transmission.
@@ -555,6 +562,10 @@ final public class TerminalStreamService {
         scrollbackLineLimit: Int,
         recipients: Set<String>
     ) async -> Int {
+        await acquireSnapshotTransaction(for: paneId)
+        defer { releaseSnapshotTransaction(for: paneId) }
+
+        guard !Task.isCancelled else { return 0 }
         guard let streamSender else { return 0 }
         let normalizedLimit = TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimit)
         let metadata = switch kind {
@@ -585,6 +596,32 @@ final public class TerminalStreamService {
             maximumChunkSize: maxSnapshotChunkSize
         )
         return content.count
+    }
+
+    private func acquireSnapshotTransaction(for paneId: String) async {
+        if activeSnapshotTransactionPaneIds.insert(paneId).inserted {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            snapshotTransactionWaiters[paneId, default: []].append(continuation)
+        }
+    }
+
+    private func releaseSnapshotTransaction(for paneId: String) {
+        guard var waiters = snapshotTransactionWaiters[paneId], !waiters.isEmpty else {
+            activeSnapshotTransactionPaneIds.remove(paneId)
+            snapshotTransactionWaiters.removeValue(forKey: paneId)
+            return
+        }
+
+        let next = waiters.removeFirst()
+        if waiters.isEmpty {
+            snapshotTransactionWaiters.removeValue(forKey: paneId)
+        } else {
+            snapshotTransactionWaiters[paneId] = waiters
+        }
+        next.resume()
     }
 
     private func sendDataChunks(

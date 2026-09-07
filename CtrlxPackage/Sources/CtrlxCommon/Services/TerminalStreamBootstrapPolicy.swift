@@ -111,9 +111,9 @@ package struct TerminalStreamBootstrapBuffer: Equatable {
 }
 
 /// Collects a chunked terminal snapshot without exposing its intermediate
-/// parser state. The transport is ordered per pane, so the advertised byte
-/// count is the only boundary needed to separate the snapshot from later live
-/// bytes.
+/// parser state. The host serializes complete snapshot transactions per pane,
+/// so the advertised byte count is the only boundary needed to separate the
+/// snapshot from later live bytes.
 package struct TerminalStreamSnapshotAccumulator: Equatable, Sendable {
     package struct Completion: Equatable, Sendable {
         package let content: Data

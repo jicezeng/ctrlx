@@ -42,6 +42,62 @@
         }
     }
 
+    @MainActor
+    final private class SuspendingTerminalStreamSender: TerminalStreamSending {
+        struct Delivery {
+            let message: TerminalStreamMessage
+            let recipients: Set<String>
+        }
+
+        private(set) var deliveries: [Delivery] = []
+        private var shouldSuspendFirstDelivery = true
+        private var isFirstDeliverySuspended = false
+        private var firstDeliveryContinuation: CheckedContinuation<Void, Never>?
+        private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
+
+        func sendTerminalStream(
+            _ streamMessage: TerminalStreamMessage,
+            to viewerIds: Set<String>
+        ) async {
+            deliveries.append(Delivery(message: streamMessage, recipients: viewerIds))
+            guard shouldSuspendFirstDelivery else { return }
+
+            shouldSuspendFirstDelivery = false
+            isFirstDeliverySuspended = true
+            let waiters = suspensionWaiters
+            suspensionWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+            await withCheckedContinuation { continuation in
+                firstDeliveryContinuation = continuation
+            }
+        }
+
+        func waitUntilFirstDeliveryIsSuspended() async {
+            if isFirstDeliverySuspended { return }
+            await withCheckedContinuation { continuation in
+                suspensionWaiters.append(continuation)
+            }
+        }
+
+        func resumeFirstDelivery() {
+            firstDeliveryContinuation?.resume()
+            firstDeliveryContinuation = nil
+        }
+
+        var deliveryKinds: [String] {
+            deliveries.map { delivery in
+                switch delivery.message.updateType {
+                case .initialState: "initial"
+                case .resetState: "reset"
+                case .dataChunk: "data"
+                default: "other"
+                }
+            }
+        }
+    }
+
     @Suite("Terminal stream ownership")
     struct TerminalStreamOwnershipTests {
         @Test("Repeated starts from one viewer are idempotent")
@@ -356,6 +412,48 @@
             #expect(sender.initialDeliveries[0].recipients == ["viewer-a"])
             #expect(sender.dataDeliveries.map(\.data.count) == [65_536, 65_536, 18_928])
             #expect(sender.dataDeliveries.reduce(into: Data()) { $0.append($1.data) } == snapshot)
+        }
+
+        @Test("Concurrent reset waits for the complete initial snapshot transaction")
+        func concurrentSnapshotsDoNotInterleave() async {
+            let sender = SuspendingTerminalStreamSender()
+            let service = TerminalStreamService(streamSender: sender)
+            let initialContent = Data(repeating: 0x61, count: 70_000)
+            let resetContent = Data("reset".utf8)
+
+            let initialTask = Task { @MainActor in
+                await service.sendSnapshot(
+                    kind: .initial,
+                    paneId: "%1",
+                    width: 80,
+                    height: 24,
+                    content: initialContent,
+                    scrollbackLineLimit: 10_000,
+                    recipients: ["viewer-a"]
+                )
+            }
+            await sender.waitUntilFirstDeliveryIsSuspended()
+
+            let resetTask = Task { @MainActor in
+                await service.sendSnapshot(
+                    kind: .reset,
+                    paneId: "%1",
+                    width: 80,
+                    height: 24,
+                    content: resetContent,
+                    scrollbackLineLimit: 10_000,
+                    recipients: ["viewer-a"]
+                )
+            }
+            for _ in 0..<10 { await Task.yield() }
+
+            #expect(sender.deliveryKinds == ["initial"])
+            sender.resumeFirstDelivery()
+            _ = await initialTask.value
+            _ = await resetTask.value
+
+            #expect(sender.deliveryKinds == ["initial", "data", "data", "reset", "data"])
+            #expect(sender.deliveries.allSatisfy { $0.recipients == ["viewer-a"] })
         }
 
         @Test("Oversized live output is split into bounded relay messages")
