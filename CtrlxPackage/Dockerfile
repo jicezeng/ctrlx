@@ -38,7 +38,8 @@ RUN mkdir -p Sources/CtrlxNetworking Sources/CtrlxExternalServer && \
 
 # Step 3: Resolve and fetch dependencies (CACHED unless Package.swift/resolved changes)
 RUN --mount=type=cache,id=ctrlx-relay-swiftpm,target=/build/.build \
-    swift package resolve
+    SWIFTPM_MAX_CONCURRENT_OPERATIONS=1 \
+    swift package --skip-update --disable-automatic-resolution resolve
 
 # Step 4: Copy the actual source code (changes here only invalidate build, not dependency fetch)
 COPY Sources ./Sources
