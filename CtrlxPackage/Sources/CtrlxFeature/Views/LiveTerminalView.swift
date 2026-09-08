@@ -1279,8 +1279,8 @@
                 terminalView?.makeTextSnapshot()
             }
 
-            // Focus only after one layout turn. The terminal bootstrap has
-            // already finished, so keyboard safe-area animation cannot race it.
+            // Establish input first, then let the native scroll view reveal the
+            // tail when it receives its first real on-screen layout.
             context.coordinator.finishInitialPresentation(
                 scrollView: scrollView,
                 inputEnabled: inputEnabled,
@@ -1314,7 +1314,7 @@
         final class Coordinator: NSObject, UIScrollViewDelegate {
             var terminalView: InteractiveTerminalView?
             weak var terminalState: TerminalState?
-            weak var outerScrollView: UIScrollView?
+            weak var outerScrollView: BottomAnchoredTerminalScrollView?
             var cellSize: CGSize = .zero
             var widthConstraint: NSLayoutConstraint?
             var heightConstraint: NSLayoutConstraint?
@@ -1325,7 +1325,6 @@
             )
             private var appliedInputPresentation: TerminalInputPresentation.State?
             private var didFinishInitialPresentation = false
-            private var initialPresentationTask: Task<Void, Never>?
 
             /// Y offset captured at the start of a user drag. Used to lock
             /// vertical scrolling while mouse mode is active — vertical pans
@@ -1358,7 +1357,7 @@
                     self?.terminalView?.getTerminal().resetToInitialState()
                 }
                 terminalView?.scrollToBottom()
-                (outerScrollView as? BottomAnchoredTerminalScrollView)?.requestScrollToBottom()
+                outerScrollView?.requestScrollToBottom()
                 terminalView?.setNeedsLayout()
                 if let terminalView {
                     terminalView.setNeedsDisplay(terminalView.bounds)
@@ -1371,6 +1370,9 @@
                 // Constraints update the outer geometry on the next layout
                 // pass. Resize SwiftTerm now so following bootstrap bytes are
                 // parsed with the dimensions that preceded them on the wire.
+                // SwiftTerm also synchronizes its native scroll offset after
+                // that layout, even when these rows/columns already match. Do
+                // not resize again or force history to the tail from layout.
                 terminalView.getTerminal().resize(cols: width, rows: height)
 
                 let newWidth = CGFloat(width) * cellSize.width + FontMetrics.horizontalBuffer
@@ -1388,7 +1390,7 @@
             }
 
             func finishInitialPresentation(
-                scrollView: UIScrollView,
+                scrollView: BottomAnchoredTerminalScrollView,
                 inputEnabled: Bool,
                 keyboardRequested: Bool
             ) {
@@ -1396,16 +1398,15 @@
                     inputEnabled: inputEnabled,
                     keyboardRequested: keyboardRequested
                 )
-                initialPresentationTask?.cancel()
-                initialPresentationTask = Task { @MainActor [weak self, weak scrollView] in
-                    await Task.yield()
-                    guard let self, let scrollView else { return }
+                didFinishInitialPresentation = true
 
-                    scrollView.layoutIfNeeded()
-                    terminalState?.scrollToBottom?()
-                    didFinishInitialPresentation = true
-                    applyRequestedInteraction()
-                    initialPresentationTask = nil
+                // Establish the responder and its input accessory first. Those
+                // change SwiftUI's safe area asynchronously, so any bottom
+                // offset calculated before this point is provisional.
+                applyRequestedInteraction()
+
+                scrollView.requestInitialTailPresentation { [weak terminalView] in
+                    terminalView?.presentCurrentTail()
                 }
             }
 
@@ -1464,10 +1465,47 @@
     /// until a real user drag takes ownership of the viewport.
     private final class BottomAnchoredTerminalScrollView: UIScrollView {
         private var anchorPolicy = TerminalBottomAnchorPolicy()
+        private var initialPresentationPolicy = TerminalInitialTailPresentationPolicy()
+        private var initialTailPresentation: (() -> Void)?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil else { return }
+            setNeedsLayout()
+        }
+
+        override func safeAreaInsetsDidChange() {
+            super.safeAreaInsetsDidChange()
+            anchorToBottomIfNeeded()
+        }
+
+        override func adjustedContentInsetDidChange() {
+            super.adjustedContentInsetDidChange()
+            anchorToBottomIfNeeded()
+        }
 
         override func layoutSubviews() {
             super.layoutSubviews()
 
+            if initialPresentationPolicy.consumeIfReady(
+                isAttachedToWindow: window != nil,
+                hasUsableBounds: bounds.width > 0 && bounds.height > 0
+            ) {
+                let presentation = initialTailPresentation
+                initialTailPresentation = nil
+                presentation?()
+            }
+
+            anchorToBottomIfNeeded()
+        }
+
+        func requestInitialTailPresentation(_ presentation: @escaping () -> Void) {
+            initialTailPresentation = presentation
+            initialPresentationPolicy.request()
+            requestScrollToBottom()
+        }
+
+        private func anchorToBottomIfNeeded() {
             guard let targetOffset = anchorPolicy.targetOffset(
                 maximumOffset: Double(bottomOffset)
             ) else {
@@ -1483,7 +1521,9 @@
         func requestScrollToBottom() {
             anchorPolicy.requestScrollToBottom()
             setNeedsLayout()
-            layoutIfNeeded()
+            if window != nil, bounds.width > 0, bounds.height > 0 {
+                anchorToBottomIfNeeded()
+            }
         }
 
         func userWillBeginScrolling() {

@@ -51,3 +51,54 @@ struct TerminalInputPresentationTests {
         ))
     }
 }
+
+@Suite("Terminal initial tail presentation")
+struct TerminalInitialTailPresentationPolicyTests {
+    @Test("Presentation waits for both a window and usable bounds")
+    func waitsForNativeLayout() {
+        var policy = TerminalInitialTailPresentationPolicy()
+        policy.request()
+
+        let beforeAttachment = policy.consumeIfReady(
+            isAttachedToWindow: false,
+            hasUsableBounds: true
+        )
+        let beforeUsableBounds = policy.consumeIfReady(
+            isAttachedToWindow: true,
+            hasUsableBounds: false
+        )
+        let afterNativeLayout = policy.consumeIfReady(
+            isAttachedToWindow: true,
+            hasUsableBounds: true
+        )
+
+        #expect(!beforeAttachment)
+        #expect(!beforeUsableBounds)
+        #expect(afterNativeLayout)
+    }
+
+    @Test("One request is consumed by exactly one stable layout")
+    func consumesOnce() {
+        var policy = TerminalInitialTailPresentationPolicy()
+        policy.request()
+
+        let firstConsumption = policy.consumeIfReady(
+            isAttachedToWindow: true,
+            hasUsableBounds: true
+        )
+        let duplicateConsumption = policy.consumeIfReady(
+            isAttachedToWindow: true,
+            hasUsableBounds: true
+        )
+
+        policy.request()
+        let secondConsumption = policy.consumeIfReady(
+            isAttachedToWindow: true,
+            hasUsableBounds: true
+        )
+
+        #expect(firstConsumption)
+        #expect(!duplicateConsumption)
+        #expect(secondConsumption)
+    }
+}

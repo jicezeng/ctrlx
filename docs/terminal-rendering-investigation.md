@@ -25,6 +25,44 @@ The same corruption occurs directly on the Host Mac, before Relay or iOS are inv
 
 These fixes are in the **Host Mac** capture/stream layer. Update and restart CtrlX on the Mac running the affected tmux sessions, then reconnect viewers; updating iOS or Relay alone cannot activate them. This change does not alter the iOS selection gestures, SwiftTerm dependency, or manual-resize policy. Real-session acceptance is still required after installation; regression success is not proof that every historical rendering symptom had this cause.
 
+## iOS viewport synchronization (September 8, 2026)
+
+The Host fix above does not repair an independently stale UIKit viewport. An
+iOS Simulator reproduction using the previously pinned SwiftTerm revision `6b61f169`
+confirmed that the emulator can report `scrollPosition == 1` while
+`contentOffset.y` still hides the bottom rows. Reducing the grid from 10 to 5
+rows before the native height changed left the viewport 75 points (5 cells)
+behind, including after native layout and an idle wait. A new output line
+repaired it, matching the "quiet session stays wrong until new output" symptom.
+
+Two missing synchronization paths explain this:
+
+- `processSizeChange` updated the scroller only if it also resized the grid.
+  Ctrlx correctly resizes the emulator before feeding bytes in the new geometry;
+  when Auto Layout catches up, the grid already matches, so no native scroll
+  update happened. Insets could change the scroll limit without resizing the
+  grid either.
+- `scroll(toPosition:)` skipped `scrollTo(row:)` when the logical row was
+  unchanged, bypassing that method's existing same-row pixel synchronization.
+
+Keep the fix in SwiftTerm: synchronize the native viewport after size/inset
+changes even when no grid resize is necessary, and pass repeated explicit
+scroll requests through the same row-scrolling path. Reuse the existing
+`updateScroller` rules for active dragging, history momentum and fractional
+history offsets; layout is not a request to scroll to the tail or clear a
+selection. Ctrlx's first-presentation gate waits for attachment and usable bounds,
+while later reset/resize corrections belong to the same native layout path.
+
+`IOSViewportSynchronizationTests` covers same-row requests, Host resize, snapshot
+replacement, inset-only changes, manual history with a selection, active dragging,
+history deceleration, and unchanged-layout no-ops. Run these on **iOS Simulator**:
+macOS `swift test` cannot execute the UIKit-only cases. The earlier shared Host
+tests remain necessary for byte/capture consistency, but do not establish native
+iOS viewport correctness. The iOS app must build against the fixed SwiftTerm
+dependency; editing the sibling checkout alone does not update a remote revision
+pin. Ctrlx now pins the published fork fix at `728936318595b408262ed50f93343767c0818d0a`.
+Relay does not need changes for this client-side fix.
+
 ## Problem Statement
 
 When mirroring complex terminal applications (like Claude Code) that use extensive cursor positioning, the Ctrlx mirror window shows:

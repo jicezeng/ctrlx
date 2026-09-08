@@ -7,6 +7,18 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.24 — Native terminal viewport synchronization
+
+- Pin the SwiftTerm fork fix that synchronizes the iOS viewport after native
+  size/inset changes, including repeated requests for the current bottom row.
+- Present an iOS session's initial tail after its native view is attached and
+  laid out, without waiting for another terminal output byte.
+- Preserve manual history scrolling, selection, and gesture ownership. Add
+  regression coverage for initial presentation and native viewport drift.
+- Keep the 3.0.23 Host stream fixes unchanged. The iOS viewport correction
+  requires an updated iOS build; installing this Mac package alone cannot
+  activate it on an iPhone. No Relay deployment is needed for these changes.
+
 ## 3.0.23 — Host terminal stream consistency
 
 - Keep snapshot capture and live output on one control connection per tmux

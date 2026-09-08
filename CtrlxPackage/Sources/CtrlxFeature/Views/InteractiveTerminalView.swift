@@ -212,6 +212,18 @@ enum TerminalCursorTapNavigation {
             scroll(toPosition: 1)
         }
 
+        /// Presents the current terminal tail only after the native hierarchy
+        /// has its real on-screen bounds. SwiftTerm parses bootstrap bytes
+        /// synchronously, but its display work is frame-coalesced; forcing one
+        /// full native pass here prevents a quiet session from waiting for the
+        /// next output byte before its prompt becomes visible.
+        func presentCurrentTail() {
+            setNeedsLayout()
+            layoutIfNeeded()
+            scrollToBottom()
+            setNeedsDisplay(bounds)
+        }
+
         /// Captures the active terminal buffer for stable, system-native text selection.
         func makeTextSnapshot() -> TerminalTextSnapshot? {
             TerminalTextSnapshot(terminal: getTerminal())

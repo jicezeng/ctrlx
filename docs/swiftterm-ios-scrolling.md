@@ -2,11 +2,36 @@
 
 This document details how SwiftTerm's `TerminalView` handles scrolling on iOS, the limitations discovered, and how Ctrlx works around them.
 
-> **SwiftTerm Version**: 1.9.0 (from Package.swift dependency)
+> **Dependency**: the Ctrlx fork is pinned in `CtrlxPackage/Package.swift`.
+> Check that revision when building; changing the sibling SwiftTerm worktree alone
+> does not change the remote dependency.
 
 ## Overview
 
 SwiftTerm's iOS `TerminalView` is a `UIScrollView` subclass that handles terminal rendering and scrollback navigation. Ctrlx wraps it in an additional scroll view to support wide terminals (horizontal scrolling), creating a nested scroll view architecture.
+
+## Current viewport contract (September 2026)
+
+- The inner terminal has the Host's exact row/column pixel dimensions. A passive
+  canvas, not the terminal grid, expands to fill a larger phone viewport; the
+  terminal is bottom-aligned inside it. The outer scroll view handles overflow.
+- Terminal bytes and grid dimensions are applied in wire order. Auto Layout may
+  update the native frame later. SwiftTerm must synchronize `contentSize` and
+  `contentOffset` after that frame/inset change even if the grid already matches.
+- `scroll(toPosition: 1)` targets the live screen's first row, not the current
+  cursor row. A repeated request must synchronize pixels even when the logical
+  display row is unchanged.
+- Initial presentation waits for a native window and usable bounds, with the
+  input responder/accessory established first. Later reset/resize uses native
+  viewport synchronization; neither path depends on another output byte.
+- A layout update preserves deliberate history scrolling, fractional offsets,
+  active dragging, history momentum and selection. It must not force the inner
+  terminal to the bottom on every feed or layout.
+
+See `terminal-rendering-investigation.md` for the reproduced 5-row drift and the
+iOS-only regression suite. The sections below retain historical implementation
+examples; old minimum-terminal-height constraints, scroll-blocking flags and
+fixed-delay presentation snippets are **not** the current implementation.
 
 ## SwiftTerm Source Files
 
