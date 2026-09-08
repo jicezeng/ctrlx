@@ -797,6 +797,18 @@ final public class TmuxService {
         return result.isSuccess && !result.stdoutString.isEmpty
     }
 
+    /// Resolves stable pane IDs without treating them as control-connection keys.
+    func getPaneSessionName(_ paneId: String) async throws -> String {
+        let result = try await runTmuxCommand([
+            "display-message", "-t", paneId, "-p", "#{session_name}",
+        ])
+        let name = result.stdoutString.trimmingCharacters(in: .newlines)
+        guard result.isSuccess, !name.isEmpty else {
+            throw TmuxError.invalidPane(target: paneId)
+        }
+        return name
+    }
+
     /// Gets the dimensions of a pane
     public func getPaneDimensions(_ target: String) async throws -> (width: Int, height: Int) {
         let result = try await runTmuxCommand([
@@ -926,9 +938,9 @@ final public class TmuxService {
     /// Captures pane content for streaming using control mode commands.
     ///
     /// Unlike `capturePaneWithScrollbackForStreaming` (which uses subprocesses), this sends
-    /// capture commands through the control client's `sendCommand()`. Since commands and
-    /// `%output` events are serialized in the same control mode stream, the capture results
-    /// are precisely ordered relative to live data — eliminating the H5 timing gap.
+    /// capture commands in one `sendCommandList()` transaction. History, screen and
+    /// cursor describe the same tmux state; the last response is ordered against
+    /// `%output` on the pane reader's owning session connection.
     ///
     /// - Parameters:
     ///   - paneId: The stable tmux pane id (e.g. `%3`)
@@ -958,25 +970,18 @@ final public class TmuxService {
         // `capturePaneWithScrollbackForStreaming`) so multi-row background
         // bands survive the rebuild — on the scrollback capture too (#580), so
         // a band that scrolled into history keeps its background. Issue #578.
-        let scrollbackResponse = if scrollbackLines > 0 {
-            try await controlClientManager.sendCommand(
-                "capture-pane -t '\(paneId)' -p -e -N -S -\(scrollbackLines) -E -1",
-                sessionName: sessionName
-            )
-        } else {
-            CommandResponse(commandNumber: 0, output: "", isError: false)
+        var commands: [String] = []
+        if scrollbackLines > 0 {
+            commands.append("capture-pane -t '\(paneId)' -p -e -N -S -\(scrollbackLines) -E -1")
         }
+        commands.append("capture-pane -t '\(paneId)' -p -e -N")
+        commands.append("display-message -t '\(paneId)' -p '#{cursor_x},#{cursor_y},#{cursor_flag}'")
 
-        // Query cursor state before the authoritative visible capture. tmux
-        // never emits `%output` inside a command response block, so the end of
-        // the following capture is the exact boundary between the snapshot and
-        // later live bytes on this same control connection.
-        let cursorResponse = try await controlClientManager.sendCommand(
-            "display-message -t '\(paneId)' -p '#{cursor_x},#{cursor_y},#{cursor_flag}'",
-            sessionName: sessionName
-        )
-        let visibleResponse = try await controlClientManager.sendCommand(
-            "capture-pane -t '\(paneId)' -p -e -N",
+        // History, visible cells and cursor must be from ONE tmux event-loop
+        // turn. Separate awaited commands can combine an old cursor/history
+        // with a new screen, corrupting subsequent relative cursor movement.
+        let responses = try await controlClientManager.sendCommandList(
+            commands,
             sessionName: sessionName,
             onResponse: { response in
                 guard !response.isError else { return }
@@ -984,14 +989,14 @@ final public class TmuxService {
             }
         )
 
-        guard !visibleResponse.isError else {
+        guard responses.count == commands.count, !responses.contains(where: \.isError) else {
             throw TmuxError.invalidPane(target: paneId)
         }
 
         return processCapturePaneForStreaming(
-            scrollbackOutput: scrollbackResponse.isError ? nil : scrollbackResponse.output,
-            visibleOutput: visibleResponse.output,
-            cursorOutput: cursorResponse.output,
+            scrollbackOutput: scrollbackLines > 0 ? responses[0].output : nil,
+            visibleOutput: responses[responses.count - 2].output,
+            cursorOutput: responses[responses.count - 1].output,
             width: width,
             height: height
         )

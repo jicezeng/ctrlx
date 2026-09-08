@@ -220,6 +220,7 @@
         private let tmuxService: TmuxService
         private let controlClientManager: TmuxControlClientManager
         private let scrollbackLineLimitProvider: @MainActor () -> Int
+        private let fifoDirectory: URL
 
         private var configuredScrollbackLineLimit: Int {
             TerminalScrollbackPolicy.normalizedLineLimit(scrollbackLineLimitProvider())
@@ -349,11 +350,13 @@
             controlClientManager: TmuxControlClientManager,
             scrollbackLineLimitProvider: @escaping @MainActor () -> Int = {
                 TerminalScrollbackPolicy.defaultLineLimit
-            }
+            },
+            fifoDirectory: URL = FileManager.default.temporaryDirectory
         ) {
             self.tmuxService = tmuxService
             self.controlClientManager = controlClientManager
             self.scrollbackLineLimitProvider = scrollbackLineLimitProvider
+            self.fifoDirectory = fifoDirectory
 
             // Wire up dimension changes from control client
             controlClientManager.setOnDimensionChange { [weak self] paneId, width, height in
@@ -445,14 +448,16 @@
                 onResync: onResync
             )
 
-            let sessionName = TmuxControlClientManager.extractSessionName(from: target)
-
             // Pane discovery normally creates the reader before any subscribe is
             // possible, but a subscribe can race in (e.g. a pane created seconds
             // before the next refresh). Start a reader on demand so the first
             // viewer doesn't have to wait for the periodic refresh tick.
             if readers[paneId] == nil {
-                let dims = (try? await tmuxService.getPaneDimensions(target)) ?? (width: 80, height: 24)
+                // A stable pane target ("%7") is not a session name. Resolve it
+                // once on discovery races; all later operations use the reader's
+                // owning session so output and snapshots share one connection.
+                let sessionName = try await tmuxService.getPaneSessionName(paneId)
+                let dims = (try? await tmuxService.getPaneDimensions(paneId)) ?? (width: 80, height: 24)
                 await ensureReader(
                     paneId: paneId,
                     sessionName: sessionName,
@@ -483,7 +488,7 @@
                 do {
                     try await controlClientManager.setPaneOutputEnabled(
                         paneId: paneId,
-                        sessionName: sessionName,
+                        sessionName: context.sessionName,
                         enabled: true
                     )
                 } catch {
@@ -956,7 +961,7 @@
             initialHeight: Int,
             seedTitle: String?
         ) async -> Bool {
-            let reader = PipePaneReader(paneId: paneId)
+            let reader = PipePaneReader(paneId: paneId, fifoDirectory: fifoDirectory)
             await reader.setDelegate(self)
 
             do {

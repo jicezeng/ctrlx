@@ -95,10 +95,13 @@ sequenceDiagram
 
 **TmuxControlClient** is an actor that:
 - Maintains a long-lived `tmux -C attach -f ignore-size` process
-- Handles commands via `sendCommand()` (capture-pane, list-panes, pipe-pane, etc.)
+- Handles individual commands via `sendCommand()` and snapshot transactions via `sendCommandList()`
 - Parses event notifications (`%layout-change`, `%session-changed`, `%exit`)
 - Decodes and sanitizes `%output` bytes for panes with active subscribers
-- Runs a snapshot-boundary callback at the authoritative visible capture's `%end`, before parsing later `%output`
+- Captures history, visible cells and cursor in one non-blocking tmux command list; the boundary callback runs at its last `%end`, before parsing later `%output`
+- Completes a command list early on `%error` (tmux skips its remaining commands); timed-out requests retain FIFO tombstones so late responses cannot complete a different request
+
+`TmuxControlClientManager` coalesces concurrent connection creation per owning session. A stable pane target such as `%7` is **not** a session lookup key: subscription, capture and unsubscribe all use the reader's `sessionName`. An on-demand reader resolves the session from tmux before connecting. This prevents separate snapshot/output connections and leftover enabled sources when a pane is reopened.
 
 ### 2. Local Stream Management (Mac)
 
@@ -108,17 +111,17 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> outputDisabled: pane discovered
     outputDisabled --> bootstrapping: first subscriber enables %output
-    bootstrapping --> live: visible capture %end
+    bootstrapping --> live: capture transaction final %end
     live --> resyncing: resize/backpressure requests snapshot
-    resyncing --> live: visible capture %end + reset
+    resyncing --> live: capture transaction final %end + reset
     live --> outputDisabled: last subscriber leaves
 ```
 
 `subscribe(paneId:target:...)` follows the canonical sequence:
 
 1. Register the subscriber's private bootstrap gate and enable `%output` for the pane.
-2. Capture scrollback/cursor/visible state through the same control connection.
-3. At the visible capture's `%end`, discard pre-boundary bytes already represented by the snapshot.
+2. Capture history, visible cells and cursor in one command-list transaction through that same session connection.
+3. At the transaction's final `%end`, discard pre-boundary bytes already represented by the snapshot.
 4. Return `snapshot + post-boundary bytes`, then route subsequent `%output` live.
 
 When the last subscriber leaves, the manager disables `%output` for that pane. The FIFO remains attached in scan-only mode, so OSC side effects keep flowing for desktop notifications and sidebar UI.

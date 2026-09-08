@@ -1,6 +1,29 @@
 # Terminal Rendering Investigation: Garbled Output in Ctrlx Mirror
 
-> **Historical status (PR #179):** The first fix moved live terminal bytes to `pipe-pane`, resolving corruption in the original String-based `%output` parser. In September 2026, terminal content moved back to a single ordered control-mode stream to eliminate snapshot/FIFO overlap: `%output` is now decoded at the byte level, one consumer preserves protocol order, and the visible capture's `%end` is the bootstrap boundary. `pipe-pane` remains scan-only for OSC side effects. The diagrams and hypotheses below document the historical investigation; see `streaming-architecture.md` for the current data flow.
+> **Historical status (PR #179):** The first fix moved live terminal bytes to `pipe-pane`, resolving corruption in the original String-based `%output` parser. In September 2026, terminal content moved back to control mode. The September 8 findings below correct two holes in that transition: connection identity and capture atomicity. `pipe-pane` remains scan-only for OSC side effects. The older diagrams and hypotheses below are historical; see `streaming-architecture.md` for the current data flow.
+
+## 3.0.23 (September 8, 2026): Host-local duplicate output and missing composer
+
+The same corruption occurs directly on the Host Mac, before Relay or iOS are involved. New screenshots show repeated adjacent lines as well as erased composer text. A viewport-only fix cannot repair a terminal buffer already changed by duplicate or mispositioned escape sequences.
+
+### Reproduced causes
+
+1. **Pane target mistaken for connection identity.** Discovery stored the reader under its real session (`coding`), but `subscribe(target: "%6")` enabled output on a new connection keyed by `%6`. Capture and unsubscribe still used `coding`. This both broke the ordered snapshot boundary and left the other source enabled. On a later subscription through the named target, one real tmux `LIVE_ONCE` update was rendered twice. Read-only process inspection also found the installed CtrlX process owning both session-targeted and pane-targeted control clients.
+2. **Concurrent connection creation.** `getClient` suspended while setting actor callbacks before publishing the client in its dictionary. Eight concurrent first requests returned eight distinct clients. `@MainActor` does not prevent reentrancy across `await`.
+3. **Inconsistent snapshot state.** History, cursor and visible cells were queried with separate awaited commands. A real tmux pane moving a `FRAME` marker between rows reproduced a snapshot with the marker on one row and the restored cursor on an empty row. Later relative cursor motion therefore edits the wrong rows even if transport bytes are otherwise ordered.
+
+### Minimal corrective changes
+
+- Resolve an unknown pane's owning session once; enable, capture and disable using the same reader session. Stable `%paneId` remains the **command target**, so window renumbering remains safe.
+- Share one in-flight connection task per session, and cancel/reap it on shutdown.
+- Send history capture, visible capture and cursor query as one non-blocking command list. Mark the stream boundary only at the last response. tmux drains non-waiting commands in the list before returning to pane I/O; on command error it skips the remainder of that group ([tmux 3.7b command queue](https://github.com/tmux/tmux/blob/3.7b/cmd-queue.c)).
+- Retain timed-out response slots until drained; otherwise a late response would be mistaken for the next snapshot.
+
+### Regression coverage and rollout
+
+`PaneStreamConsistencyTests` uses private tmux sockets and a raw echo pane, without a user shell configuration. It checks stable-ID and on-demand subscriptions, reopen/duplicate output, eight concurrent connects, failed command lists, ten viewers joining during 80 lines of Chinese output, and 80 changing-screen captures both with and without history. `BlockParsingTests` checks the final-response boundary and late-response draining. Compare rendered SwiftTerm cells with real tmux capture, not just serialized byte counts.
+
+These fixes are in the **Host Mac** capture/stream layer. Update and restart CtrlX on the Mac running the affected tmux sessions, then reconnect viewers; updating iOS or Relay alone cannot activate them. This change does not alter the iOS selection gestures, SwiftTerm dependency, or manual-resize policy. Real-session acceptance is still required after installation; regression success is not proof that every historical rendering symptom had this cause.
 
 ## Problem Statement
 

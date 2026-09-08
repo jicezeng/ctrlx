@@ -354,12 +354,11 @@
                 #expect(result == "session123")
             }
 
-            @Test("Pane ID format extracts correctly")
+            @Test("Stable IDs require tmux resolution, not string parsing", arguments: ["%0", "@1", "$2", ""])
             @MainActor
-            func paneIdFormat() {
-                // Sometimes targets might be pane IDs like %0
-                let result = TmuxControlClientManager.extractSessionName(from: "%0")
-                #expect(result == "%0")
+            func stableIdFormat(target: String) {
+                let result = TmuxControlClientManager.extractSessionName(from: target)
+                #expect(result == nil)
             }
         }
 
@@ -444,6 +443,80 @@
 
     @Suite("Block Parsing")
     struct BlockParsingTests {
+        @Test("A timed-out capture drains its late responses without completing the next request")
+        @MainActor
+        func timeoutKeepsResponseAlignment() async throws {
+            let client = TmuxControlClient()
+            await client.testMarkInitialAttachHandled()
+            let capture = CapturingControlOutput()
+            let first = Task {
+                try await client.testEnqueueCommandList(id: 1, count: 2) { _ in
+                    capture.events.append("stale-boundary")
+                }
+            }
+            try await waitForPendingCount(client, equals: 1)
+            await client.testExpireCommand(id: 1)
+            do {
+                _ = try await first.value
+                Issue.record("Expired command should throw")
+            } catch TmuxControlError.timeout { /* Expected expiration. */ }
+            let next = Task { try await client.testEnqueueCommand(id: 2) }
+            try await waitForPendingCount(client, equals: 2)
+            await client.testProcessIncomingData(Data("""
+            %begin 1000 100 1
+            stale-screen
+            %end 1000 100 1
+            %begin 1000 101 1
+            stale-cursor
+            %end 1000 101 1
+            %begin 1000 102 1
+            next-request
+            %end 1000 102 1
+
+            """.utf8))
+            #expect(try await next.value.output == "next-request")
+            #expect(capture.events.isEmpty)
+            #expect(await client.testPendingCommandCount == 0)
+        }
+
+        @Test("A capture transaction marks its boundary only after its final response")
+        @MainActor
+        func commandListBoundaryFollowsAllResponses() async throws {
+            let client = TmuxControlClient()
+            await client.testMarkInitialAttachHandled()
+            let capture = CapturingControlOutput()
+            await client.setOnOutput { _, _ in capture.events.append("live") }
+            await client.testSetPaneOutputEnabled("%7", enabled: true)
+            let transaction = Task {
+                try await client.testEnqueueCommandList(id: 1, count: 3) { _ in
+                    capture.events.append("boundary")
+                }
+            }
+            try await waitForPendingCount(client, equals: 1)
+            await client.testProcessIncomingData(Data("""
+            %begin 1000 100 1
+            history
+            %end 1000 100 1
+            %begin 1000 101 1
+            screen
+            %end 1000 101 1
+
+            """.utf8))
+            #expect(capture.events.isEmpty)
+            #expect(await client.testPendingCommandCount == 1)
+            await client.testProcessIncomingData(Data("""
+            %begin 1000 102 1
+            5,8,1
+            %end 1000 102 1
+            %output %7 next
+
+            """.utf8))
+            let responses = try await transaction.value
+            #expect(responses.map(\.output) == ["history", "screen", "5,8,1"])
+            #expect(capture.events == ["boundary", "live"])
+            #expect(await client.testPendingCommandCount == 0)
+        }
+
         /// Regression: `%error` used to only set a flag without resolving the queued
         /// continuation. The next `%end` would then pop the wrong entry and subsequent
         /// commands would drift, eventually timing out after ~5s — visible to users as

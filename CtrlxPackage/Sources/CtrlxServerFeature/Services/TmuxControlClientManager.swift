@@ -22,6 +22,17 @@
         /// Active control clients keyed by session name
         private var clients: [String: TmuxControlClient] = [:]
 
+        /// MainActor reentrancy during actor setup must not create a second
+        /// connection for the same session. The entire check/create operation
+        /// has one in-flight task, registered before its first suspension.
+        private struct ConnectionFlight {
+            let token: UUID
+            let task: Task<TmuxControlClient, Error>
+        }
+
+        private var connectionFlights: [String: ConnectionFlight] = [:]
+        private var isShuttingDown = false
+
         /// Callback for dimension changes (forwarded to PaneStreamManager)
         private var _onDimensionChange: (@MainActor (String, Int, Int) -> Void)?
 
@@ -63,6 +74,24 @@
         /// - Returns: The control client for this session
         /// - Throws: If connection fails
         func getClient(for sessionName: String) async throws -> TmuxControlClient {
+            guard !isShuttingDown else { throw TmuxControlError.notConnected }
+            if let flight = connectionFlights[sessionName] {
+                return try await flight.task.value
+            }
+
+            let token = UUID()
+            let task = Task { try await self.connectClient(for: sessionName) }
+            connectionFlights[sessionName] = ConnectionFlight(token: token, task: task)
+            defer {
+                if connectionFlights[sessionName]?.token == token {
+                    connectionFlights.removeValue(forKey: sessionName)
+                }
+            }
+            return try await task.value
+        }
+
+        private func connectClient(for sessionName: String) async throws -> TmuxControlClient {
+            try Task.checkCancellation()
             if let existing = clients[sessionName], await existing.isConnected {
                 logger.debug("Reusing existing control client", metadata: [
                     "session": "\(sessionName)",
@@ -113,9 +142,17 @@
                 self?._onOutput?(paneId, data)
             }
 
-            try await client.connect(sessionTarget: sessionName)
-            for paneId in outputEnabledPaneIdsBySession[sessionName] ?? [] {
-                await client.setPaneOutputEnabled(paneId: paneId, enabled: true)
+            do {
+                try Task.checkCancellation()
+                try await client.connect(sessionTarget: sessionName)
+                for paneId in outputEnabledPaneIdsBySession[sessionName] ?? [] {
+                    await client.setPaneOutputEnabled(paneId: paneId, enabled: true)
+                }
+                try Task.checkCancellation()
+                guard !isShuttingDown else { throw TmuxControlError.notConnected }
+            } catch {
+                await client.disconnect()
+                throw error
             }
             clients[sessionName] = client
 
@@ -155,6 +192,15 @@
                 timeout: timeout,
                 onResponse: onResponse
             )
+        }
+
+        func sendCommandList(
+            _ commands: [String],
+            sessionName: String,
+            onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
+        ) async throws -> [CommandResponse] {
+            let client = try await getClient(for: sessionName)
+            return try await client.sendCommandList(commands, onResponse: onResponse)
         }
 
         /// Enables or disables terminal output delivery for one pane. Enabling
@@ -276,6 +322,11 @@
         /// Disconnects all control clients.
         public func disconnectAll() async {
             logger.info("Disconnecting all control clients")
+            isShuttingDown = true
+            let flights = Array(connectionFlights.values)
+            connectionFlights.removeAll()
+            for flight in flights { flight.task.cancel() }
+            for flight in flights { _ = try? await flight.task.value }
             let clientsToDisconnect = clients
             clients.removeAll()
             outputEnabledPaneIdsBySession.removeAll()
@@ -306,8 +357,10 @@
         /// - `session` (e.g., "mysession")
         ///
         /// - Parameter target: The pane target string
-        /// - Returns: The session name, or the full target if no colon is found
-        public static func extractSessionName(from target: String) -> String {
+        /// - Returns: A textual session name, or nil for stable IDs that require
+        ///   a tmux lookup. Never use a pane ID as a connection dictionary key.
+        public static func extractSessionName(from target: String) -> String? {
+            guard let first = target.first, !["%", "@", "$"].contains(first) else { return nil }
             if let colonIndex = target.firstIndex(of: ":") {
                 return String(target[..<colonIndex])
             }

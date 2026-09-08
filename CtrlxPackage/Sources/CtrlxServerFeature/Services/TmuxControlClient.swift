@@ -171,12 +171,13 @@ actor TmuxControlClient {
     // tmux processes commands in FIFO order, so the front of this queue always corresponds
     // to the next %begin/%end response from tmux for a CLIENT command.
     //
-    // NOTE: The only non-client %begin/%end is the initial `attach` response (skipped via
-    // receivedInitialResponse flag). All subsequent %begin/%end blocks correspond 1:1
-    // with commands we wrote to stdin, in order.
+    // A command list is one queue entry with one response per command. tmux
+    // skips the rest of that list after an error, which also completes the entry.
     private struct PendingCommand {
         let id: Int
-        let continuation: CheckedContinuation<CommandResponse, any Error>
+        let responseCount: Int
+        var responses: [CommandResponse] = []
+        var continuation: CheckedContinuation<[CommandResponse], any Error>?
         let onResponse: (@MainActor @Sendable (CommandResponse) -> Void)?
     }
 
@@ -341,7 +342,7 @@ actor TmuxControlClient {
 
         // Cancel all pending commands
         for entry in pendingCommandQueue {
-            entry.continuation.resume(throwing: TmuxControlError.notConnected)
+            entry.continuation?.resume(throwing: TmuxControlError.notConnected)
         }
         pendingCommandQueue.removeAll()
         receivedInitialResponse = false
@@ -426,6 +427,22 @@ actor TmuxControlClient {
         onWritten: (@Sendable () -> Void)? = nil,
         onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
     ) async throws -> CommandResponse {
+        let responses = try await sendCommandList(
+            [command], timeout: timeout, onWritten: onWritten, onResponse: onResponse
+        )
+        return responses[0] // A nonempty list completes only after a response.
+    }
+
+    /// Runs non-blocking tmux commands as one command-queue transaction. A
+    /// single input line prevents pane reads between capture and metadata queries.
+    /// The boundary callback runs at the LAST response, before later %output.
+    func sendCommandList(
+        _ commands: [String],
+        timeout: TimeInterval = 5,
+        onWritten: (@Sendable () -> Void)? = nil,
+        onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
+    ) async throws -> [CommandResponse] {
+        guard !commands.isEmpty else { return [] }
         guard let stdin else {
             throw TmuxControlError.notConnected
         }
@@ -433,19 +450,15 @@ actor TmuxControlClient {
         commandCounter += 1
         let commandNumber = commandCounter
 
-        // Write command with newline
-        let commandData = Data((command + "\n").utf8)
-        try stdin.write(contentsOf: commandData)
-        onWritten?()
+        let commandData = Data((commands.joined(separator: " ; ") + "\n").utf8)
 
         // Create timeout task that we can cancel on success
         let timeoutTask = Task {
-            try? await Task.sleep(for: .seconds(timeout))
-            // Remove from queue on timeout
-            if let idx = self.pendingCommandQueue.firstIndex(where: { $0.id == commandNumber }) {
-                let entry = self.pendingCommandQueue.remove(at: idx)
-                entry.continuation.resume(throwing: TmuxControlError.timeout)
-            }
+            do { try await Task.sleep(for: .seconds(timeout)) }
+            catch { return }
+            // Keep a tombstone until tmux's response arrives. Removing a timed
+            // out request would misassign its late response to the next capture.
+            self.expirePendingCommand(id: commandNumber)
         }
 
         // Wait for response
@@ -453,9 +466,17 @@ actor TmuxControlClient {
             let response = try await withCheckedThrowingContinuation { continuation in
                 pendingCommandQueue.append(PendingCommand(
                     id: commandNumber,
+                    responseCount: commands.count,
                     continuation: continuation,
                     onResponse: onResponse
                 ))
+                do {
+                    try stdin.write(contentsOf: commandData)
+                    onWritten?()
+                } catch {
+                    pendingCommandQueue.removeLast()
+                    continuation.resume(throwing: error)
+                }
             }
             timeoutTask.cancel()
             return response
@@ -466,6 +487,13 @@ actor TmuxControlClient {
     }
 
     // MARK: - Read Loop
+
+    private func expirePendingCommand(id: Int) {
+        guard let idx = pendingCommandQueue.firstIndex(where: { $0.id == id }) else { return }
+        let continuation = pendingCommandQueue[idx].continuation
+        pendingCommandQueue[idx].continuation = nil
+        continuation?.resume(throwing: TmuxControlError.timeout)
+    }
 
     private func processIncomingData(_ data: Data) async {
         // Append raw bytes to buffer first (handles chunk splitting)
@@ -699,17 +727,23 @@ actor TmuxControlClient {
             return
         }
 
-        // Pop the front of the FIFO queue — tmux responds in the same order
-        // we wrote commands to stdin. Every %begin/%end or %begin/%error after the
-        // initial attach corresponds 1:1 with a sendCommand() call.
-        if !pendingCommandQueue.isEmpty {
-            let entry = pendingCommandQueue.removeFirst()
-            await entry.onResponse?(response)
-            entry.continuation.resume(returning: response)
-        }
-
+        // Clear parser state before calling MainActor; that callback may queue
+        // another command while this actor is suspended.
         currentCommandNumber = nil
         currentCommandOutput = []
+
+        // tmux executes the list without reading more pane data between its
+        // commands. An error skips the list's remaining commands (no responses).
+        if !pendingCommandQueue.isEmpty {
+            pendingCommandQueue[0].responses.append(response)
+            if isError || pendingCommandQueue[0].responses.count == pendingCommandQueue[0].responseCount {
+                let entry = pendingCommandQueue.removeFirst()
+                if let continuation = entry.continuation {
+                    await entry.onResponse?(response)
+                    continuation.resume(returning: entry.responses)
+                }
+            }
+        }
     }
 
     // MARK: - Session and Exit Parsing
@@ -756,7 +790,7 @@ actor TmuxControlClient {
 
         // Cancel all pending commands
         for entry in pendingCommandQueue {
-            entry.continuation.resume(throwing: TmuxControlError.processTerminated(reason: "Exit code: \(exitCode)"))
+            entry.continuation?.resume(throwing: TmuxControlError.processTerminated(reason: "Exit code: \(exitCode)"))
         }
         pendingCommandQueue.removeAll()
 
@@ -781,9 +815,19 @@ actor TmuxControlClient {
         id: Int,
         onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
     ) async throws -> CommandResponse {
+        let responses = try await testEnqueueCommandList(id: id, count: 1, onResponse: onResponse)
+        return responses[0]
+    }
+
+    func testEnqueueCommandList(
+        id: Int,
+        count: Int,
+        onResponse: (@MainActor @Sendable (CommandResponse) -> Void)? = nil
+    ) async throws -> [CommandResponse] {
         try await withCheckedThrowingContinuation { continuation in
             pendingCommandQueue.append(PendingCommand(
                 id: id,
+                responseCount: count,
                 continuation: continuation,
                 onResponse: onResponse
             ))
@@ -792,6 +836,10 @@ actor TmuxControlClient {
 
     func testSetPaneOutputEnabled(_ paneId: String, enabled: Bool) {
         setPaneOutputEnabled(paneId: paneId, enabled: enabled)
+    }
+
+    func testExpireCommand(id: Int) {
+        expirePendingCommand(id: id)
     }
 
     /// Number of pending commands awaiting a response. Tests only.

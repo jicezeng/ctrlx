@@ -7,6 +7,19 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.23 — Host terminal stream consistency
+
+- Keep snapshot capture and live output on one control connection per tmux
+  session, including concurrent connections and pane reopen operations.
+- Capture history, visible cells, and cursor in one tmux command transaction;
+  drain late responses after timeouts without shifting subsequent requests.
+- Add real-tmux regression coverage for duplicate output and inconsistent
+  screen/cursor state. Update the Host Mac running the affected sessions;
+  updating only a Viewer or Relay does not activate these fixes.
+
+See [terminal rendering investigation](docs/terminal-rendering-investigation.md)
+for reproduced causes and verification scope.
+
 ## Major changes
 
 - Rebranded the macOS app, iOS app, CLI, Relay, and documentation as CtrlX.

@@ -104,7 +104,7 @@
         /// Parser for OSC events. `scanOnly` avoids rebuilding terminal data.
         private var notificationParser = TerminalNotificationParser(scanOnly: true)
 
-        init(paneId: String) {
+        init(paneId: String, fifoDirectory: URL = FileManager.default.temporaryDirectory) {
             self.paneId = paneId
             self.logger = Logging.Logger(label: "com.jicezeng.ctrlx.pipepane.\(paneId)")
             self.ingressBuffer = PipeIngressBuffer(
@@ -118,8 +118,7 @@
                 !sanitized.isEmpty && sanitized.allSatisfy(\.isNumber),
                 "Pane ID must contain only digits after stripping '%', got: \(paneId)"
             )
-            let tmpDir = FileManager.default.temporaryDirectory.path
-            self.fifoPath = "\(tmpDir)/ctrlx-pipe-\(sanitized).fifo"
+            self.fifoPath = fifoDirectory.appendingPathComponent("ctrlx-pipe-\(sanitized).fifo").path
         }
 
         // MARK: - Public API
