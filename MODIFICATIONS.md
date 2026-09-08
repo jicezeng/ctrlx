@@ -7,6 +7,17 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.25 — Ordered Relay forwarding
+
+- Preserve wire order across text and binary WebSocket frames with one bounded
+  inbound FIFO and one async forwarding worker per connection.
+- Keep early frames behind pair/entitlement validation. Discard queued frames
+  on close, replacement or overflow; recheck source ownership at the send boundary.
+- Add lossless-loopback regressions for both directions, immediate upgrade
+  traffic, chunked snapshots and the final SwiftTerm composer/status rows.
+- Deploy the Relay first and reconnect viewers for a fresh snapshot. Existing
+  3.0.24 Mac/iOS clients remain compatible and do not need rebuilding for this fix.
+
 ## 3.0.24 — Native terminal viewport synchronization
 
 - Pin the SwiftTerm fork fix that synchronizes the iOS viewport after native

@@ -1,6 +1,7 @@
 import CtrlxNetworking
 import Foundation
 import Logging
+import Vapor
 
 /// Routes messages between host and viewer devices
 actor RelayService {
@@ -75,7 +76,8 @@ actor RelayService {
         _ data: Data,
         kind: RelayFrameKind,
         pairId: String,
-        sender: DeviceType
+        sender: DeviceType,
+        sourceWebSocket: WebSocket
     ) async {
         let target: DeviceType = sender == .host ? .viewer : .host
         let isConnected = if target == .host {
@@ -97,7 +99,10 @@ actor RelayService {
             "pairId": "\(pairId)",
             "bytes": "\(data.count)",
         ])
-        await connectionHub.sendRawEncryptedFrame(data, kind: kind, to: pairId, deviceType: target)
+        await connectionHub.sendRawEncryptedFrame(
+            data, kind: kind, to: pairId, deviceType: target,
+            sender: sender, sourceWebSocket: sourceWebSocket
+        )
     }
 
     /// Handle incoming message from host

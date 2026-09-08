@@ -259,16 +259,28 @@ graph TB
 ```
 
 **Message Routing:**
+
 1. Mac's `ConnectedViewerManager` sends encrypted terminal data per subscribed Viewer
 2. Each `DeviceConnection` sends via its own WebSocket (unique pairId)
-3. RelayService receives message, looks up iOS connection by pairId
-4. ConnectionHub forwards to iOS (encrypted payload is pass-through)
-5. Server cannot decrypt—true end-to-end encryption
+3. Synchronous WebSocket handlers append text and binary to one bounded `RelayInboundQueue` per connection
+4. After pair/entitlement validation, one worker awaits each full `RelayService` forward in FIFO order
+5. `ConnectionHub` rechecks source ownership and forwards original ciphertext to the paired Mac/iOS Viewer
+6. Server cannot decrypt—true end-to-end encryption
+
+Do not use WebSocketKit's async per-message callback overload here: it starts
+independent Tasks and can reorder frames even though WebSocket itself is ordered.
+The queue retains a 1 MiB pre-validation limit and bounds live backlog to 1024
+frames / 8 MiB, plus one validation event and at most one in-flight frame. Close/replacement discards the
+backlog; overflow closes the socket so clients resynchronize instead of continuing
+with missing terminal bytes. See the 3.0.25 regression in
+[terminal rendering investigation](terminal-rendering-investigation.md).
 
 **Key Files:**
-- `CtrlxExternalServer/Routes/WebSocketController.swift`
-- `CtrlxExternalServer/Services/RelayService.swift`
-- `CtrlxExternalServer/Services/ConnectionHub.swift`
+
+- `CtrlxExternalServerLib/Routes/WebSocketController.swift`
+- `CtrlxExternalServerLib/Services/RelayInboundQueue.swift`
+- `CtrlxExternalServerLib/Services/RelayService.swift`
+- `CtrlxExternalServerLib/Services/ConnectionHub.swift`
 
 ### 6. iOS Reception
 
@@ -348,8 +360,8 @@ specifically "live terminal keeps streaming, but new-session/new-tab/switch-wind
 updates never reach the viewer."
 
 > **Server-initiated teardown must notify the peer itself.** `notifyConnection`
-> for a disconnect only fires from `WebSocketController`'s `onClose` (which owns
-> `RelayService`). A server-initiated teardown — the E2E `blockDevice` /
+> for a disconnect fires from `WebSocketController`'s connection-worker cleanup
+> (`onClose` stops that worker). A server-initiated teardown — the E2E `blockDevice` /
 > `disconnectDevice` helpers, which close the socket *and* remove the
 > `ConnectionHub` entry directly (so `isViewerConnected` / `isHostConnected` flip
 > to false immediately) — makes that later `onClose` a deliberate no-op under

@@ -14,7 +14,53 @@ struct WebSocketController: RouteCollection {
     /// Handle WebSocket upgrade
     /// WS /api/ws?pairId=xxx&deviceType=host|viewer&deviceId=xxx
     @Sendable
-    func handleWebSocketUpgrade(req: Request, ws: WebSocket) async {
+    func handleWebSocketUpgrade(req: Request, ws: WebSocket) {
+        let inbound = RelayInboundQueue()
+        // Retain services for cleanup, which may finish after Application storage
+        // has been cleared during server shutdown.
+        let connectionHub = req.application.connectionHub
+        let relayService = req.application.relayService
+
+        // Use WebSocketKit's SYNCHRONOUS callbacks on the event loop. Its async
+        // overload starts an independent Task per frame and can reorder traffic.
+        // Install both before the upgrade callback returns, including validation.
+        let receive: @Sendable (WebSocket, RelayInboundFrame) -> Void = { socket, frame in
+            if inbound.enqueue(frame) == .overflow {
+                req.logger.warning("Closing WebSocket: inbound relay queue exceeded its limit")
+                // Never continue a terminal stream with missing bytes.
+                socket.close(code: .policyViolation, promise: nil)
+            }
+        }
+        ws.onText { socket, text in receive(socket, .init(data: Data(text.utf8), kind: .text)) }
+        ws.onBinary { socket, buffer in receive(socket, .init(data: Data(buffer: buffer), kind: .binary)) }
+
+        // One worker owns validation, ordered forwarding, and final cleanup for
+        // this socket. There are no per-frame Tasks or parallel replay paths.
+        let worker = Task {
+            await handleConnection(req: req, ws: ws, inbound: inbound)
+            inbound.finish()
+            if let pairId = req.query[String.self, at: "pairId"],
+               let type = req.query[String.self, at: "deviceType"],
+               let deviceType = DeviceType(rawValue: type) {
+                let removed = await connectionHub.unregisterIfCurrent(
+                    pairId: pairId, deviceType: deviceType, webSocket: ws
+                )
+                if removed {
+                    await relayService.notifyConnection(
+                        pairId: pairId, deviceType: deviceType, connected: false
+                    )
+                    req.logger.info("WebSocket disconnected: \(deviceType) for pair \(pairId)")
+                }
+            }
+        }
+        ws.onClose.whenComplete { _ in
+            inbound.finish()
+            worker.cancel()
+        }
+    }
+
+    private func handleConnection(req: Request, ws: WebSocket, inbound: RelayInboundQueue) async {
+        guard !Task.isCancelled, !inbound.isFinished, !ws.isClosed else { return }
         // Extract query parameters
         guard
             let pairId = req.query[String.self, at: "pairId"],
@@ -54,106 +100,28 @@ struct WebSocketController: RouteCollection {
         let pairingService = req.application.pairingService
         let connectionHub = req.application.connectionHub
         let relayService = req.application.relayService
+        let licensingService = req.application.licensingService
+        let metricsService = req.application.metricsService
 
         // Reject connections from blocked device types (for E2E testing).
         // This prevents auto-reconnection while the test verifies server-side state.
-        // The `await` suspension point before message handler registration is acceptable
-        // here: blocked connections are closed immediately and never registered, so any
-        // messages arriving during the brief window are harmlessly dropped.
         if await connectionHub.isBlocked(deviceType: deviceType) {
             req.logger.info("WebSocket connection rejected: \(deviceType) is blocked")
             try? await ws.close(code: .goingAway)
             return
         }
 
-        // Frames must not reach a peer before pair validation. Host frames stay
-        // gated through the additional entitlement check. Handlers are installed
-        // early to avoid the registration race below, so the gate is the security
-        // boundary for frames arriving during either asynchronous check.
-        let relayGate = RelayGate(open: false)
+        guard !Task.isCancelled, !inbound.isFinished, !ws.isClosed else { return }
 
-        // CRITICAL: Set up message handlers BEFORE any `await` suspension point.
-        //
-        // On localhost (E2E tests), the client sends its registration message almost
-        // instantly after the WebSocket upgrade completes. Every `await` creates a
-        // suspension point where NIO can deliver the client's frame. If the handler
-        // isn't registered yet, the frame is silently dropped.
-        //
-        // RelayGate buffers those early frames until the connection has been
-        // registered and validated below.
-        ws.onText { ws, text in
-            let frame = RelayInboundFrame(data: Data(text.utf8), kind: .text)
-            switch await relayGate.admit(frame) {
-            case .relay:
-                break
-            case .buffered:
-                return
-            case .rejected:
-                try? await ws.close(code: .policyViolation)
-                return
-            }
-            await handleIncomingMessage(
-                frame: frame,
-                ws: ws,
-                pairId: pairId,
-                deviceType: deviceType,
-                connectionHub: connectionHub,
-                relayService: relayService,
-                logger: req.logger
-            )
-        }
-
-        ws.onBinary { ws, buffer in
-            let frame = RelayInboundFrame(data: Data(buffer: buffer), kind: .binary)
-            switch await relayGate.admit(frame) {
-            case .relay:
-                break
-            case .buffered:
-                return
-            case .rejected:
-                try? await ws.close(code: .policyViolation)
-                return
-            }
-            await handleIncomingMessage(
-                frame: frame,
-                ws: ws,
-                pairId: pairId,
-                deviceType: deviceType,
-                connectionHub: connectionHub,
-                relayService: relayService,
-                logger: req.logger
-            )
-        }
-
-        ws.onClose.whenComplete { _ in
-            Task {
-                // Only tear down if THIS socket is still the registered one. After a
-                // network switch the device reconnects with a new socket that replaces
-                // this entry; this (old) socket's close can arrive seconds-to-minutes
-                // later. Unregistering unconditionally would evict the live replacement
-                // and falsely notify the peer that the device disconnected.
-                let removed = await connectionHub.unregisterIfCurrent(
-                    pairId: pairId,
-                    deviceType: deviceType,
-                    webSocket: ws
-                )
-                if removed {
-                    await relayService.notifyConnection(pairId: pairId, deviceType: deviceType, connected: false)
-                    req.logger.info("WebSocket disconnected: \(deviceType) for pair \(pairId)")
-                } else {
-                    req.logger.info("Stale \(deviceType) WebSocket closed for pair \(pairId); newer connection retained")
-                }
-            }
-        }
-
-        // Register exactly once. RelayGate keeps early frames buffered until this
+        // Register exactly once. The FIFO keeps early frames buffered until this
         // socket is registered and validated, so message handling never needs to
         // mutate connection ownership.
         let connection = Connection(
             pairId: pairId,
             deviceType: deviceType,
             deviceId: deviceId,
-            webSocket: ws
+            webSocket: ws,
+            stopReceiving: { inbound.finish() }
         )
         await connectionHub.register(connection)
         req.logger.info("WebSocket connected: \(deviceType) for pair \(pairId)")
@@ -173,6 +141,7 @@ struct WebSocketController: RouteCollection {
             try? await ws.close(code: .policyViolation)
             return
         }
+        guard !Task.isCancelled, !inbound.isFinished, !ws.isClosed else { return }
 
         // Hosted-relay gate for hosts (viewers are never gated). Mirrors the
         // invalidPair rejection flow above.
@@ -186,14 +155,14 @@ struct WebSocketController: RouteCollection {
             // that stays `completePairing`'s job. Idempotent no-op for normal new
             // pairings (trial already started) and for expired trials.
             if let pair = await pairingService.getPair(pairId: pairId) {
-                await req.application.licensingService.startTrialIfNeeded(hostDeviceId: pair.hostDeviceId)
+                await licensingService.startTrialIfNeeded(hostDeviceId: pair.hostDeviceId)
             }
 
-            let entitlement = await req.application.licensingService
+            let entitlement = await licensingService
                 .checkEntitlement(hostDeviceId: deviceId)
             if !entitlement.isAllowed {
                 req.logger.info("WebSocket host rejected: subscription required for pair \(pairId)")
-                await req.application.metricsService.incrementBlockedHostAttempts()
+                await metricsService.incrementBlockedHostAttempts()
                 _ = await connectionHub.unregisterIfCurrent(
                     pairId: pairId,
                     deviceType: deviceType,
@@ -211,10 +180,13 @@ struct WebSocketController: RouteCollection {
 
         }
 
-        // Validation passed. Replay early frames in order, then atomically open
-        // the gate. Frames arriving during replay remain queued behind the batch.
-        while let batch = await relayGate.drainOrOpen() {
-            for frame in batch {
+        // Validation passed. Early and live traffic now have the SAME consumer.
+        // The connection notification is a barrier behind the early frames.
+        inbound.activate()
+        await inbound.consume { event in
+            guard !Task.isCancelled, !ws.isClosed, !inbound.isFinished else { return }
+            switch event {
+            case let .frame(frame):
                 await handleIncomingMessage(
                     frame: frame,
                     ws: ws,
@@ -224,12 +196,11 @@ struct WebSocketController: RouteCollection {
                     relayService: relayService,
                     logger: req.logger
                 )
+            case .connected:
+                guard await connectionHub.isCurrent(pairId: pairId, deviceType: deviceType, webSocket: ws) else { return }
+                await relayService.notifyConnection(pairId: pairId, deviceType: deviceType, connected: true)
             }
         }
-        guard await relayGate.isOpenNow else { return }
-
-        // Notify the other device
-        await relayService.notifyConnection(pairId: pairId, deviceType: deviceType, connected: true)
     }
 }
 
@@ -263,7 +234,8 @@ private func handleIncomingMessage(
                 rawEncryptedFrame,
                 kind: frame.kind,
                 pairId: pairId,
-                sender: deviceType
+                sender: deviceType,
+                sourceWebSocket: ws
             )
             return
         }
@@ -370,72 +342,4 @@ enum DeviceType: String {
 enum RelayFrameKind: Sendable, Equatable {
     case text
     case binary
-}
-
-private struct RelayInboundFrame: Sendable {
-    let data: Data
-    let kind: RelayFrameKind
-}
-
-private enum RelayAdmission: Sendable {
-    case relay
-    case buffered
-    case rejected
-}
-
-// MARK: - Relay Gate
-
-/// Per-connection gate that holds inbound frames until pair validation and, for
-/// hosts, entitlement validation pass, then replays them in order.
-///
-/// Actor isolation serializes `admit` and `drainOrOpen`, which gives the
-/// ordering guarantee: `drainOrOpen` only flips the gate open once its buffer is
-/// empty, so a frame that arrives while buffered frames are still being replayed
-/// is queued (not passed through ahead of them).
-private actor RelayGate {
-    private static let maximumPendingBytes = 1_024 * 1_024
-
-    private var isOpen: Bool
-    private var pending: [RelayInboundFrame] = []
-    private var pendingBytes = 0
-    private var isRejected = false
-
-    init(open: Bool) {
-        self.isOpen = open
-    }
-
-    func admit(_ frame: RelayInboundFrame) -> RelayAdmission {
-        if isRejected { return .rejected }
-        if isOpen { return .relay }
-        guard pendingBytes + frame.data.count <= Self.maximumPendingBytes else {
-            pending.removeAll(keepingCapacity: false)
-            pendingBytes = 0
-            isRejected = true
-            return .rejected
-        }
-        pending.append(frame)
-        pendingBytes += frame.data.count
-        return .buffered
-    }
-
-    /// Drain step for opening the gate. Returns the next batch of buffered frames
-    /// to replay, or `nil` once the buffer is empty — at which point the gate is
-    /// flipped open so subsequent `admit` calls pass through directly. Call in a
-    /// `while let` loop until it returns `nil`.
-    func drainOrOpen() -> [RelayInboundFrame]? {
-        guard !isRejected else { return nil }
-        if pending.isEmpty {
-            isOpen = true
-            return nil
-        }
-        defer {
-            pending.removeAll()
-            pendingBytes = 0
-        }
-        return pending
-    }
-
-    var isOpenNow: Bool {
-        isOpen && !isRejected
-    }
 }

@@ -24,10 +24,14 @@ actor ConnectionHub {
 
     /// Register a new connection
     func register(_ connection: Connection) {
+        let previous = connections[connection.pairId]?[connection.deviceType]
         if connections[connection.pairId] == nil {
             connections[connection.pairId] = [:]
         }
         connections[connection.pairId]?[connection.deviceType] = connection
+        if previous?.webSocket !== connection.webSocket {
+            previous?.stopReceiving?()
+        }
     }
 
     /// Unregister a connection only if the currently-registered connection for
@@ -206,8 +210,13 @@ actor ConnectionHub {
         _ data: Data,
         kind: RelayFrameKind,
         to pairId: String,
-        deviceType: DeviceType
+        deviceType: DeviceType,
+        sender: DeviceType,
+        sourceWebSocket: WebSocket
     ) async {
+        // Recheck at the actual send boundary. A replacement can arrive while
+        // envelope validation or RelayService's actor calls are suspended.
+        guard isCurrent(pairId: pairId, deviceType: sender, webSocket: sourceWebSocket) else { return }
         await sendEncoded(
             data,
             to: pairId,

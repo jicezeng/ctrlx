@@ -3,6 +3,10 @@ import Foundation
 import Testing
 import VaporTesting
 @testable import CtrlxExternalServerLib
+#if os(macOS)
+    import CtrlxCommon
+    import SwiftTerm
+#endif
 
 /// Regression coverage for issue #642: after a device reconnects (e.g. a viewer
 /// that switched networks), the *old* half-open socket's `onClose` fires later
@@ -33,6 +37,186 @@ extension EnvSerializedSuites {
         private static let viewerKeyId = "viewer-key-id-1"
 
         // MARK: - Test
+
+        @Test("Frames sent immediately at upgrade survive validation in order")
+        func immediateUpgradeFrames() async throws {
+            try await withRunningRelay { app, port in
+                let pairId = try await makePair(app)
+                let viewer = TextCollector()
+                let viewerWS = try await connectClient(
+                    port: port, query: "pairId=\(pairId)&deviceType=viewer&deviceId=viewer-early", collector: viewer
+                )
+                #expect(await waitUntil { await app.connectionHub.isViewerConnected(pairId: pairId) })
+                let frames = try (0..<48).map { index in
+                    try opaqueFrame(Data(("\(index):" + String(repeating: "x", count: index.isMultiple(of: 3) ? 9000 : 20)).utf8))
+                }
+                let hostWS = try await connectClient(
+                    port: port, query: "pairId=\(pairId)&deviceType=host&deviceId=host-early",
+                    collector: TextCollector(), earlyFrames: frames
+                )
+                #expect(await waitUntil { count(of: "encrypted", in: viewer.all()) == frames.count })
+                let actual = viewer.all().filter { count(of: "encrypted", in: [$0]) == 1 }
+                let ordered = actual == frames.map { String(decoding: $0, as: UTF8.self) }
+                #expect(ordered)
+                try await hostWS.close()
+                try await viewerWS.close()
+            }
+        }
+
+        #if os(macOS)
+            @Test("Chunked snapshots followed by live ANSI preserve the final composer", arguments: [false, true])
+            func snapshotAndLiveRendering(reset: Bool) async throws {
+                try await withRunningRelay { app, port in
+                    app.logger.logLevel = .error
+                    let pairId = try await makePair(app)
+                    let host = TextCollector()
+                    let viewer = TextCollector()
+                    let hostWS = try await connectClient(
+                        port: port, query: "pairId=\(pairId)&deviceType=host&deviceId=host-render", collector: host
+                    )
+                    let viewerWS = try await connectClient(
+                        port: port, query: "pairId=\(pairId)&deviceType=viewer&deviceId=viewer-render", collector: viewer
+                    )
+                    #expect(await waitUntil { count(of: "viewerConnected", in: host.all()) == 1 })
+
+                    let history = (0..<3000).map { "历史 \($0): 中文和 emoji 🐈\r\n" }.joined()
+                    let snapshot = Data((history + "\u{1b}[2J\u{1b}[Hsnapshot\u{1b}[64;1H> OLD INPUT\u{1b}[66;1HSTATUS").utf8)
+                    let initial = TerminalStreamMessage.InitialState(
+                        width: 241, height: 66, content: Data(), scrollbackLineLimit: 4000,
+                        contentByteCount: snapshot.count
+                    )
+                    var messages = [TerminalStreamMessage(
+                        paneId: "%6", updateType: reset ? .resetState(initial) : .initialState(initial)
+                    )]
+                    let chunkSizes = [16384, 1, 3, 19, 64, 4096]
+                    var offset = 0
+                    var chunkIndex = 0
+                    while offset < snapshot.count {
+                        let end = min(snapshot.count, offset + chunkSizes[chunkIndex % chunkSizes.count])
+                        var data = snapshot.subdata(in: offset..<end)
+                        if end == snapshot.count {
+                            // Exercise a snapshot boundary inside a data chunk.
+                            data.append(contentsOf: "\u{1b}[64;1H\u{1b}[2K> READY".utf8)
+                        }
+                        messages.append(.dataChunk(paneId: "%6", data: data))
+                        offset = end
+                        chunkIndex += 1
+                    }
+                    for index in 0..<60 {
+                        messages.append(.dataChunk(paneId: "%6", data: Data(
+                            "\u{1b}[64;1H\u{1b}[2K> INPUT \(index)\u{1b}[66;1H\u{1b}[2KSTATUS \(index)".utf8
+                        )))
+                    }
+                    let payloads = try messages.map { try JSONEncoder().encode($0) }
+                    for (index, payload) in payloads.enumerated() {
+                        try await hostWS.send(raw: opaqueFrame(payload), opcode: index.isMultiple(of: 2) ? .binary : .text)
+                    }
+                    #expect(await waitUntil(timeout: .seconds(10)) {
+                        count(of: "encrypted", in: viewer.all()) == payloads.count
+                    })
+                    let relayed = try viewer.all().filter { count(of: "encrypted", in: [$0]) == 1 }.map { text in
+                        let message = try JSONDecoder().decode(WebSocketMessage.self, from: Data(text.utf8))
+                        guard case let .encrypted(encrypted) = message else { throw RelayTestError.connectFailed("Expected encrypted frame") }
+                        return encrypted.payload.ciphertext
+                    }
+                    let exactBytes = relayed == payloads
+                    #expect(exactBytes)
+                    let expected = try await renderedRows(payloads)
+                    let actual = try await renderedRows(relayed)
+                    let identicalCells = actual == expected
+                    #expect(identicalCells, "Relay output must render the same screen as the original stream")
+                    #expect(actual[63].hasPrefix("> INPUT 59"))
+                    #expect(actual[65].hasPrefix("STATUS 59"))
+                    try await hostWS.close()
+                    try await viewerWS.close()
+                }
+            }
+
+            @MainActor
+            private func renderedRows(_ payloads: [Data]) throws -> [String] {
+                let delegate = RenderingDelegate()
+                let terminal = SwiftTerm.Terminal(delegate: delegate)
+                terminal.resize(cols: 241, rows: 66)
+                var snapshot = TerminalStreamSnapshotAccumulator()
+                func feed(_ data: Data) { terminal.feed(buffer: Array(data)[...]) }
+                for payload in payloads {
+                    let message = try JSONDecoder().decode(TerminalStreamMessage.self, from: payload)
+                    switch message.updateType {
+                    case let .initialState(initial), let .resetState(initial):
+                        _ = snapshot.begin(expectedByteCount: initial.contentByteCount ?? 0)
+                    case let .dataChunk(chunk):
+                        let data = try #require(chunk.data)
+                        if snapshot.isCollecting {
+                            if let complete = snapshot.append(data) {
+                                feed(complete.content)
+                                feed(complete.remainder)
+                            }
+                        } else {
+                            feed(data)
+                        }
+                    default: break
+                    }
+                }
+                #expect(!snapshot.isCollecting)
+                return (0..<terminal.rows).map { row in
+                    guard let line = terminal.getLine(row: row) else { return "" }
+                    return (0..<terminal.cols).map { String(line[$0].getCharacter()) }.joined()
+                }
+            }
+        #endif
+
+        @Test("Mixed-size opaque frames retain wire order in both directions", arguments: [0, 1, 2], [false, true])
+        func encryptedFramesPreserveWireOrder(framing: Int, fromViewer: Bool) async throws {
+            try await withRunningRelay { app, port in
+                app.logger.logLevel = .error
+                let pairId = try await makePair(app)
+                let host = TextCollector()
+                let viewer = TextCollector()
+                let hostWS = try await connectClient(
+                    port: port, query: "pairId=\(pairId)&deviceType=host&deviceId=host-order", collector: host
+                )
+                let viewerWS = try await connectClient(
+                    port: port, query: "pairId=\(pairId)&deviceType=viewer&deviceId=viewer-order", collector: viewer
+                )
+                #expect(await waitUntil { count(of: "viewerConnected", in: host.all()) == 1 })
+
+                // Large frames take longer to validate than their small successors.
+                // Per-frame Tasks reorder these even on a lossless localhost link.
+                let total = 600
+                var expected: [String] = []
+                for index in 0..<total {
+                    let payload = Data(("\(index):" + String(repeating: "x", count: index.isMultiple(of: 3) ? 9000 : 20)).utf8)
+                    let frame = try opaqueFrame(payload)
+                    expected.append(String(decoding: frame, as: UTF8.self))
+                    let binary = framing == 1 || (framing == 2 && index.isMultiple(of: 2))
+                    try await (fromViewer ? viewerWS : hostWS).send(raw: frame, opcode: binary ? .binary : .text)
+                }
+                let receiver = fromViewer ? host : viewer
+                #expect(await waitUntil(timeout: .seconds(10)) {
+                    count(of: "encrypted", in: receiver.all()) == total
+                })
+                let actual = receiver.all().filter { count(of: "encrypted", in: [$0]) == 1 }
+                #expect(actual.count == total)
+                #expect(Set(actual).count == total)
+                let ordered = actual == expected
+                #expect(ordered, "Relay must preserve original frame bytes AND order")
+                try await hostWS.close()
+                try await viewerWS.close()
+            }
+        }
+
+        /// The Relay treats ciphertext as opaque. Counter/ANSI bytes stand in for
+        /// ciphertext here so tests can inspect the forwarded order without keys.
+        private func opaqueFrame(_ payload: Data) throws -> Data {
+            try JSONSerialization.data(withJSONObject: [
+                "type": "encrypted",
+                "payload": ["payload": [
+                    "ciphertext": payload.base64EncodedString(),
+                    "senderKeyId": "test-key",
+                    "version": 1,
+                ]],
+            ])
+        }
 
         @Test("A stale viewer socket closing does not evict the reconnected viewer or notify the host")
         func staleCloseKeepsLiveViewerRouting() async throws {
@@ -129,6 +313,7 @@ extension EnvSerializedSuites {
                 collector: hostA
             )
             #expect(await waitUntil { count(of: "hostConnected", in: viewer.all()) == 1 })
+            let oldHostConnection = try #require(await app.connectionHub.getConnection(pairId: pairId, deviceType: .host))
 
             let hostB = TextCollector()
             let hostBWS = try await connectClient(
@@ -137,6 +322,14 @@ extension EnvSerializedSuites {
                 collector: hostB
             )
             #expect(await waitUntil { count(of: "hostConnected", in: viewer.all()) == 2 })
+
+            // Also model an old frame suspended AFTER the controller's ownership
+            // check: the final send boundary must reject it after replacement.
+            await app.relayService.handleEncryptedFrame(
+                try opaqueFrame(Data("stale in-flight frame".utf8)), kind: .binary,
+                pairId: pairId, sender: .host, sourceWebSocket: oldHostConnection.webSocket
+            )
+            #expect(count(of: "encrypted", in: viewer.all()) == 0)
 
             // Model a frame that was already in flight when B replaced A. The old
             // message path used to register A again before handling this ping.
@@ -240,7 +433,8 @@ extension EnvSerializedSuites {
         private func connectClient(
             port: Int,
             query: String,
-            collector: TextCollector
+            collector: TextCollector,
+            earlyFrames: [Data] = []
         ) async throws -> WebSocket {
             // Resume inside `onUpgrade` (not on the connect future) so we only proceed
             // once the socket exists: websocket-kit succeeds the connect future from a
@@ -251,9 +445,14 @@ extension EnvSerializedSuites {
             return try await withCheckedThrowingContinuation { continuation in
                 WebSocket.connect(
                     to: "ws://127.0.0.1:\(port)/api/ws?\(query)",
+                    configuration: .init(maxFrameSize: RelayPayloadLimits.maxWebSocketFrameBytes),
                     on: MultiThreadedEventLoopGroup.singleton
                 ) { ws in
                     ws.onText { _, text in collector.append(text) }
+                    ws.onBinary { _, data in collector.append(String(decoding: data.readableBytesView, as: UTF8.self)) }
+                    for (index, frame) in earlyFrames.enumerated() {
+                        ws.send(raw: frame, opcode: index.isMultiple(of: 2) ? .binary : .text, promise: nil)
+                    }
                     if gate.claim() { continuation.resume(returning: ws) }
                 }.whenFailure { error in
                     if gate.claim() { continuation.resume(throwing: error) }
@@ -300,6 +499,20 @@ extension EnvSerializedSuites {
         }
     }
 }
+
+#if os(macOS)
+    private final class RenderingDelegate: TerminalDelegate {
+        func send(source _: SwiftTerm.Terminal, data _: ArraySlice<UInt8>) { }
+        func showCursor(source _: SwiftTerm.Terminal) { }
+        func hideCursor(source _: SwiftTerm.Terminal) { }
+        func setTerminalTitle(source _: SwiftTerm.Terminal, title _: String) { }
+        func setTerminalIconTitle(source _: SwiftTerm.Terminal, title _: String) { }
+        func sizeChanged(source _: SwiftTerm.Terminal) { }
+        func scrolled(source _: SwiftTerm.Terminal, yDisp _: Int) { }
+        func hostCurrentDirectoryUpdated(source _: SwiftTerm.Terminal) { }
+        func hostCurrentDocumentUpdated(source _: SwiftTerm.Terminal) { }
+    }
+#endif
 
 // MARK: - Support types
 

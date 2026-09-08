@@ -76,10 +76,13 @@ extension EnvSerializedSuites {
                 let hostWS = try await connectClient(
                     port: port,
                     query: "pairId=\(pairId)&deviceType=host&deviceId=host-device",
-                    collector: host
+                    collector: host,
+                    earlyFrame: Data(#"{"type":"encrypted","payload":{"payload":{"ciphertext":"AQIDBA==","senderKeyId":"rejected-host","version":1}}}"#.utf8)
                 )
 
                 #expect(await waitUntil { hasHostSubscriptionInactive(in: viewer.all()) })
+                #expect(await waitUntil { hostWS.isClosed })
+                #expect(decodedMessages(viewer.all()).allSatisfy { $0.messageType != "encrypted" })
 
                 try? await hostWS.close()
                 try? await viewerWS.close()
@@ -355,7 +358,8 @@ extension EnvSerializedSuites {
         private func connectClient(
             port: Int,
             query: String,
-            collector: TextCollector
+            collector: TextCollector,
+            earlyFrame: Data? = nil
         ) async throws -> WebSocket {
             // Resume inside `onUpgrade` (not on the connect future) so we only proceed
             // once the socket exists: websocket-kit succeeds the connect future from a
@@ -369,6 +373,7 @@ extension EnvSerializedSuites {
                     on: MultiThreadedEventLoopGroup.singleton
                 ) { ws in
                     ws.onText { _, text in collector.append(text) }
+                    if let earlyFrame { ws.send(raw: earlyFrame, opcode: .text, promise: nil) }
                     if gate.claim() { continuation.resume(returning: ws) }
                 }.whenFailure { error in
                     if gate.claim() { continuation.resume(throwing: error) }

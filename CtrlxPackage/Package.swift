@@ -51,6 +51,8 @@ func macOnlyTargetDependencies(for target: String) -> [Target.Dependency] {
             return [.swiftTerm, .sparkle, .textual, .projectNavigator, .files, .gitWorkbench, .gitWorkbenchGitKit]
         case "CtrlxServerFeatureTests":
             return [.swiftTerm]
+        case "CtrlxExternalServerTests":
+            return [.swiftTerm, "CtrlxCommon"]
         case "CtrlxE2E":
             return [.argumentParser]
         case "GallagerCLI":
@@ -589,7 +591,7 @@ let targets: [Target] = [
         dependencies: [
             .ctrlxExternalServerLib,
             .product(name: "VaporTesting", package: "vapor"),
-        ]
+        ] + macOnlyTargetDependencies(for: "CtrlxExternalServerTests")
     ),
     .testTarget(
         name: "CtrlxE2ETests",

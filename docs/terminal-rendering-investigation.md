@@ -2,6 +2,51 @@
 
 > **Historical status (PR #179):** The first fix moved live terminal bytes to `pipe-pane`, resolving corruption in the original String-based `%output` parser. In September 2026, terminal content moved back to control mode. The September 8 findings below correct two holes in that transition: connection identity and capture atomicity. `pipe-pane` remains scan-only for OSC side effects. The older diagrams and hypotheses below are historical; see `streaming-architecture.md` for the current data flow.
 
+## 3.0.25 (September 8, 2026): Relay reorders remote terminal frames
+
+Both Macs running 3.0.24 could still show a mostly blank Viewer with no composer.
+The later Host capture had its composer intact; that observation was not a
+simultaneous capture of the failing Viewer. A separate lossless localhost test
+against the real Relay reproduced an ordering defect: all 600 mixed-size opaque
+frames arrived once, but `0,1,2` became `2,1,0`. Text and binary frames both
+failed. These deliberately mixed-size loads are not production failure rates.
+
+The pinned WebSocketKit async `onText`/`onBinary` overload creates an independent
+Task for each frame. The old `RelayGate` only gated validation; once open, full
+decode/validate/forward operations raced across actor suspension points. Smaller
+later frames overtook larger earlier ones. Per-frame encryption and total
+snapshot byte counts do not authenticate or verify stream order, so late erase
+or cursor commands can destroy an otherwise complete terminal screen.
+
+The fix is confined to the Relay:
+
+- Register synchronous text/binary handlers in the synchronous upgrade callback,
+  before starting async validation. Both append to the same `RelayInboundQueue`.
+- One worker validates the connection, then awaits each complete forward in FIFO
+  order. The connected notification is a barrier behind early registration frames.
+- Bound queued traffic to 1024 frames and 8 MiB after validation, retaining the
+  1 MiB pre-validation limit. Overflow discards the queue and closes the socket;
+  continuing after a silently dropped terminal frame is never safe.
+- Close/replacement stops the consumer and clears queued frames. Raw forwarding
+  rechecks the source socket in `ConnectionHub` immediately before sending, so
+  an old in-flight frame cannot escape after its source was replaced.
+
+`RelayInboundQueueTests` covers validation, suspended forwards, byte/count bounds,
+close and cancellation. `ViewerReconnectRoutingTests` covers six combinations of
+direction/framing, immediate-upgrade traffic and stale sockets. On macOS it also
+feeds chunked initial/reset snapshots with 3000 CJK/emoji history rows, split
+ANSI/UTF-8, a snapshot/live boundary within one chunk, and live updates through
+the real Relay, the shared snapshot accumulator and headless SwiftTerm. Assert
+exact forwarded bytes and final cells, including the composer and status row.
+The license and minimum-client-version gate regressions must continue to pass.
+
+Deploy this **Relay** change, then reconnect the Viewer to replace any already
+corrupted buffer. Existing 3.0.24 clients are compatible; no client viewport,
+selection gesture, resize policy or SwiftTerm revision changes are needed.
+The ordering defect is reproduced, but a failing production Viewer's complete
+stream was not captured: real-session acceptance is still required, and this
+does not claim to explain every historical rendering symptom.
+
 ## 3.0.23 (September 8, 2026): Host-local duplicate output and missing composer
 
 The same corruption occurs directly on the Host Mac, before Relay or iOS are involved. New screenshots show repeated adjacent lines as well as erased composer text. A viewport-only fix cannot repair a terminal buffer already changed by duplicate or mispositioned escape sequences.
