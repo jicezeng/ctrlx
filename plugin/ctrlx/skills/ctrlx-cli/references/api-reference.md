@@ -1,337 +1,146 @@
-# CtrlX CLI — Full API Reference
+# CtrlX CLI socket API
 
-Every `ctrlx` subcommand wraps a JSON-RPC method sent over a Unix socket. This reference lists the method name, parameters, and response for each command, plus the wire protocol for callers that want to talk to the socket directly.
-
-## CtrlX is tmux underneath
-
-Every session, window, and pane the API returns is a real tmux object on the user's tmux server. The IDs are identical to tmux's own identifiers:
-
-| API field | tmux identifier |
-|-----------|-----------------|
-| `Session.id` / `Session.name` | tmux session name (use with `tmux … -t <name>`) |
-| `Window.id` (e.g. `main:0`) | tmux `session:index` target |
-| `Window.sessionId` | tmux session name |
-| `Pane.id` (e.g. `%3`) | tmux pane ID — identical to `$TMUX_PANE` inside the pane |
-| `Pane.windowId` | tmux `session:index` target |
-| `Pane.command` / `Pane.cwd` | tmux `#{pane_current_command}` / `#{pane_current_path}` |
-
-If the API does not expose an operation you need, call `tmux` directly against the same objects — CtrlX observes tmux state continuously and the app will reflect the change without an explicit refresh. For example: `tmux rename-window`, `tmux resize-pane -x/-y`, `tmux capture-pane`, `tmux swap-pane`, `tmux join-pane`, `tmux select-layout`, and `tmux set-option` all work on CtrlX-managed sessions.
-
-Inside a CtrlX-managed pane, `$TMUX` is set by tmux itself, so bare `tmux …` talks to the correct server. From outside a managed pane — or when the user has configured a custom tmux socket — pass `tmux -S <socket>` to match the server CtrlX drives.
+Read for direct socket clients or JSON response fields. Ordinary CLI usage should
+use command `--help`; layout and plugin workflows have separate references.
+This API is **not** the sidecar stdio RPC or the hook-ingress socket.
 
 ## Wire protocol
 
-Newline-delimited JSON-RPC over `AF_UNIX, SOCK_STREAM`. Each message is a single JSON object followed by `\n`. Connections are persistent — a single connection can carry multiple requests.
+AF_UNIX/SOCK_STREAM; each request/response is one JSON object followed by `\n`.
+A connection can carry multiple requests. The CLI normally uses one per call.
+Socket selection is `--socket` → `$CTRLX_SOCKET` → the system temp directory's
+`ctrlx.sock`. Raw socket clients must supply context themselves; the CLI injects
+`pane_id` from `$TMUX_PANE` only for commands that support it.
 
-### Request
 ```json
-{ "id": "unique-id", "method": "session.list", "params": {} }
-```
-- `id` — arbitrary correlation string, echoed in the response
-- `method` — dot-separated `domain.action`
-- `params` — method-specific object (may be `{}`)
-
-### Success response
-```json
-{ "id": "unique-id", "ok": true, "result": { ... } }
+{"id":"request-1","method":"pane.capture","params":{"pane_id":"%3"}}
 ```
 
-### Error response
+```json
+{"id":"request-1","ok":true,"result":{"content":"pane output\n"}}
+```
+
+```json
+{"id":"request-1","ok":false,"error":{"code":"not_found","message":"Pane not found"}}
+```
+
+Echoed `id` correlates responses. Errors include `not_found`, `invalid_params`,
+`method_not_found`, `internal_error`; layout adds `validation_error` and
+`session_exists`. Check `ok` and error details, not just presence of stdout.
+Transport/validation failures, plugin errors and layout errors may be stderr-only
+in CLI JSON mode. `find-emoji --json` is a local array; `edit` emits no envelope.
+
+## Response objects
+
+The CLI API builds these dictionaries with **snake_case** fields (unlike
+sidecar `PluginEvent`'s camelCase fields). IDs refer to real local tmux objects.
+
 ```json
 {
-  "id": "unique-id",
-  "ok": false,
-  "error": { "code": "not_found", "message": "Session 'foo' not found" }
+  "session": {"id":"work","name":"work","window_count":1,"is_attached":true},
+  "window": {"id":"work:0","index":0,"name":"build","pane_count":1,"is_active":true,"session_id":"work"},
+  "pane": {"id":"%3","index":0,"is_active":true,"command":"claude","cwd":"/path/to/project","width":120,"height":40,"window_id":"work:0","has_agent_session":true}
 }
 ```
 
-### Error codes
-| Code | Meaning |
-|------|---------|
-| `not_found` | Resource (session/window/pane) doesn't exist |
-| `invalid_params` | Required parameter missing or invalid |
-| `method_not_found` | Method name is unknown |
-| `internal_error` | Unexpected app-side failure |
+`system.identify` returns this container; any of its three entries can be null.
+Session IDs are session names, window IDs are `session:index`, pane IDs are `%N`.
+Pane `command` and `cwd` can be null. Discovery arrays contain the corresponding
+objects below, without the surrounding `session`/`window`/`pane` keys.
 
-## Sessions
+## Methods
 
-### `session.list` — `ctrlx list-sessions`
-- Params: _(none)_
-- Result: `{ "sessions": [{ "id", "name", "windowCount", "isAttached" }, …] }`
+In the tables, `?` marks optional params; **Ack** is `{"ok":true}` inside `result`.
+A target is not implicit in the wire protocol: pass `pane_id`/`session_id`/`window_id` as
+appropriate. Check `system.capabilities` on the installed host for availability.
 
-### `session.create` — `ctrlx new-session [--name] [--path] [--title] [--color] [--if-missing]`
-- Params: `{ "name"?: string, "path"?: string, "title"?: string, "color"?: string, "if_missing"?: bool }`
-- Result: `{ "id", "name", "windowCount", "isAttached", "created" }`
-- When `if_missing` is true and a session with `name` already exists, the
-  existing session info is returned with `created: false` instead of
-  auto-suffixing the name. Otherwise `created: true`. Requires `name` when
-  `if_missing` is set.
-- `title` (when present) sets the sidebar `@ctrlx-description` for the
-  resulting session — handy for one-shot scripts that don't want a follow-up
-  `session.set_title` call.
-- `color` (when present) sets the sidebar dot via `@ctrlx-color`. Accepts
-  the same names as `session.set_color` (`red`, `orange`, `yellow`, `green`,
-  `blue`, `purple`, `pink`, `gray`, plus the `violet`/`magenta`/`grey`
-  aliases). Unknown names return `invalid_params`.
+### System and discovery
 
-### `session.set_title` — `ctrlx set-title <text> [--session]`
-Writes the sidebar title (`@ctrlx-description` tmux user option). Always
-applies at session scope — every window in the session shows the same
-title. Pass `title: ""` (or omit it) to clear. To rename the tab label of a
-single window, use `window.set_name` instead.
-- Params: `{ "title"?: string, "session_id"?: string, "pane_id"?: string }`
-- Result: `{}`
-- The CLI sends `pane_id` from `$TMUX_PANE` automatically when no
-  `--session` flag is given; the server resolves it to the calling pane's
-  session and applies the title there.
-- Errors: `not_found` when the named session doesn't exist or no target can
-  be resolved (e.g. invoked outside an attached session with no targeting
-  flag).
+| Method / CLI | Params | Result |
+|---|---|---|
+| `system.ping` / `ping` | `{}` | `{pong: true}` |
+| `system.capabilities` / `capabilities` | `{}` | `{methods: [string]}` |
+| `system.identify` / `identify` | `{pane_id?: string}` | `{session, window, pane}` as above |
+| `session.list` / `list-sessions` | `{}` | `{sessions: [session]}` |
+| `session.current` / `current-session` | `{}` | First attached session; not necessarily the caller's or the UI selection |
+| `window.list` / `list-windows` | `{session_id?: string, pane_id?: string}` | `{windows: [window]}` |
+| `pane.list` / `list-panes` | `{window_id?: string, pane_id?: string}` | `{panes: [pane]}` |
+| `pane.capture` / `capture-pane` | `{pane_id?: string, scrollback?: bool}` | `{content: string}` |
 
-### `session.set_color` — `ctrlx set-color <color> [--session]`
-Writes the sidebar dot color (`@ctrlx-color` tmux user option). Same
-session-only targeting rules as `session.set_title`. Pass `color: ""` (or
-`none` from the CLI) to clear.
-- Params: `{ "color": string, "session_id"?: string, "pane_id"?: string }`
-- Result: `{}`
-- Errors: `invalid_params` for an unrecognised color name; `not_found` when
-  the target doesn't resolve. Valid colors: `red`, `orange`, `yellow`,
-  `green`, `blue`, `purple`, `pink`, `gray` (aliases: `violet`/`magenta`/
-  `grey`).
+For `window.list`/`window.create`, `session_id` wins over `pane_id`; for
+`pane.list`, `window_id` wins over `pane_id`. The CLI falls back to the caller's
+pane for these commands. `identify` sends `$TMUX_PANE`; `current-session` sends
+no context. `capture-pane` is plain text by default, an envelope with `--json`.
+`wait-ready` polls `system.ping` (default timeout 30s, interval 0.2s); it exits
+nonzero on timeout rather than sleeping indefinitely.
 
-### `session.set_emoji` — `ctrlx set-emoji <emoji-or-name> [--session]`
-Writes the sidebar emoji icon (`@ctrlx-emoji` tmux user option). Same
-session-only targeting rules as `session.set_title`. Pass `emoji: ""` (or
-`none` from the CLI) to clear.
+### Session/window/pane mutations
 
-The CLI argument accepts either an emoji character directly (`🚀`) or a
-name / keyword (`rocket`, `bug`, `trash`, `"smiling face heart"`). Names
-resolve locally against a bundled CLDR keyword table (the same one the
-Mac/iOS picker uses), so common synonyms work even when they aren't the
-formal Unicode name — `trash` resolves 🗑️ (named WASTEBASKET). An exact
-name match short-circuits to a single result; ambiguous queries print
-candidates and exit non-zero. The relay/server only ever sees the
-resolved glyph — name lookup happens entirely CLI-side. Junk text that
-matches neither an emoji nor a name is rejected with a validation error
-so it never reaches the server.
-- Params: `{ "emoji": string, "session_id"?: string, "pane_id"?: string }`
-- Result: `{}`
-- Errors: `not_found` when the target doesn't resolve.
+| Method / CLI | Params | Result |
+|---|---|---|
+| `session.create` / `new-session` | `{name?: string, path?: string, title?: string, color?: string, if_missing?: bool}` | Session object plus `created: bool` |
+| `session.select` / `select-session` | `{session_id: string}` | Ack |
+| `session.close` / `close-session` | `{session_id: string}` | Ack |
+| `window.create` / `new-window` | `{session_id?: string, pane_id?: string, path?: string, name?: string}` | Window object |
+| `window.select` / `select-window` | `{window_id: string}` | Ack |
+| `window.set_name` / `rename-window` | `{window_id: string, name: string}` | Ack |
+| `window.close` / `close-window` | `{window_id: string}` | Ack |
+| `pane.split` / `split-pane` | `{pane_id?: string, direction?: string, path?: string, shell?: string}` | New pane object |
+| `pane.select` / `select-pane` | `{pane_id: string}` | Ack |
+| `pane.set_layout` / API only | `{target: string, layout: string}` | Ack; `window_id` may replace `target` |
 
-### `find-emoji <query> [--json]` _(CLI-only)_
-Searches the emoji database by name **or CLDR keyword synonym** and
-prints `<glyph>  <name>` for every match (one per line), so `find-emoji
-trash` surfaces 🗑️. Each whitespace-separated query word must prefix a
-word in the candidate's name or keywords (case-insensitive); results are
-ranked name-matches-first, then shortest-name-first. With `--json` emits
-`[{"emoji": "...", "name": "..."}, …]` on stdout — an empty match set is
-`[]` with exit 0 (success, no results). Interactive mode (no `--json`)
-exits 1 on empty matches so shell scripts can branch on `if ctrlx
-find-emoji foo > /dev/null`. This command never touches the relay/tmux;
-it's pure local lookup.
+`if_missing` requires `name`; an existing session returns `created: false`.
+Use that flag to avoid creating duplicate panes or rerunning initialization.
+Window names must be nonempty. Split directions are left/right/up/down (default
+right); `shell` starts that process instead of the default shell.
 
-### `session.select` — `ctrlx select-session <id>`
-- Params: `{ "session_id": string }`
-- Result: `{}`
+### Labels and feedback
 
-### `session.current` — `ctrlx current-session`
-- Params: _(none)_
-- Result: `{ "id", "name", "windowCount", "isAttached" }`
+| Method / CLI | Params | Result |
+|---|---|---|
+| `session.set_title` / `set-title` | `{title?: string, session_id?: string, pane_id?: string}` | Ack |
+| `session.set_color` / `set-color` | `{color?: string, session_id?: string, pane_id?: string}` | Ack |
+| `session.set_emoji` / `set-emoji` | `{emoji?: string, session_id?: string, pane_id?: string}` | Ack |
+| `session.set_state` / `session-state` | `{state: string, session_id?: string, pane_id?: string}` | `{applied_to: int}` |
+| `pane.set_progress` / `set-progress` | `{value: string, pane_id?: string}` | Ack |
+| `notification.create` / `notify` | `{title: string, body: string, pane_id?: string, push?: bool}` | Ack |
 
-### `session.close` — `ctrlx close-session <id>`
-- Params: `{ "session_id": string }`
-- Result: `{}`
+Title/color/emoji always affect a whole session. The API can resolve `pane_id`
+to its session, but the label CLI verbs accept only `--session` as an explicit
+target, otherwise using `$TMUX_PANE`. Emoji names/keywords are resolved in the
+CLI; the socket receives the glyph. See [workflows](workflows.md) for accepted
+values, clearing labels, progress overrides and local versus iOS notifications.
 
-### `session.set_state` — `ctrlx session-state <state>`
-- Params: `{ "state": "working" | "idle" | "waiting" | "clear", "pane_id"?: string, "session_id"?: string }`
-- Result: `{ "applied_to": int }` — number of panes whose override was updated.
-- The CLI fills `pane_id` from `$TMUX_PANE` when neither `--pane` nor
-  `--session` is given, so the calling pane is targeted by default. With both
-  parameters absent and no `$TMUX_PANE` (e.g. when invoked from outside tmux),
-  the server falls back to the globally active pane. A Claude hook event whose
-  `isWorking` is non-nil or that would trigger a notification clears the
-  override for the same pane, so live sessions revert to hook-driven state on
-  their own.
+### Input, editor and projects
 
-## Windows
+| Method / CLI | Params | Result |
+|---|---|---|
+| `input.send_text` / `send` | `{text: string, pane_id?: string, enter?: bool}` | Ack |
+| `input.send_key` / `send-key` | `{key: string, pane_id?: string}` | Ack |
+| `editor.open` / `edit` | `{pane_id: string, file_path: string}` | Ack after editing finishes; CLI prints nothing |
+| `project.list` / `list-projects` | `{}` | `{projects: [project]}` |
+| `project.start` / `start-project` | `{path: string, args?: [string], plugin_id?: string}` | Session object |
 
-### `window.list` — `ctrlx list-windows [--session]`
-- Params: `{ "session_id"?: string, "pane_id"?: string }`
-- Result: `{ "windows": [{ "id", "index", "name", "paneCount", "isActive", "sessionId" }, …] }`
-- When `session_id` is omitted but `pane_id` is provided, the server resolves
-  the pane to its session and filters accordingly. The CLI sends `pane_id`
-  from `$TMUX_PANE` automatically when neither `--session` nor `--pane` is
-  passed, so the listing defaults to the calling pane's session.
+Text is literal; `enter: true` appends Enter. Named keys: enter/tab/escape/
+backspace/delete/up/down/left/right/space. The CLI's `edit` requires `$TMUX_PANE`
+and blocks until the user finishes. Prefer an absolute file path.
 
-### `window.create` — `ctrlx new-window [--session] [--path] [--name]`
-- Params: `{ "session_id"?: string, "path"?: string, "pane_id"?: string, "name"?: string }`
-- Result: `{ "id", "index", "name", "paneCount", "isActive", "sessionId" }`
-- When `session_id` is omitted but `pane_id` is provided, the new window is
-  created in the pane's session. The CLI sends `pane_id` from `$TMUX_PANE`
-  automatically when neither `--session` nor `--pane` is passed, so the new
-  window lands in the calling pane's session.
-- `name` (when present) sets the tmux window name (the tab label) at
-  creation time. When omitted, the daemon auto-generates `terminal N`.
+Projects come from enabled plugins. Each contains `id`, `name`, `path`,
+`plugin_id`, and ISO-8601 `last_used` (or null). `project.start` defaults to
+`plugin_id: "claude-code"`; the CLI has no flag to override it. Nonempty `args`
+replace the plugin's default launch arguments. Missing/non-directory project
+paths fail with `not_found`.
 
-### `window.select` — `ctrlx select-window <id>`
-- Params: `{ "window_id": string }`
-- Result: `{}`
+### Layouts, environment and plugins
 
-### `window.set_name` — `ctrlx rename-window <id> <name>`
-Renames a tmux window via `tmux rename-window`. Setting the name also
-disables tmux's automatic-rename for that window so the tab stops tracking
-the running command. The only window-scoped CLI mutation; for the
-session-wide sidebar title use `session.set_title` instead.
-- Params: `{ "window_id": string, "name": string }`
-- Result: `{}`
-- Errors: `invalid_params` when `name` is empty or whitespace.
+`layout.apply` takes `{config, config_path?, rebuild?, detach?, dry_run?,
+lenient?, require_create?}` and returns `{session_name, created, warnings,
+planned_actions}`. Use the CLI to parse YAML/JSON and follow [layouts](layouts.md)
+for idempotence, dry runs and destructive rebuild behavior.
 
-### `window.close` — `ctrlx close-window <id>`
-- Params: `{ "window_id": string }`
-- Result: `{}`
+`system.set_env` takes `{session_id: string, vars: {NAME: string|null}}` and returns
+Ack; null unsets a variable. It has no dedicated CLI verb.
 
-## Panes
-
-### `pane.list` — `ctrlx list-panes [--window]`
-- Params: `{ "window_id"?: string, "pane_id"?: string }`
-- When `window_id` is omitted but `pane_id` is provided, the server resolves
-  the pane to its window and filters accordingly. The CLI sends `pane_id`
-  from `$TMUX_PANE` automatically when neither `--window` nor `--pane` is
-  passed, so the listing defaults to the calling pane's window.
-- Result:
-```json
-{
-  "panes": [{
-    "id": "%3", "index": 0, "isActive": true,
-    "command": "claude", "cwd": "/Users/me/project",
-    "width": 220, "height": 50,
-    "windowId": "main:0", "hasClaudeSession": true
-  }]
-}
-```
-
-### `pane.split` — `ctrlx split-pane [direction] [--pane] [--path]`
-- Params: `{ "direction"?: "left"|"right"|"up"|"down", "pane_id"?: string, "path"?: string }`
-- Result: pane object (same shape as `pane.list`)
-- The CLI fills `pane_id` from `$TMUX_PANE` when no targeting flag is given,
-  so the split happens on the calling pane.
-
-### `pane.select` — `ctrlx select-pane <id>`
-- Params: `{ "pane_id": string }`
-- Result: `{}`
-
-### `pane.capture` — `ctrlx capture-pane [--pane] [--scrollback]`
-Returns the visible buffer of a pane as plain text — the same content as
-`tmux capture-pane -p`. With `--scrollback` (`-S -`), the entire history is
-included. Useful for grepping pane output without leaving the calling shell.
-- Params: `{ "pane_id"?: string, "scrollback"?: bool }`
-- Result: `{ "text": string }`
-- The CLI fills `pane_id` from `$TMUX_PANE` when no targeting flag is given,
-  so the capture defaults to the calling pane.
-
-### `pane.set_progress` — `ctrlx set-progress <value> [--pane]`
-Writes the per-pane sidebar progress bar that the host normally derives
-from `OSC 9;4` sequences emitted by terminal programs. The CLI override
-syncs through the same `PaneState.progress` path, so every connected
-viewer (host sidebar, Mac viewer, iOS) sees the same bar. CLI and OSC
-updates last-write-wins each other — a `OSC 9;4` arriving after a CLI
-call replaces the value (and vice versa).
-- Params: `{ "value": string, "pane_id"?: string }`
-- Result: `{}`
-- Accepted `value` strings:
-  - `"0"` … `"100"` (with optional `%`) — determinate blue bar
-  - `"indeterminate"` — animated blue scanner (same as `OSC 9;4;3`)
-  - `"warning"` — full yellow warning bar
-  - `"error"` — full red error bar
-  - `"clear"` / `"none"` / `""` — remove the bar
-- The CLI fills `pane_id` from `$TMUX_PANE` when no `--pane` flag is given,
-  so the override targets the calling pane by default.
-- Errors: `invalid_params` for an unrecognised string or out-of-range
-  percentage; `not_found` when no pane resolves.
-
-## Input
-
-### `input.send_text` — `ctrlx send <text> [--pane] [--enter]`
-Sends text verbatim. Pass `--enter` (or `enter: true`) to append a real
-Enter keypress after the text — equivalent to following the call with
-`input.send_key { key: "enter" }`. Without `--enter`, include `\n` in the
-text yourself if you need a newline.
-- Params: `{ "text": string, "pane_id"?: string, "enter"?: bool }`
-- Result: `{}`
-- The CLI fills `pane_id` from `$TMUX_PANE` when no targeting flag is given,
-  so input goes to the calling pane.
-
-### `input.send_key` — `ctrlx send-key <key> [--pane]`
-Named keys: `enter`, `tab`, `escape`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `space`.
-- Params: `{ "key": string, "pane_id"?: string }`
-- Result: `{}`
-- The CLI fills `pane_id` from `$TMUX_PANE` when no targeting flag is given,
-  so input goes to the calling pane.
-
-## Notifications
-
-### `notification.create` — `ctrlx notify --title --body [--push]`
-If `$TMUX_PANE` is set, the CLI attaches `pane_id` so the notification can deep-link back to the originating pane. Pass `--push` (or `push: true`) to also forward the notification to every paired iOS viewer through the relay server — the same encrypted-push path Claude hook events use, so the alert falls back to APNs when the viewer is offline.
-- Params: `{ "title": string, "body": string, "pane_id"?: string, "push"?: bool }`
-- Result: `{}`
-
-## Editor
-
-### `editor.open` — `ctrlx edit <file>`
-Opens the file in CtrlX's in-app prompt editor. **Blocks** until the user submits or cancels.
-- Params: `{ "pane_id": string, "file_path": string }` (pane_id comes from `$TMUX_PANE`)
-- Result: `{}` (returned when editing completes)
-
-## Projects
-
-### `project.list` — `ctrlx list-projects`
-Returns the Claude projects discovered on the host (from `~/.claude.json` and any additional configured folders), sorted by most recently used.
-- Params: _(none)_
-- Result:
-```json
-{
-  "projects": [
-    { "id": "/Users/me/code/proj", "name": "proj", "path": "/Users/me/code/proj", "last_used": "2026-04-19T12:34:56.789Z" }
-  ]
-}
-```
-`last_used` is `null` when no session activity has been recorded yet.
-
-### `project.start` — `ctrlx start-project <path> [-- <args…>]`
-Creates a new tmux session whose working directory is the given project path and runs the configured `claude` command in it. Any extra positional args after `--` are appended verbatim to the claude command line.
-- Params: `{ "path": string, "args"?: [string] }`
-- Result: session info object — `{ "id", "name", "window_count", "is_attached" }`
-- Errors: `not_found` if `path` does not exist or is not a directory.
-
-## System / utility
-
-### `system.ping` — `ctrlx ping` / `ctrlx wait-ready`
-- Params: _(none)_
-- Result: `{ "pong": true }`
-- `wait-ready --timeout <seconds> --interval <seconds>` (CLI-only convenience)
-  retries `system.ping` until success or the timeout elapses, exiting
-  non-zero on timeout. Use it as a gate at the top of scripts that auto-launch
-  the app instead of sleeping for a fixed duration. Defaults: 30s timeout,
-  0.5s interval.
-
-### `system.capabilities` — `ctrlx capabilities`
-- Params: _(none)_
-- Result: `{ "methods": ["session.list", "session.create", …] }`
-
-### `system.identify` — `ctrlx identify`
-Returns session/window/pane for the calling process (uses `$TMUX_PANE` for detection).
-- Params: `{ "pane_id"?: string }`
-- Result: `{ "session": {…}, "window": {…}, "pane": {…} }`
-
-## Method naming convention
-
-| Prefix | Domain |
-|--------|--------|
-| `session.*` | Session management |
-| `window.*` | Window management |
-| `pane.*` | Pane management |
-| `input.*` | Text and key input |
-| `notification.*` | Desktop notifications |
-| `editor.*` | Prompt editor |
-| `project.*` | Claude project discovery and session bootstrap |
-| `system.*` | Utility / introspection |
+For `plugin.*` prefer the CLI and [plugin workflows](plugins.md), especially the
+trust step. These methods have their own mixed-case fields; do not infer their
+wire schema from the session tables or from sidecar stdio RPC.

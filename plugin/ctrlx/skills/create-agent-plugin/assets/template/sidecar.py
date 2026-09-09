@@ -111,7 +111,7 @@ def state_idle():
 # These open a form in the app/iOS viewer; the answer comes back via
 # deliver_response (see handle_deliver_response). They need NO capability.
 # Encoding note: the first (unlabeled) associated value becomes "_0", the labeled
-# `requestID:` stays as-is. See references/protocol-reference.md §6 + §4a for the
+# `requestID:` stays as-is. See references/forms-and-input.md for the
 # PermissionRequest / AskUserQuestionRequest shapes.
 def state_awaiting_permission(request, request_id):
     return {"awaitingPermission": {"_0": request, "requestID": request_id}}
@@ -126,7 +126,8 @@ def state_awaiting_replies(request, request_id):
 # the pane). CRITICAL: a `.text` key is `{"text": {"_0": "abc"}}`, NOT
 # `{"text": "abc"}`. Every key is a "_0"-wrapped tagged object; a bare string
 # fails to decode and the host silently drops the ENTIRE keys array. Special keys
-# (no payload) are `{"enter": {}}`, `{"escape": {}}`, `{"right": {}}`, … (§5a).
+# (no payload) are `{"enter": {}}`, `{"escape": {}}`, `{"right": {}}`, … .
+# See references/forms-and-input.md for the complete key contract.
 # ---------------------------------------------------------------------------
 def key_text(s):
     return {"text": {"_0": s}}
@@ -180,7 +181,8 @@ def handle_translate_event(req_id, params):
     project_path = context.get("CLAUDE_PROJECT_DIR") or payload.get("cwd")
 
     hook_event = payload.get("hook_event_name") or payload.get("event")
-    if hook_event in ("Stop", "SubagentStop", "turn_end", "done"):
+    # Child-agent completion must not mark the root pane done.
+    if hook_event in ("Stop", "turn_end", "done"):
         state = state_done(summary=payload.get("summary"))
     elif hook_event in ("Notification", "PreToolUse", "PostToolUse", "turn_start"):
         state = state_working()
@@ -266,7 +268,7 @@ def handle_apply_settings(req_id, params):
 def handle_deliver_response(req_id, params):
     """Answer an open form (only if you emit awaitingPermission/awaitingReplies).
     `params` is {sessionID, requestID, response}; `response` is a single-key
-    AgentResponse — see references/protocol-reference.md §4a. Act on it via your
+    AgentResponse — see references/forms-and-input.md. Act on it via your
     agent's API, or by typing into the pane with send_keys(...). Respond {} promptly.
 
     EDIT HERE if your agent has interactive forms; safe to leave as-is otherwise.

@@ -7,6 +7,20 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.26 — Focused agent skills and image review
+
+- Reduce the two bundled skill entrypoints from 444 to 131 lines, with
+  task-specific references for CLI workflows and sidecar contracts.
+- Correct CLI targeting/JSON examples and sidecar permission encodings; ignore
+  child-agent completion in the starter template. Add isolated protocol,
+  resource-sync, and documentation-size regressions.
+- Bump the bundled Claude plugin to 1.3.2 and Codex plugin to 1.1.1 so updated
+  skills have distinct cache versions.
+- Let iOS users open a pending image to review the compressed content, with
+  pinch/double-tap zoom and a separate remove action.
+- Publish a new Mac package; the existing 3.0.25 Relay remains compatible and
+  does not require redeployment. Image review requires a separate iOS build.
+
 ## 3.0.25 — Ordered Relay forwarding
 
 - Preserve wire order across text and binary WebSocket frames with one bounded
