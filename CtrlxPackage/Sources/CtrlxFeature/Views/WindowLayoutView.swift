@@ -117,10 +117,11 @@
             return sessionWindows.first(where: \.isWindowActive) ?? sessionWindows.first
         }
 
-        /// The page represents a tmux session, so its renamed identity stays
-        /// visible regardless of description or terminal-title updates.
+        /// Use the displayed window's name, matching the window switcher.
+        /// Keep the session name only while window data is unavailable.
         private var navigationTitle: String {
-            sessionName
+            guard let window else { return sessionName }
+            return windowTabLabel(for: window)
         }
 
         /// Upper bound for the centered title in the navigation bar.

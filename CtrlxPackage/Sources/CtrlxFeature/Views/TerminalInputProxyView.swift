@@ -92,6 +92,23 @@ struct TerminalInputDocumentSynchronizer {
             forwardedNextResponder ?? super.next
         }
 
+        /// The shadow document is keyboard/IME context, not the visible text.
+        /// Resolve terminal menu actions before UITextView can claim them for
+        /// that document. In particular, Copy requires a terminal selection,
+        /// and Select must use the position where its menu was opened.
+        override func target(forAction action: Selector, withSender sender: Any?) -> Any? {
+            if let forwardedNextResponder {
+                switch action {
+                case #selector(copy(_:)), #selector(paste(_:)),
+                     #selector(select(_:)), #selector(selectAll(_:)):
+                    return forwardedNextResponder.target(forAction: action, withSender: sender)
+                default:
+                    break
+                }
+            }
+            return super.target(forAction: action, withSender: sender)
+        }
+
         override var inputAccessoryView: UIView? {
             get { inputAccessoryViewProvider?() ?? assignedInputAccessoryView }
             set { assignedInputAccessoryView = newValue }

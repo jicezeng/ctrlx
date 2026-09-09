@@ -3,8 +3,10 @@
 This document details how SwiftTerm's `TerminalView` handles scrolling on iOS, the limitations discovered, and how Ctrlx works around them.
 
 > **Dependency**: the Ctrlx fork is pinned in `CtrlxPackage/Package.swift`.
-> Check that revision when building; changing the sibling SwiftTerm worktree alone
-> does not change the remote dependency.
+> Changing the sibling SwiftTerm worktree alone does not change that dependency.
+> During local fork development, a temporary `../SwiftTerm` workspace reference
+> overrides the remote package. Before committing/releasing Ctrlx, publish the
+> fork revision, update the pin, and remove that local override.
 
 ## Overview
 
@@ -32,6 +34,47 @@ See `terminal-rendering-investigation.md` for the reproduced 5-row drift and the
 iOS-only regression suite. The sections below retain historical implementation
 examples; old minimum-terminal-height constraints, scroll-blocking flags and
 fixed-delay presentation snippets are **not** the current implementation.
+
+## Current input-row selection contract
+
+- SwiftTerm's iOS `shouldBeginSelection(at:)` hook runs immediately before a
+  double/triple tap creates a local selection. The default allows selection.
+  A veto consumes the recognized tap; it does not fail the recognizer and fall
+  through to single-tap cursor movement or URL opening.
+- Ctrlx shares its existing single-tap input-row heuristic with this hook:
+  input must be enabled and focused, mouse reporting must be off, the inner
+  terminal must be showing the live screen, and the hit must be on the current
+  cursor row. A matching tap opens the standard menu at the hit without
+  creating a selection, enabling handle dragging or sending keys. The hook
+  controls automatic selection, **not** whether the menu can be opened.
+- Without a terminal selection, the menu offers Paste / Select / Select All;
+  Copy becomes available after an explicit selection. Select uses the tapped
+  buffer position, including when the viewport has a nonzero scroll offset.
+  An existing selection is preserved; no input text or placeholder is copied
+  implicitly. Select All retains SwiftTerm's terminal-wide scope.
+- The transparent `TerminalInputProxyView` remains the keyboard/IME first
+  responder, but resolves Copy / Paste / Select / Select All to the visible
+  terminal via `target(forAction:withSender:)`. Its shadow document is context
+  for typing, not the source for terminal selection or clipboard commands.
+- This is **not** semantic detection of a whole TUI editor. Adjacent rows of a
+  multiline draft, history, inactive panes and mouse-mode TUIs retain selection.
+  Do not infer input boundaries from background colors or bottom-screen pixels.
+- Handle dragging, its magnifier/scroll exclusivity, single-tap selection exit,
+  explicit copy actions and the separate copy page are unchanged. The hook does
+  not modify terminal bytes, sizing or viewport synchronization.
+
+Regression coverage: Ctrlx's `TerminalCursorTapNavigationTests` and iOS-only
+`TerminalSelectionRoutingTests` exercise real double/triple tap handlers,
+menu position, responder-chain action routing, native typing and marked-text
+commits. The fork's iOS-only `IOSSelectionTapTests` covers menu-only taps,
+explicit selection, scrolled
+coordinates, existing selection preservation, single-tap exit and
+mouse-reporting bypass. Unhosted package tests dispatch actions to the resolved
+responder directly. `TerminalMenuHostTests`, run in a UIKit application host
+with `CTRLX_MENU_UI_TESTS=1`, additionally checks actual menu presentation,
+first-responder dispatch, clipboard contents and exact-once paste. It is
+explicitly skipped in ordinary unhosted package runs, whose runner has no
+foreground app responder chain for system menus and pasteboard reads.
 
 ## SwiftTerm Source Files
 

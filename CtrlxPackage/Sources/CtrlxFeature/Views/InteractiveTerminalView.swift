@@ -1,4 +1,20 @@
 enum TerminalCursorTapNavigation {
+    /// Conservative input-row heuristic shared by single-tap navigation and
+    /// multi-tap selection routing. A terminal does not expose an editor rect:
+    /// other rows (including other lines of a draft) keep normal copy behavior.
+    static func isInputRow(
+        inputEnabled: Bool,
+        inputFocused: Bool,
+        mouseModeActive: Bool,
+        displayRow: Int,
+        liveDisplayRow: Int,
+        cursorRow: Int,
+        tappedRow: Int
+    ) -> Bool {
+        inputEnabled && inputFocused && !mouseModeActive
+            && displayRow == liveDisplayRow && tappedRow == cursorRow
+    }
+
     /// Returns the number of logical cursor steps needed to reach a tapped
     /// terminal column. Positive values move right; negative values move left.
     /// Width-zero cells are the trailing half of wide glyphs and must not
@@ -144,8 +160,8 @@ enum TerminalCursorTapNavigation {
         override init(frame: CGRect, font: UIFont?) {
             super.init(frame: frame, font: font)
             terminalDelegate = self
-            // CtrlX owns mouse-mode scrolling below. Keep SwiftTerm's taps local
-            // so double/triple tap still opens selection and paste in TUIs.
+            // CtrlX owns mouse-mode scrolling below. Keep SwiftTerm's taps local;
+            // only the active input row opts out of double/triple-tap selection.
             allowMouseReporting = false
             // Always render cursor as filled on iOS since the user is typically viewing
             // the remote terminal, not typing. The hollow/filled distinction is less useful
@@ -256,6 +272,16 @@ enum TerminalCursorTapNavigation {
             } else {
                 _ = inputProxy.becomeFirstResponder()
             }
+        }
+
+        // MARK: - Tap Routing
+
+        /// Keep a recognized multi-tap consumed when it hits the current input
+        /// row: SwiftTerm shows the menu without creating a selection. Failing
+        /// its recognizer would let single-tap cursor/link actions run instead.
+        /// Explicit selection and all other rows remain SwiftTerm-owned.
+        override func shouldBeginSelection(at position: Position) -> Bool {
+            activeInputLine(atRow: position.row) == nil
         }
 
         // MARK: - URL Detection
@@ -580,17 +606,9 @@ enum TerminalCursorTapNavigation {
         /// model, so the transparent native input proxy deliberately keeps its
         /// local selection at the end of its shadow document.
         private func moveInputCursor(to position: (col: Int, row: Int)) {
-            guard inputEnabled, inputProxy.isFirstResponder, !isMouseModeActive else { return }
-
+            guard let line = activeInputLine(atRow: position.row) else { return }
             let terminal = getTerminal()
             let buffer = terminal.buffer
-            let contentRows = Int((contentSize.height / cellSize.height).rounded())
-            let liveDisplayRow = max(0, contentRows - terminal.rows)
-            guard buffer.yDisp == liveDisplayRow else { return }
-
-            let cursorRow = buffer.y + buffer.yDisp
-            guard position.row == cursorRow else { return }
-            guard let line = terminal.getScrollInvariantLine(row: cursorRow) else { return }
 
             let cellCount = min(line.count, terminal.cols)
             let cellWidths = (0..<cellCount).map { line.getWidth(index: $0) }
@@ -603,6 +621,25 @@ enum TerminalCursorTapNavigation {
 
             let key: TmuxKey = signedSteps < 0 ? .left : .right
             onInput?(Array(repeating: key, count: abs(signedSteps)))
+        }
+
+        /// Use the same live-row test for navigation and selection. Do not infer
+        /// a whole input box from its background color or its screen position.
+        private func activeInputLine(atRow row: Int) -> BufferLine? {
+            guard cellSize.height > 0 else { return nil }
+            let terminal = getTerminal()
+            let buffer = terminal.buffer
+            let contentRows = Int((contentSize.height / cellSize.height).rounded())
+            guard TerminalCursorTapNavigation.isInputRow(
+                inputEnabled: inputEnabled,
+                inputFocused: inputProxy.isFirstResponder,
+                mouseModeActive: isMouseModeActive,
+                displayRow: buffer.yDisp,
+                liveDisplayRow: max(0, contentRows - terminal.rows),
+                cursorRow: buffer.y + buffer.yDisp,
+                tappedRow: row
+            ) else { return nil }
+            return terminal.getScrollInvariantLine(row: row)
         }
 
         @objc

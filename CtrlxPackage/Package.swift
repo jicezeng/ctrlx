@@ -22,7 +22,7 @@ func macOnlyDependencies() -> [Package.Dependency] {
             .package(url: "https://github.com/gpambrozio/SFSymbolsMacro", branch: "swift-syntax-602"),
             .package(
                 url: "https://github.com/jicezeng/SwiftTerm.git",
-                revision: "728936318595b408262ed50f93343767c0818d0a"
+                revision: "1b44b5845756a7d6c2735d8af79cdc1d8ce231eb"
             ),
             .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4"),
             .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
