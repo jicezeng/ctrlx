@@ -1,7 +1,6 @@
 enum TerminalCursorTapNavigation {
-    /// Conservative input-row heuristic shared by single-tap navigation and
-    /// multi-tap selection routing. A terminal does not expose an editor rect:
-    /// other rows (including other lines of a draft) keep normal copy behavior.
+    /// Keep multi-tap selection routing and the legacy same-row shortcut
+    /// independent of the stronger region test used by cross-row navigation.
     static func isInputRow(
         inputEnabled: Bool,
         inputFocused: Bool,
@@ -87,7 +86,7 @@ enum TerminalCursorTapNavigation {
         /// room below the controls instead of pinning them to the screen edge.
         private lazy var hiddenKeyboardView: UIView = {
             let accessoryHeight = inputAccessoryView?.bounds.height
-                ?? (UIDevice.current.userInterfaceIdiom == .phone ? 36 : 48)
+                ?? (TerminalInputControlMetrics.buttonHeight + 8)
             let view = UIView(
                 frame: CGRect(x: 0, y: 0, width: 0, height: accessoryHeight)
             )
@@ -95,6 +94,8 @@ enum TerminalCursorTapNavigation {
             return view
         }()
         private var keyboardRequested = false
+        private var pendingCursorMove: TerminalMultilineCursorNavigation.PendingMove?
+        private var isSendingCursorNavigation = false
 
         /// UIKit keyboard/IME state belongs to a native shadow editor. The
         /// terminal remains the renderer and byte encoder; the editor retains
@@ -108,6 +109,7 @@ enum TerminalCursorTapNavigation {
                 self?.deleteBackward()
             }
             proxy.onFocusChange = { [weak self] focused in
+                if !focused { self?.cancelCursorNavigation() }
                 self?.getTerminal().setTerminalFocus(focused)
             }
             proxy.inputAccessoryViewProvider = { [weak self] in
@@ -163,6 +165,13 @@ enum TerminalCursorTapNavigation {
             // CtrlX owns mouse-mode scrolling below. Keep SwiftTerm's taps local;
             // only the active input row opts out of double/triple-tap selection.
             allowMouseReporting = false
+            if let accessory = inputAccessoryView as? TerminalAccessory {
+                accessory.configuration = .init(
+                    showsHorizontalArrows: false,
+                    showsFunctionKeys: false,
+                    buttonHeight: TerminalInputControlMetrics.buttonHeight
+                )
+            }
             // Always render cursor as filled on iOS since the user is typically viewing
             // the remote terminal, not typing. The hollow/filled distinction is less useful
             // here — cursor visibility (DECTCEM ?25l/?25h) handles show/hide instead.
@@ -183,6 +192,7 @@ enum TerminalCursorTapNavigation {
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            if window == nil { cancelCursorNavigation() }
             if inputEnabled, window != nil, !inputProxy.isFirstResponder {
                 _ = inputProxy.becomeFirstResponder()
             }
@@ -204,6 +214,8 @@ enum TerminalCursorTapNavigation {
         func feedTerminalData(_ bytes: ArraySlice<UInt8>) {
             feed(byteArray: bytes)
             extractAndClearPayloads(afterFeeding: bytes)
+
+            finishCursorNavigationIfReady()
 
             setNeedsLayout()
         }
@@ -251,6 +263,7 @@ enum TerminalCursorTapNavigation {
         /// independently showing or hiding the software keyboard.
         func updateInput(isEnabled: Bool, keyboardRequested: Bool) {
             guard isEnabled else {
+                cancelCursorNavigation()
                 inputEnabled = false
                 inputProxy.inputEnabled = false
                 if inputProxy.isFirstResponder {
@@ -281,7 +294,8 @@ enum TerminalCursorTapNavigation {
         /// its recognizer would let single-tap cursor/link actions run instead.
         /// Explicit selection and all other rows remain SwiftTerm-owned.
         override func shouldBeginSelection(at position: Position) -> Bool {
-            activeInputLine(atRow: position.row) == nil
+            cancelCursorNavigation()
+            return activeInputLine(atRow: position.row) == nil
         }
 
         // MARK: - URL Detection
@@ -358,6 +372,7 @@ enum TerminalCursorTapNavigation {
         /// mode doesn't get hijacked by tall-terminal scrolling.
         func attachOuterScrollPanGesture(_ pan: UIPanGestureRecognizer) {
             outerScrollPanGesture = pan
+            pan.addTarget(self, action: #selector(cancelNavigationForPan(_:)))
             if let mouseModePanGesture {
                 pan.require(toFail: mouseModePanGesture)
             }
@@ -403,6 +418,7 @@ enum TerminalCursorTapNavigation {
 
         @objc
         private func handleShiftReturn(_: UIKeyCommand) {
+            cancelCursorNavigation()
             onInput?([.shiftEnter])
         }
 
@@ -413,13 +429,20 @@ enum TerminalCursorTapNavigation {
         /// because `UIScrollView` already implements this method and Swift forbids
         /// extension overrides.
         override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            if gestureRecognizer is UIPanGestureRecognizer || gestureRecognizer is UILongPressGestureRecognizer
+                || ((gestureRecognizer as? UITapGestureRecognizer)?.numberOfTapsRequired ?? 0) > 1 {
+                cancelCursorNavigation()
+            }
             // SwiftTerm's own single tap is responsible for leaving selection
             // mode. Reject this parallel content tap before either recognizer's
             // action runs so that exit tap cannot also open a URL or move the
             // terminal cursor.
             if gestureRecognizer === contentTapGesture, selectionActive {
+                cancelCursorNavigation()
                 return false
             }
+            if gestureRecognizer === contentTapGesture,
+               let pendingCursorMove, .now < pendingCursorMove.deadline { return false }
             if gestureRecognizer === mouseModePanGesture {
                 guard isMouseModeActive, let mouseModePanGesture else { return false }
                 // Only consume vertical pans as wheel events — horizontal pans
@@ -573,6 +596,9 @@ enum TerminalCursorTapNavigation {
 
         @objc
         private func handleURLTap(_ gesture: UITapGestureRecognizer) {
+            if let pendingCursorMove, .now < pendingCursorMove.deadline { return }
+            cancelCursorNavigation()
+            guard !selectionActive else { return }
             // Single tap opens URLs in Safari regardless of mouse mode. Underlines
             // are still suppressed in mouse mode (visual policy), but iOS doesn't
             // synthesize SGR mouse clicks on tap — only the pan gesture sends
@@ -601,14 +627,32 @@ enum TerminalCursorTapNavigation {
             moveInputCursor(to: pos)
         }
 
-        /// Moves within the active terminal input row using the same arrow-key
-        /// path as the explicit keyboard controls. Terminal TUIs own their text
-        /// model, so the transparent native input proxy deliberately keeps its
-        /// local selection at the end of its shadow document.
-        private func moveInputCursor(to position: (col: Int, row: Int)) {
-            guard let line = activeInputLine(atRow: position.row) else { return }
+        /// The remote editor owns its draft. Never move the shadow UITextView's
+        /// selection or rewrite terminal bytes to simulate moving that cursor.
+        func moveInputCursor(to position: (col: Int, row: Int)) {
+            // Ignore a second positioning request while vertical keys are in
+            // flight; otherwise it would be based on the old remote cursor.
+            if let pendingCursorMove, .now < pendingCursorMove.deadline { return }
+            cancelCursorNavigation()
+            guard canNavigateInput else { return }
             let terminal = getTerminal()
             let buffer = terminal.buffer
+            let cursor = TerminalMultilineCursorNavigation.Point(column: buffer.x, row: buffer.y)
+            let tap = TerminalMultilineCursorNavigation.Point(
+                column: position.col, row: position.row - buffer.yDisp
+            )
+            if tap.row != cursor.row {
+                guard let move = TerminalMultilineCursorNavigation.PendingMove(
+                    lines: navigationLines(), cursor: cursor, tap: tap, displayRow: buffer.yDisp
+                ) else { return }
+                pendingCursorMove = move
+                sendCursorNavigationSteps(move.verticalSteps, negative: .up, positive: .down)
+                return
+            }
+
+            // Preserve the original same-row behavior, including unrecognized
+            // shell prompts. It does not broaden the double-tap copy heuristic.
+            guard let line = activeInputLine(atRow: position.row) else { return }
 
             let cellCount = min(line.count, terminal.cols)
             let cellWidths = (0..<cellCount).map { line.getWidth(index: $0) }
@@ -617,14 +661,68 @@ enum TerminalCursorTapNavigation {
                 tappedColumn: position.col,
                 cellWidths: cellWidths
             )
-            guard signedSteps != 0 else { return }
-
-            let key: TmuxKey = signedSteps < 0 ? .left : .right
-            onInput?(Array(repeating: key, count: abs(signedSteps)))
+            sendCursorNavigationSteps(signedSteps, negative: .left, positive: .right)
         }
 
-        /// Use the same live-row test for navigation and selection. Do not infer
-        /// a whole input box from its background color or its screen position.
+        /// Cancellation is synchronous, including input from parent-owned voice
+        /// and shortcut controls. Navigation's own send must not cancel itself.
+        func cancelCursorNavigation() {
+            guard !isSendingCursorNavigation else { return }
+            pendingCursorMove = nil
+        }
+
+        @objc private func cancelNavigationForPan(_ gesture: UIPanGestureRecognizer) {
+            if gesture.state == .began { cancelCursorNavigation() }
+        }
+
+        private var canNavigateInput: Bool {
+            inputEnabled && inputProxy.isFirstResponder && inputProxy.markedTextRange == nil
+                && !selectionActive && !isMouseModeActive && window != nil
+                && getTerminal().isCursorVisible && !getTerminal().synchronizedOutputActive
+                && activeInputLine(atRow: getTerminal().buffer.yDisp + getTerminal().buffer.y) != nil
+        }
+
+        private func navigationLines() -> [TerminalMultilineCursorNavigation.Line] {
+            TerminalMultilineCursorNavigation.lines(in: getTerminal())
+        }
+
+        private func finishCursorNavigationIfReady() {
+            guard let move = pendingCursorMove else { return }
+            guard .now < move.deadline else {
+                cancelCursorNavigation()
+                return
+            }
+            let terminal = getTerminal()
+            // Hidden/synchronized redraws can temporarily visit any row. Wait
+            // for real cursor feedback, not a timer or a guessed column.
+            guard terminal.isCursorVisible, !terminal.synchronizedOutputActive else { return }
+            guard canNavigateInput else {
+                cancelCursorNavigation()
+                return
+            }
+            switch move.progress(
+                lines: navigationLines(),
+                cursor: .init(column: terminal.buffer.x, row: terminal.buffer.y),
+                displayRow: terminal.buffer.yDisp
+            ) {
+            case .waiting:
+                break
+            case .cancelled:
+                cancelCursorNavigation()
+            case let .horizontalSteps(steps):
+                cancelCursorNavigation()
+                sendCursorNavigationSteps(steps, negative: .left, positive: .right)
+            }
+        }
+
+        private func sendCursorNavigationSteps(_ steps: Int, negative: TmuxKey, positive: TmuxKey) {
+            guard steps != 0 else { return }
+            isSendingCursorNavigation = true
+            defer { isSendingCursorNavigation = false }
+            onInput?(Array(repeating: steps < 0 ? negative : positive, count: abs(steps)))
+        }
+
+        /// Multi-tap selection deliberately keeps the existing live-row test.
         private func activeInputLine(atRow row: Int) -> BufferLine? {
             guard cellSize.height > 0 else { return nil }
             let terminal = getTerminal()
@@ -644,6 +742,7 @@ enum TerminalCursorTapNavigation {
 
         @objc
         private func handleURLLongPress(_ gesture: UILongPressGestureRecognizer) {
+            cancelCursorNavigation()
             // In mouse mode the remote terminal app owns presses, so the
             // long-press action sheet shouldn't appear over interactive UI.
             guard !isMouseModeActive else { return }
@@ -837,10 +936,16 @@ enum TerminalCursorTapNavigation {
             // Convert raw bytes to TmuxKey representations
             let keys = TmuxKey.from(bytes: Data(data))
             guard !keys.isEmpty else { return }
+            cancelCursorNavigation()
             onInput?(keys)
         }
 
         func scrolled(source: TerminalView, position: Double) {
+            // SwiftTerm also calls this after synchronized output, even when
+            // nothing scrolled. Only an actual viewport change invalidates it.
+            if let pendingCursorMove, getTerminal().buffer.yDisp != pendingCursorMove.displayRow {
+                cancelCursorNavigation()
+            }
             // No-op - URL underlines scroll naturally with content via absolute positioning
         }
 

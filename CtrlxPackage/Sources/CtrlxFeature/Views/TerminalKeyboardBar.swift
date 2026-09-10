@@ -2,6 +2,11 @@
     import CtrlxNetworking
     import SwiftUI
 
+    /// Shared by the SwiftUI input controls and the native shortcut accessory.
+    enum TerminalInputControlMetrics {
+        static let buttonHeight: CGFloat = 32
+    }
+
     /// A dedicated terminal-input control that stays outside terminal content.
     struct TerminalKeyboardBar: View {
         let keyboardRequested: Bool

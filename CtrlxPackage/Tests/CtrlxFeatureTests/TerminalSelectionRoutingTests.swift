@@ -177,6 +177,101 @@
                 .compactMap { $0 as? TerminalInputProxyView }.first)
         }
 
+        @Test("Cross-row taps wait for visible cursor feedback and correct the actual column once")
+        func multilineCursorFeedback() {
+            let (window, view) = makeView()
+            defer { close(window, view) }
+            paintMultilineDraft(view)
+            var sent: [[TmuxKey]] = []
+            view.onInput = { [weak view] in
+                // The shared send queue cancels other input, not this move.
+                view?.cancelCursorNavigation()
+                sent.append($0)
+            }
+            view.moveInputCursor(to: (8, 1))
+            #expect(sent == [[.up]])
+            // A rapid second tap cannot use a cursor that has not moved yet.
+            view.moveInputCursor(to: (2, 3))
+            #expect(sent == [[.up]])
+            feed(view, "\u{1b}[?2026h\u{1b}[?25l\u{1b}[2;3H")
+            #expect(sent == [[.up]])
+            feed(view, "\u{1b}[?25h\u{1b}[?2026l")
+            #expect(sent == [[.up], Array(repeating: .right, count: 6)])
+            feed(view, "\u{1b}[2;9H")
+            #expect(sent.count == 2)
+        }
+
+        @Test("Ordinary typing or parent controls cancel a pending column correction", arguments: [false, true])
+        func typingCancelsMove(parentControl: Bool) {
+            let (window, view) = makeView()
+            defer { close(window, view) }
+            paintMultilineDraft(view)
+            var sent: [[TmuxKey]] = []
+            view.onInput = { sent.append($0) }
+            view.moveInputCursor(to: (8, 1))
+            if parentControl {
+                view.cancelCursorNavigation()
+            } else {
+                view.send(source: view, data: Array("x".utf8)[...])
+            }
+            let count = sent.count
+            feed(view, "\u{1b}[2;3H")
+            #expect(sent.count == count)
+        }
+
+        @Test("Copy routing stays independent on every line of a multiline draft")
+        func multilineSelectionUnchanged() {
+            let (window, view) = makeView()
+            defer { close(window, view) }
+            paintMultilineDraft(view)
+            var sent: [[TmuxKey]] = []
+            view.onInput = { sent.append($0) }
+            #expect(!view.shouldBeginSelection(at: .init(col: 3, row: 2)))
+            #expect(view.shouldBeginSelection(at: .init(col: 3, row: 1)))
+            view.moveInputCursor(to: (8, 1))
+            tap(view, count: 2, column: 3, row: 1)
+            #expect(view.selectionActive)
+            feed(view, "\u{1b}[2;3H")
+            view.moveInputCursor(to: (4, 2))
+            #expect(sent == [[.up]])
+        }
+
+        @Test("Cross-row taps never send keys for body, padding, mouse mode, IME or inactive input")
+        func multilineInputGates() throws {
+            let (window, view) = makeView()
+            defer { close(window, view) }
+            paintMultilineDraft(view)
+            var sent: [[TmuxKey]] = []
+            view.onInput = { sent.append($0) }
+            view.moveInputCursor(to: (3, 0))
+            view.moveInputCursor(to: (3, 4))
+            feed(view, "\u{1b}[?1000h")
+            view.moveInputCursor(to: (3, 1))
+            feed(view, "\u{1b}[?1000l")
+            let proxy = try inputProxy(in: window)
+            proxy.setMarkedText("zhong", selectedRange: .init(location: 5, length: 0))
+            view.moveInputCursor(to: (3, 1))
+            #expect(sent.isEmpty)
+            proxy.unmarkText()
+            sent = []
+            view.updateInput(isEnabled: false, keyboardRequested: false)
+            view.moveInputCursor(to: (3, 1))
+            #expect(sent.isEmpty)
+        }
+
+        private func feed(_ view: InteractiveTerminalView, _ text: String) {
+            view.feedTerminalData(Array(text.utf8)[...])
+        }
+
+        private func paintMultilineDraft(_ view: InteractiveTerminalView) {
+            feed(view, "\u{1b}[0m\u{1b}[2J\u{1b}[1;1Hbody")
+            for (row, text) in [(2, "› first line"), (3, "  second"), (4, "  中🙂 end"), (5, "")] {
+                feed(view, "\u{1b}[\(row);1H\u{1b}[48;5;236m\u{1b}[2K\(text)")
+            }
+            feed(view, "\u{1b}[0m\u{1b}[6;1Hfooter\u{1b}[3;5H\u{1b}[?25h")
+            view.scroll(toPosition: 1)
+        }
+
         private func sendMenuAction(_ action: Selector, from proxy: TerminalInputProxyView) throws {
             let menu = UIMenuController.shared
             let target = try #require(proxy.target(forAction: action, withSender: menu) as? UIResponder)

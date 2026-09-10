@@ -65,6 +65,10 @@
         /// when dictation starts, without continuously mirroring terminal output.
         let onVoiceInputContextProviderChange: @MainActor (TerminalVoiceInputContextProvider?) -> Void
 
+        /// Parent-owned input controls must cancel a pending tap correction
+        /// before sending their own keys to this pane.
+        let onCursorNavigationCancellationChange: @MainActor ((@MainActor () -> Void)?) -> Void
+
         /// Live OTEL telemetry for this pane's session (issue #597), shown as a
         /// thin meter strip above the terminal (surface C).
         var telemetry: SessionTelemetry?
@@ -107,7 +111,8 @@
             onTerminalInput: @escaping @MainActor ([TmuxKey]) -> Void = { _ in },
             onVoiceInputContextProviderChange: @escaping @MainActor (
                 TerminalVoiceInputContextProvider?
-            ) -> Void = { _ in }
+            ) -> Void = { _ in },
+            onCursorNavigationCancellationChange: @escaping @MainActor ((@MainActor () -> Void)?) -> Void = { _ in }
         ) {
             self.paneId = paneId
             self._responseState = responseState
@@ -125,6 +130,7 @@
             self.submitResponse = submitResponse
             self.onTerminalInput = onTerminalInput
             self.onVoiceInputContextProviderChange = onVoiceInputContextProviderChange
+            self.onCursorNavigationCancellationChange = onCursorNavigationCancellationChange
             self.coordinator = StreamCoordinator(
                 paneId: paneId,
                 fontName: settings.terminalFontName,
@@ -235,9 +241,14 @@
                 onVoiceInputContextProviderChange { [weak coordinator] in
                     coordinator?.voiceInputContext()
                 }
+                onCursorNavigationCancellationChange { [weak coordinator] in
+                    coordinator?.terminalState?.cancelCursorNavigation?()
+                }
             }
             .onDisappear {
                 onVoiceInputContextProviderChange(nil)
+                onCursorNavigationCancellationChange(nil)
+                coordinator.terminalState?.cancelCursorNavigation?()
                 Task { await stopStreaming() }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
@@ -624,6 +635,7 @@
 
         /// Cancel any in-flight key-send chain.
         func cancelPendingKeys() {
+            terminalState?.cancelCursorNavigation?()
             keystrokeDebouncer?.cancelAll()
         }
 
@@ -724,6 +736,7 @@
 
         /// Accumulates rapid keystrokes and flushes them as a single command after a short delay.
         func enqueueKeySend(keys: [TmuxKey], relayClient: ViewerRelayClient) {
+            terminalState?.cancelCursorNavigation?()
             if keystrokeDebouncer == nil {
                 keystrokeDebouncer = KeystrokeDebouncer(paneId: paneId, relayClient: relayClient)
             }
@@ -734,6 +747,7 @@
         /// Routes through the same debouncer as keystrokes so order is preserved with
         /// any in-flight typed input.
         func enqueueRawInput(data: Data, relayClient: ViewerRelayClient) {
+            terminalState?.cancelCursorNavigation?()
             if keystrokeDebouncer == nil {
                 keystrokeDebouncer = KeystrokeDebouncer(paneId: paneId, relayClient: relayClient)
             }
@@ -1051,6 +1065,8 @@
         /// Captures the local SwiftTerm buffer without a host or relay request.
         var makeTextSnapshot: (() -> TerminalTextSnapshot?)?
 
+        var cancelCursorNavigation: (() -> Void)?
+
         init(
             width: Int,
             height: Int,
@@ -1278,6 +1294,9 @@
             terminalState.makeTextSnapshot = { [weak terminalView] in
                 terminalView?.makeTextSnapshot()
             }
+            terminalState.cancelCursorNavigation = { [weak terminalView] in
+                terminalView?.cancelCursorNavigation()
+            }
 
             // Establish input first, then let the native scroll view reveal the
             // tail when it receives its first real on-screen layout.
@@ -1351,6 +1370,7 @@
             }
 
             func replace(width: Int, height: Int, scrollbackLineLimit: Int, content: Data) {
+                terminalView?.cancelCursorNavigation()
                 terminalView?.changeScrollback(scrollbackLineLimit)
                 handleResize(width: width, height: height)
                 feedCoalescer.replace(with: content) { [weak self] in
@@ -1366,6 +1386,7 @@
 
             func handleResize(width: Int, height: Int) {
                 guard let terminalView else { return }
+                terminalView.cancelCursorNavigation()
 
                 // Constraints update the outer geometry on the next layout
                 // pass. Resize SwiftTerm now so following bootstrap bytes are

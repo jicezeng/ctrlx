@@ -35,13 +35,55 @@ iOS-only regression suite. The sections below retain historical implementation
 examples; old minimum-terminal-height constraints, scroll-blocking flags and
 fixed-delay presentation snippets are **not** the current implementation.
 
+## Input toolbar layout
+
+The first-row input controls and SwiftTerm's second-row shortcut accessory share
+the 32-point `TerminalInputControlMetrics.buttonHeight`. The accessory hides
+horizontal arrows (already present in the first row) and optional function keys,
+then distributes its remaining controls across the available width. This is a
+presentation configuration only: Ctrl/modifier handling, up/down auto-repeat,
+touch mode, keyboard switching and the input proxy keep their existing paths.
+
+## Cursor placement by single tap
+
+- The original same-row shortcut is retained. Cross-row taps additionally need
+  a recognizable live input surface: a prompt (`›`, `❯`, or `>`) with a shaded
+  background, or an unshaded prompt enclosed by two horizontal borders. The
+  cursor must be inside that same surface, and continuation rows must retain
+  the input gutter. Background color or screen position alone is insufficient.
+- Explicit newlines and visually wrapped rows use the editor's Up/Down keys.
+  Ctrlx waits for the returned cursor before calculating Left/Right steps;
+  it never guesses a remembered column or uses Home (which can jump to the
+  start of a *logical* line instead of the tapped visual row). This matches
+  [Codex's textarea navigation](https://github.com/openai/codex/blob/main/codex-rs/tui/src/bottom_pane/textarea.rs).
+- Wide glyphs are one step, including their unstyled continuation cells.
+  Prompt gutters and space beyond a short line clamp to the editable text;
+  trailing blank padding is not clickable. Internal blank lines are supported.
+  An ambiguous blank trailing draft line cannot be distinguished from padding
+  unless it contains the live cursor. Unrecognized editors retain same-row
+  placement only, rather than guessing a range that could navigate history.
+- There is at most one outstanding vertical move. It expires after two seconds
+  without retries; a subsequent tap cannot stack another move on a stale cursor.
+  Correction only runs after visible, non-synchronized cursor feedback, with
+  the original input cells and viewport unchanged. Typing, IME composition,
+  parent-owned voice/shortcut input, selection, dragging, loss of focus, stream
+  replacement and resize cancel the correction. No buffer reset, forced scroll,
+  redraw timer, or terminal-stream change is involved.
+
+Coverage: `TerminalMultilineCursorNavigationTests` exercises region boundaries,
+short/empty/wide-character lines, actual-column correction and stale feedback.
+`TerminalCursorSnapshotTests` parses real SGR/DECTCEM bytes in SwiftTerm (with
+and without scrollback). iOS `TerminalSelectionRoutingTests` additionally covers
+feedback split across feeds, cancellation and unchanged selection/IME routing.
+
 ## Current input-row selection contract
 
 - SwiftTerm's iOS `shouldBeginSelection(at:)` hook runs immediately before a
   double/triple tap creates a local selection. The default allows selection.
   A veto consumes the recognized tap; it does not fail the recognizer and fall
   through to single-tap cursor movement or URL opening.
-- Ctrlx shares its existing single-tap input-row heuristic with this hook:
+- Ctrlx retains its original same-row heuristic for this hook, independently
+  of the expanded single-tap navigation region:
   input must be enabled and focused, mouse reporting must be off, the inner
   terminal must be showing the live screen, and the hit must be on the current
   cursor row. A matching tap opens the standard menu at the hit without
@@ -58,7 +100,7 @@ fixed-delay presentation snippets are **not** the current implementation.
   for typing, not the source for terminal selection or clipboard commands.
 - This is **not** semantic detection of a whole TUI editor. Adjacent rows of a
   multiline draft, history, inactive panes and mouse-mode TUIs retain selection.
-  Do not infer input boundaries from background colors or bottom-screen pixels.
+  Do not broaden this copy-menu rule using the single-tap navigation region.
 - Handle dragging, its magnifier/scroll exclusivity, single-tap selection exit,
   explicit copy actions and the separate copy page are unchanged. The hook does
   not modify terminal bytes, sizing or viewport synchronization.

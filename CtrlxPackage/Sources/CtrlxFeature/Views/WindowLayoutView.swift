@@ -33,6 +33,7 @@
         @State private var voiceKeystrokeDebouncer: KeystrokeDebouncer?
         @State private var voiceKeystrokePaneId: String?
         @State private var voiceInputContextProviders: [String: TerminalVoiceInputContextProvider] = [:]
+        @State private var cursorNavigationCancellations: [String: @MainActor () -> Void] = [:]
 
         /// Service for the active pane's Claude session (nil if no session)
         @State private var activeService: SessionDetailService?
@@ -628,6 +629,9 @@
                     } else {
                         voiceInputContextProviders.removeValue(forKey: pane.paneId)
                     }
+                },
+                onCursorNavigationCancellationChange: { cancellation in
+                    cursorNavigationCancellations[pane.paneId] = cancellation
                 }
             )
             .environment(relayClient)
@@ -787,6 +791,7 @@
         // MARK: - Command Sending
 
         private func sendCommand(_ command: CommandType, paneId: String) async {
+            cursorNavigationCancellations[paneId]?()
             await relayClient.send(command, paneId: paneId)
         }
 
@@ -797,6 +802,7 @@
                 let activePaneId
             else { return }
 
+            cursorNavigationCancellations[activePaneId]?()
             if voiceKeystrokePaneId != activePaneId {
                 voiceKeystrokeDebouncer?.cancelAll()
                 voiceKeystrokeDebouncer = KeystrokeDebouncer(
