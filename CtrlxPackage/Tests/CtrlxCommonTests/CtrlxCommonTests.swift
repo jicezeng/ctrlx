@@ -651,6 +651,17 @@ struct StripOSCColorQueriesTests {
 
 @Suite("TerminalResponseFilter.isMouseEscapeSequence")
 struct IsMouseEscapeSequenceTests {
+    @Test("Detects nine-byte SGR clicks near the top-left corner", arguments: [
+        "\u{1b}[<0;1;1M", "\u{1b}[<0;9;9m", "\u{1b}[<4;2;3M", "\u{1b}[<4;2;3m",
+    ])
+    func detectsShortestSGRClick(sequence: String) {
+        let data = Array(sequence.utf8)
+        #expect(data.count == 9)
+        #expect(TerminalResponseFilter.isMouseEscapeSequence(data[...]))
+        #expect(!TerminalResponseFilter.isMouseMotionEvent(data[...]))
+        #expect(!TerminalResponseFilter.isTerminalResponse(data[...]))
+    }
+
     @Test("Detects SGR mouse press: ESC[<0;42;10M")
     func detectsSGRMousePress() {
         // ESC [ < 0 ; 4 2 ; 1 0 M
@@ -695,7 +706,7 @@ struct IsMouseEscapeSequenceTests {
 
     @Test("Rejects too-short SGR sequence")
     func rejectsTooShortSGR() {
-        // ESC [ < 0 M — only 5 bytes, minimum is 10
+        // ESC [ < 0 M — only 5 bytes, minimum is 9
         let data: [UInt8] = [0x1B, 0x5B, 0x3C, 0x30, 0x4D]
         #expect(!TerminalResponseFilter.isMouseEscapeSequence(data[...]))
     }

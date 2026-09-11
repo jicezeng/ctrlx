@@ -7,6 +7,19 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.27 — Mac terminal mouse selection
+
+- Respect Shift-selection and disabled mouse reporting throughout the shared
+  Mac Host/Viewer event path, including drags, scrolling and selection auto-copy.
+- Preserve mouse modifiers when an application explicitly captures Shift.
+- Recognize valid nine-byte SGR mouse reports near the top-left corner so
+  press and release events reach the terminal application intact.
+- Add regressions for both pane positions, local selection, application mouse
+  input, auto-copy, multi-click selection, links, scrolling and short reports.
+- Publish a new Mac package. No Relay redeployment is needed; the original
+  report of selection failing only in a newly split pane still needs device
+  verification and is not claimed as conclusively resolved.
+
 ## 3.0.26 — Focused agent skills and image review
 
 - Reduce the two bundled skill entrypoints from 444 to 131 lines, with

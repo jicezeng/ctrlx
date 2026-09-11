@@ -422,8 +422,8 @@ public enum TerminalResponseFilter {
 
         let third = data[data.startIndex + 2]
 
-        // SGR mouse: ESC [ < Cb ; Cx ; Cy M/m  (minimum 10 bytes: \x1b[<0;1;1M)
-        if third == 0x3C, data.count >= 10 { // '<'
+        // SGR mouse: ESC [ < Cb ; Cx ; Cy M/m  (minimum 9 bytes: \x1b[<0;1;1M)
+        if third == 0x3C, data.count >= 9 { // '<'
             guard let last = data.last, last == 0x4D || last == 0x6D else { return false }
             // Validate body contains only digits and semicolons (Cb;Cx;Cy)
             for i in (data.startIndex + 3)..<(data.endIndex - 1) {

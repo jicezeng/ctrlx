@@ -211,7 +211,7 @@
             // generates motion escape sequences (ESC[<32;col;rowm) that some
             // apps misinterpret as button release events, triggering click actions.
             // Terminal apps primarily need clicks and scrolls, not hover tracking.
-            if interactiveView?.isMouseModeActive != true {
+            if interactiveView?.shouldReportMouseEvent(event) != true {
                 onMouseMoved?(event)
             }
         }
@@ -231,7 +231,7 @@
             // into one call avoids N separate process forks.
             if
                 let interactive = interactiveView,
-                interactive.isMouseModeActive,
+                interactive.shouldReportMouseEvent(event),
                 let tv = terminalView {
                 let deltaY = event.scrollingDeltaY
                 guard deltaY != 0 else { return }
@@ -271,14 +271,20 @@
                 }
                 guard lines > 0 else { return }
 
-                // Button 64 = scroll up, 65 = scroll down (SGR encoding)
-                let button = deltaY > 0 ? 64 : 65
+                // Preserve modifiers, including Shift when explicitly captured by the app.
+                let flags = event.modifierFlags
+                let button = terminal.encodeButton(
+                    button: deltaY > 0 ? 4 : 5, release: false,
+                    shift: flags.contains(.shift), meta: flags.contains(.option),
+                    control: flags.contains(.control)
+                )
                 // SGR format: ESC [ < Cb ; Cx ; Cy M  (1-indexed coordinates)
                 let singleEvent = "\u{1b}[<\(button);\(col + 1);\(row + 1)M"
                 let batch = String(repeating: singleEvent, count: lines)
                 interactive.onRawInput?(Data(batch.utf8))
                 return
             }
+            scrollAccumulator = 0
             if abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) {
                 onHorizontalScroll?(-event.scrollingDeltaX)
             } else {
@@ -301,7 +307,7 @@
             // `browserLinkBehavior` prompt.
             if
                 let interactive = interactiveView,
-                interactive.isMouseModeActive,
+                interactive.shouldReportMouseEvent(event),
                 interactive.isClickOnInterceptableURL(
                     at: interactive.convert(event.locationInWindow, from: nil),
                     allowedSchemes: TerminalURLDetector.defaultAllowedSchemes.union(["file"])
@@ -316,15 +322,13 @@
         override func mouseDragged(with event: NSEvent) {
             linkGesture.mouseDragged()
 
-            // When mouse mode is active, synthesize SGR drag (motion) escape
-            // sequences ourselves. SwiftTerm only emits motion events for
-            // .anyEvent mode (1003), silently dropping them for
-            // .buttonEventTracking (1002). Bypassing SwiftTerm and sending
-            // directly via onRawInput also avoids the motion-event filter in
-            // send(source:data:) which suppresses SwiftTerm-internal tracking.
+            // Only synthesize app-owned drags. Shift bypass and disabled reporting
+            // must reach SwiftTerm's local selection path, just like down/up.
+            // Sending directly also avoids the motion-event filter in
+            // send(source:data:) which suppresses SwiftTerm-internal hover tracking.
             if
                 let interactive = interactiveView,
-                interactive.isMouseModeActive,
+                interactive.shouldReportMouseEvent(event),
                 let tv = terminalView {
                 let point = tv.convert(event.locationInWindow, from: nil)
                 let terminal = tv.getTerminal()
@@ -344,9 +348,13 @@
                 }
                 lastDragPosition = (col, row)
 
-                // SGR drag: button 32 (left button + motion bit 5)
-                // Format: ESC [ < 32 ; col ; row M  (1-indexed coordinates)
-                let seq = "\u{1b}[<32;\(col + 1);\(row + 1)M"
+                let flags = event.modifierFlags
+                let button = terminal.encodeButton(
+                    button: event.buttonNumber, release: false,
+                    shift: flags.contains(.shift), meta: flags.contains(.option),
+                    control: flags.contains(.control)
+                ) | 32 // Motion bit, with the same modifiers as press/release.
+                let seq = "\u{1b}[<\(button);\(col + 1);\(row + 1)M"
                 interactive.onRawInput?(Data(seq.utf8))
                 return
             }
@@ -373,7 +381,7 @@
 
             // No matching URL at the click point. In mouse mode, the terminal
             // app owns the click — forward to SwiftTerm and skip auto-copy.
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.mouseUp(with: event)
                 return
             }
@@ -409,7 +417,7 @@
         }
 
         override func rightMouseDown(with event: NSEvent) {
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.rightMouseDown(with: event)
             } else {
                 super.rightMouseDown(with: event)
@@ -417,7 +425,7 @@
         }
 
         override func rightMouseUp(with event: NSEvent) {
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.rightMouseUp(with: event)
             } else {
                 super.rightMouseUp(with: event)
@@ -425,25 +433,25 @@
         }
 
         override func rightMouseDragged(with event: NSEvent) {
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.rightMouseDragged(with: event)
             }
         }
 
         override func otherMouseDown(with event: NSEvent) {
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.otherMouseDown(with: event)
             }
         }
 
         override func otherMouseUp(with event: NSEvent) {
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.otherMouseUp(with: event)
             }
         }
 
         override func otherMouseDragged(with event: NSEvent) {
-            if interactiveView?.isMouseModeActive == true {
+            if interactiveView?.shouldReportMouseEvent(event) == true {
                 terminalView?.otherMouseDragged(with: event)
             }
         }
@@ -1492,10 +1500,19 @@
             terminalView.getTerminal().mouseMode != .off
         }
 
+        /// Match SwiftTerm's per-event routing: Shift selects locally unless the
+        /// application explicitly captures it; disabling reporting always stays local.
+        fileprivate func shouldReportMouseEvent(_ event: NSEvent) -> Bool {
+            let terminal = terminalView.getTerminal()
+            return terminalView.allowMouseReporting
+                && terminal.mouseMode != .off
+                && (!event.modifierFlags.contains(.shift) || terminal.mouseShiftCapture)
+        }
+
         /// Called by the system's cursor tracking when the cursor enters/moves within the view.
         /// Sets the cursor based on mouse mode and whether the mouse is over a detected URL.
         private func updateCursor(for event: NSEvent) {
-            if isMouseModeActive {
+            if shouldReportMouseEvent(event) {
                 NSCursor.arrow.set()
             } else if isOverURL {
                 NSCursor.pointingHand.set()
