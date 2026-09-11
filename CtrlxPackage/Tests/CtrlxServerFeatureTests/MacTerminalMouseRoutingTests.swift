@@ -38,6 +38,56 @@
             #expect(rawInput.isEmpty)
         }
 
+        @Test("Streaming output preserves ordinary and Shift selection in both panes", arguments: [0, 1], [false, true])
+        func selectionDuringOutput(paneIndex: Int, holdShift: Bool) throws {
+            try assertSelectionDuringOutput(paneIndex: paneIndex, modifiers: holdShift ? .shift : [])
+        }
+
+        @Test("Shift selection survives output while the app tracks the mouse", arguments: [1000, 1002, 1003])
+        func shiftSelectionDuringMouseTracking(mode: Int) throws {
+            try assertSelectionDuringOutput(paneIndex: 1, modifiers: .shift, mouseMode: mode)
+        }
+
+        private func assertSelectionDuringOutput(
+            paneIndex: Int,
+            modifiers: NSEvent.ModifierFlags,
+            mouseMode: Int? = nil
+        ) throws {
+            let clipboard = ClipboardClient.previewValue
+            try withDependencies {
+                $0[ClipboardClient.self] = clipboard
+            } operation: {
+                let (window, panes) = makeTerminalWindow()
+                defer { withExtendedLifetime(window) { } }
+                let view = panes[paneIndex]
+                if let mouseMode { enableMouseMode(mouseMode, in: view) }
+                var rawInput: [Data] = []
+                view.onRawInput = { rawInput.append($0) }
+                view.autoCopyOnSelect = true
+                view.preserveUserScroll = true
+
+                try gesture(
+                    in: view,
+                    steps: [(.leftMouseDown, 1), (.leftMouseDragged, 2), (.leftMouseDragged, 8), (.leftMouseUp, 8)],
+                    modifiers: modifiers,
+                    afterStep: { step in
+                        guard step == 1 || step == 2 else { return }
+                        // Both shared Mac Host/Viewer feed entry points must
+                        // keep the drag alive, including split control sequences.
+                        view.feed(byteArray: Array("\u{1b}[?25h".utf8)[...])
+                        let output = "\u{1b}[4;1Hstatus update\r\n"
+                        for byte in output.utf8 { view.feedPreservingScroll([byte][...]) }
+                        #expect(view.getTerminal().getLine(row: 3)?.translateToString(trimRight: true) == "status update")
+                    }
+                )
+
+                #expect(view.getSelectedTextTrimmed() == "pha br")
+                #expect(clipboard.getString() == "pha br")
+                #expect(rawInput.isEmpty)
+                #expect(view.terminalView.allowMouseReporting)
+            }
+        }
+
         @Test("Ordinary app drag still reports press, motion and release", arguments: [1002, 1003])
         func applicationDrag(mode: Int) throws {
             let (window, panes) = makeTerminalWindow()
@@ -52,6 +102,45 @@
             #expect(view.getSelectedTextTrimmed() == nil)
             #expect(mouseButtons(rawInput) == [0, 32, 32, 0])
             #expect(rawInput.last.map { String(decoding: $0, as: UTF8.self).hasSuffix("m") } == true)
+        }
+
+        @Test("Copy preserves selection; paste and direct shortcuts end it", arguments: ["copy", "paste", "control", "shiftEnter"])
+        func explicitInputSelectionLifecycle(action: String) throws {
+            let clipboard = ClipboardClient.previewValue
+            try withDependencies {
+                $0[ClipboardClient.self] = clipboard
+            } operation: {
+                let (window, panes) = makeTerminalWindow()
+                defer { withExtendedLifetime(window) { } }
+                let view = panes[1]
+                try drag(in: view)
+                var input: [TmuxKey] = []
+                view.onInput = { input.append(contentsOf: $0) }
+                clipboard.setString("pasted")
+                let character = action == "copy" ? "c" : action == "paste" ? "v" : action == "control" ? "t" : "\r"
+                let modifiers: NSEvent.ModifierFlags = action == "control" ? .control : action == "shiftEnter" ? .shift : .command
+                let event = try #require(NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+                    windowNumber: window.windowNumber, context: nil, characters: character,
+                    charactersIgnoringModifiers: character, isARepeat: false,
+                    keyCode: action == "shiftEnter" ? 36 : 17
+                ))
+
+                if action == "copy" || action == "paste" {
+                    #expect(view.performKeyEquivalent(with: event))
+                } else {
+                    #expect(view.interceptTerminalKeyDown(event))
+                }
+
+                if action == "copy" {
+                    #expect(view.getSelectedTextTrimmed() == "pha br")
+                    #expect(clipboard.getString() == "pha br")
+                    #expect(input.isEmpty)
+                } else {
+                    #expect(view.getSelectedTextTrimmed() == nil)
+                    #expect(input == (action == "paste" ? [.text("pasted")] : action == "control" ? [.ctrl("t")] : [.shiftEnter]))
+                }
+            }
         }
 
         @Test("An app can explicitly capture Shift mouse input")
@@ -215,7 +304,8 @@
             in view: InteractiveTerminalView,
             steps: [(NSEvent.EventType, CGFloat)],
             modifiers: NSEvent.ModifierFlags,
-            clickCount: Int = 1
+            clickCount: Int = 1,
+            afterStep: (Int) -> Void = { _ in }
         ) throws {
             let window = try #require(view.window)
             let recipient = try mouseRecipient(in: view)
@@ -237,6 +327,7 @@
                 case .leftMouseDragged: recipient.mouseDragged(with: event)
                 default: recipient.mouseUp(with: event)
                 }
+                afterStep(index)
             }
         }
 

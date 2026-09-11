@@ -88,40 +88,65 @@ struct TmuxPaneSplitTests {
                 workingDirectory: sourceURL.path
             )
             do {
-                let sourcePanes = await service.refreshPanes()
-                let sourcePane = try #require(
-                    sourcePanes.first { $0.paneId == created.paneId }
+                let sourcePath = try await waitForCurrentPath(
+                    of: created.paneId,
+                    in: service,
+                    expected: sourceURL
                 )
+                try #require(sourcePath == sourceURL.resolvingSymlinksInPath())
 
                 let inheritedPaneID = try await service.splitPane(
                     created.paneId,
                     horizontal: true
                 )
-                let inheritedPanes = await service.refreshPanes()
-                let inheritedPane = try #require(
-                    inheritedPanes.first { $0.paneId == inheritedPaneID }
+                let inheritedPath = try await waitForCurrentPath(
+                    of: inheritedPaneID,
+                    in: service,
+                    expected: sourceURL
                 )
-                #expect(inheritedPane.currentPath == sourcePane.currentPath)
+                #expect(inheritedPath == sourcePath)
 
                 let overriddenPaneID = try await service.splitPane(
                     created.paneId,
                     horizontal: false,
                     workingDirectory: overrideURL.path
                 )
-                let overriddenPanes = await service.refreshPanes()
-                let overriddenPane = try #require(
-                    overriddenPanes.first { $0.paneId == overriddenPaneID }
+                let overriddenPath = try await waitForCurrentPath(
+                    of: overriddenPaneID,
+                    in: service,
+                    expected: overrideURL
                 )
-                #expect(
-                    URL(fileURLWithPath: overriddenPane.currentPath).resolvingSymlinksInPath()
-                        == overrideURL.resolvingSymlinksInPath()
-                )
+                #expect(overriddenPath == overrideURL.resolvingSymlinksInPath())
 
                 try await service.killSession(created.sessionName)
             } catch {
                 try? await service.killSession(created.sessionName)
                 throw error
             }
+        }
+    }
+
+    /// tmux acknowledges a split before the child has necessarily completed
+    /// exec. macOS may briefly report an empty/stale cwd during that transition.
+    /// Wait for the observable path, then let the caller assert the exact result.
+    private func waitForCurrentPath(
+        of paneID: String,
+        in service: TmuxService,
+        expected: URL
+    ) async throws -> URL? {
+        let expectedPath = expected.resolvingSymlinksInPath()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while true {
+            let panes = await service.refreshPanes()
+            let currentPath = panes.first { $0.paneId == paneID }
+                .flatMap { pane -> URL? in
+                    guard !pane.currentPath.isEmpty else { return nil }
+                    return URL(fileURLWithPath: pane.currentPath).resolvingSymlinksInPath()
+                }
+            if currentPath == expectedPath || ContinuousClock.now >= deadline {
+                return currentPath
+            }
+            try await Task.sleep(for: .milliseconds(20))
         }
     }
 }

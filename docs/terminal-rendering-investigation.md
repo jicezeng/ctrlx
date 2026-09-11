@@ -2,6 +2,37 @@
 
 > **Historical status (PR #179):** The first fix moved live terminal bytes to `pipe-pane`, resolving corruption in the original String-based `%output` parser. In September 2026, terminal content moved back to control mode. The September 8 findings below correct two holes in that transition: connection identity and capture atomicity. `pipe-pane` remains scan-only for OSC side effects. The older diagrams and hypotheses below are historical; see `streaming-architecture.md` for the current data flow.
 
+## 3.0.28 (September 11, 2026): Mac selection disappears during output
+
+The affected Mac's Codex panes reported zero for `mouse_standard_flag`,
+`mouse_button_flag`, `mouse_all_flag` and `mouse_any_flag`. That snapshot does
+not support Codex actively capturing the mouse as the explanation. It does not
+by itself measure the mirror's state or explain the old/new-pane asymmetry.
+
+An isolated reproduction using CtrlX's shared Mac terminal view established a
+separate deterministic defect: a plain or Shift drag established a local
+selection, then a cursor-visibility sequence (`CSI ?25h`) cleared it without
+any mouse report being sent. SwiftTerm's `feedPrepare` and Mac `linefeed`
+callback cancelled selection whenever `allowMouseReporting` was true. That is
+an embedding permission (true by default on Mac), not the application's current
+mouse mode. Static gesture tests in 3.0.27 did not interleave output with drags.
+
+The fix keeps Mac local selection independent of output delivery. The terminal
+model invalidates selection on actual buffer replacement/reset and grid resize;
+existing scroll handling translates anchors or discards evicted selections.
+Unchanged AppKit layout does not discard selection. Explicit clicks, committed
+text, paste and CtrlX's directly routed shortcuts still end the selection;
+copying does not. Output is never deferred and application mouse routing is
+unchanged. The UIKit selection/gesture policy is not changed.
+
+`MacSelectionLifecycleTests` and `SelectionLifecycleTests` cover the SwiftTerm
+boundaries. `MacTerminalMouseRoutingTests` interleaves fragmented output with
+drag events in both pane positions and through both Mac feed entry points,
+checking visible output, retained selection, no leaked mouse input and auto-copy.
+These regressions establish the repaired mechanism, not an end-to-end claim
+that every new-pane failure on the affected Mac had this cause. Update the Mac
+displaying the pane (Host or Viewer) for device acceptance; Relay is unchanged.
+
 ## 3.0.25 (September 8, 2026): Relay reorders remote terminal frames
 
 Both Macs running 3.0.24 could still show a mostly blank Viewer with no composer.

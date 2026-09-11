@@ -743,7 +743,7 @@
                 keyCode: event.keyCode,
                 modifierFlags: event.modifierFlags
             ) {
-                onInput?([controlKey])
+                sendUserInput([controlKey])
                 return true
             }
 
@@ -762,8 +762,15 @@
                 .intersection([.shift, .control, .option, .command])
             guard activeModifiers == .shift else { return false }
 
-            onInput?([.shiftEnter])
+            sendUserInput([.shiftEnter])
             return true
+        }
+
+        /// Direct shortcuts/paste bypass SwiftTerm.keyDown. End selection when
+        /// the user sends input, not when the terminal eventually echoes it.
+        private func sendUserInput(_ keys: [TmuxKey]) {
+            terminalView.selectNone()
+            onInput?(keys)
         }
 
         override func viewDidMoveToWindow() {
@@ -1245,7 +1252,7 @@
 
                 // If clipboard has text, send it directly to tmux
                 if let clipboardString = clipboard.getString(), !clipboardString.isEmpty {
-                    onInput?([.text(clipboardString)])
+                    sendUserInput([.text(clipboardString)])
                     return true
                 }
 
@@ -1257,7 +1264,7 @@
                     if let onImagePaste, onImagePaste(image) {
                         return true
                     }
-                    onInput?([.ctrl("v")])
+                    sendUserInput([.ctrl("v")])
                     return true
                 }
 
@@ -1921,7 +1928,7 @@
             // Convert raw bytes to TmuxKey representations
             let keys = TmuxKey.from(bytes: Data(data))
             guard !keys.isEmpty else { return }
-            onInput?(keys)
+            sendUserInput(keys)
         }
 
         func scrolled(source: TerminalView, position: Double) {

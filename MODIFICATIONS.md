@@ -7,6 +7,20 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.28 — Mac selection during streaming output
+
+- Keep Mac local selections through incoming text, cursor updates and linefeeds,
+  independently of mouse-reporting permission. Do not pause or buffer output
+  while selecting; application mouse reporting remains available.
+- Invalidate buffer-relative selections on buffer replacement and real grid
+  changes, not an unchanged AppKit layout pass. Preserve explicit click, text
+  input, paste and shortcut cancellation, including CtrlX's direct input routes.
+- Add streaming-drag regressions for both pane positions, Shift selection,
+  fragmented control sequences and auto-copy in the shared Mac Host/Viewer view.
+- This requires the fixed SwiftTerm dependency on the Mac displaying the pane.
+  It does not require a Relay deployment or change iOS gesture policy. The
+  reported machine-specific new-pane behavior still needs device acceptance.
+
 ## 3.0.27 — Mac terminal mouse selection
 
 - Respect Shift-selection and disabled mouse reporting throughout the shared
