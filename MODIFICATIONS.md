@@ -7,6 +7,18 @@
 - **Upstream**: [gpambrozio/Gallager](https://github.com/gpambrozio/Gallager)
 - **License**: GNU AGPL-3.0
 
+## 3.0.29 — Mac completion attention
+
+- Acknowledge completed agent tasks from each displayed terminal pane, covering
+  local and remote windows on both sides of a split.
+- Observe pane state instead of the local pending total, so remote completions
+  and same-count state changes no longer leave task markers or Dock badges stale.
+- Preserve unread hidden tabs, background completions, blocking approval/question
+  forms, and manual state overrides. Reuse existing Host/Viewer state and badge
+  synchronization; no Relay or iOS update is required for this Mac fix.
+- Add regression coverage for visibility, activation, host-scoped pane identity,
+  repeated acknowledgements, and state changes without a pending-count change.
+
 ## 3.0.28 — Mac selection during streaming output
 
 - Keep Mac local selections through incoming text, cursor updates and linefeeds,

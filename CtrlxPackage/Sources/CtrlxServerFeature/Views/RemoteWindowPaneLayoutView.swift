@@ -125,6 +125,7 @@ struct RemoteWindowPaneLayoutView: View {
             isEditorActive: pane.editorSession != nil,
             onOpenURL: onOpenURL
         )
+        .modifier(VisiblePaneAttentionModifier(paneId: pane.paneId, connection: connection))
         .overlay {
             if let editorInfo = pane.editorSession {
                 RemotePaneEditorOverlay(
@@ -179,6 +180,7 @@ struct RemoteWindowPaneLayoutView: View {
                 },
                 onOpenURL: onOpenURL
             )
+            .modifier(VisiblePaneAttentionModifier(paneId: paneState.paneId, connection: connection))
             .overlay {
                 if !isSingle {
                     Rectangle()

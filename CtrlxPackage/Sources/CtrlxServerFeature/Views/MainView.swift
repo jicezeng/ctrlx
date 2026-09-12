@@ -475,9 +475,6 @@ public struct MainView: View {
                 sharedLayoutSyncTask?.cancel()
             }
         ))
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            markSelectedSessionsHandledIfActive()
-        }
         .focusedSceneValue(\.closeCurrentTabAction, handleCloseCurrentTab)
         .focusedSceneValue(\.terminalWindowNavigationActions, terminalWindowNavigationActions)
         .modifier(MenuCommandsModifier(
@@ -488,12 +485,6 @@ public struct MainView: View {
             onSelectNextSession: { selectAdjacentSession(direction: 1) },
             onNewLocalSession: { localNewSessionTrigger += 1 }
         ))
-        .onChange(of: windowManager.pendingSessionCount) {
-            // When an event arrives on the already-selected session, no selection
-            // change fires. Watch the pending count so we can auto-clear attention
-            // for sessions the user is already viewing.
-            markSelectedSessionsHandledIfActive()
-        }
         .onChange(of: coordinator.pendingMenuBarSelection) {
             applyPendingMenuBarSelection()
         }
@@ -2131,11 +2122,10 @@ public struct MainView: View {
         }
     }
 
-    /// Common reaction for local and remote selection changes. Selection may
-    /// update attention, persistence and shared logical layout, but never tmux
-    /// dimensions.
+    /// Common reaction for local and remote selection changes. Selection updates
+    /// persistence and shared logical layout, but never tmux dimensions. Read
+    /// acknowledgements are owned by the actually displayed terminal tiles.
     private func handleSelectionChanged() {
-        markSelectedSessionsHandledIfActive()
         seedLayoutIfNeeded()
         seedRemoteLayoutIfNeeded()
         scheduleSharedTerminalLayoutSync()
@@ -2294,41 +2284,6 @@ public struct MainView: View {
         }
 
         trackedActiveSessionPaneIds = currentIds
-    }
-
-    // MARK: - Session Attention
-
-    /// Marks the currently selected session(s) as handled, but only when the app is active.
-    private func markSelectedSessionsHandledIfActive() {
-        guard NSApp.isActive else { return }
-
-        if let window = selectedWindow {
-            var stateChanged = false
-            for pane in window.panes
-                where windowManager.paneStates[pane.paneId]?.agentSession?.needsAttention == true {
-                windowManager.markSessionHandled(paneId: pane.paneId)
-                stateChanged = true
-            }
-            if stateChanged {
-                Task {
-                    await coordinator.connectedViewerManager?.pushSessionStateToAll()
-                    await coordinator.broadcastBadgeDecreaseIfNeeded()
-                }
-            }
-        }
-
-        if let remote = selectedRemoteSession, let remoteWindow = selectedRemoteWindow {
-            for pane in remoteWindow.panes where pane.agentSession?.needsAttention == true {
-                coordinator.remoteSessionStore?.markSessionHandled(paneId: pane.paneId, hostId: remote.hostId)
-                Task {
-                    _ = await coordinator.viewerConnectionManager?.sendCommand(
-                        MarkHandled(),
-                        paneId: pane.paneId,
-                        hostId: remote.hostId
-                    )
-                }
-            }
-        }
     }
 
     // MARK: - Pending Menu Bar Selection

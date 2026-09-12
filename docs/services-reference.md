@@ -354,6 +354,20 @@ Static utility detecting the `claude` CLI path.
   `.accessory` transitions, so the manager clears the label before every set
   and re-applies it on policy updates (issue #217)
 
+**Mac completion/read handling:** `VisiblePaneAttentionModifier` is attached to
+each rendered terminal tile in `WindowPaneLayoutView` and
+`RemoteWindowPaneLayoutView`, including both split sides and fallback layouts.
+It observes that pane's agent state (not the global pending count), checks on
+mount and app activation, and only acknowledges while mounted and the app is
+active. Hidden file/browser tabs do not acknowledge terminal tasks. Remote
+readers also require a connected host/relay and scope pane IDs by host.
+`VisiblePaneAttention` rechecks the live store and only clears `doneWorking` to
+`idle`; permission/question/plan forms and manual Set State overrides remain
+untouched. A real local clear pushes the existing session snapshot/badge update;
+a remote clear updates `SessionStore` and sends the existing `MarkHandled`
+command to its host. Dock totals and task markers continue to derive from these
+same stores. Regression coverage: `VisiblePaneAttentionTests`.
+
 ### SleepPreventionManager (`CtrlxServerFeature/Managers/SleepPreventionManager.swift`)
 
 `@MainActor` preventing Mac sleep during active sessions.

@@ -170,6 +170,7 @@ struct WindowPaneLayoutView: View {
                     }
                 }
             )
+            .modifier(VisiblePaneAttentionModifier(paneId: paneState.paneId))
             .overlay {
                 if !isSingle {
                     Rectangle()
